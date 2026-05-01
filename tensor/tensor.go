@@ -1,6 +1,7 @@
 package tensor
 
 import (
+	"math"
 	"math/rand"
 )
 
@@ -204,4 +205,46 @@ func (t *Tensor) Transpose2D() *Tensor {
 		}
 	}
 	return FromFloat32(out, []int{n, m})
+}
+
+// Where selects elements: out[i] = cond[i] ? x[i] : y[i]
+func Where(cond, x, y *Tensor) *Tensor {
+	u := newUOp(OpWhere, x.uop.DType, []*UOp{cond.uop, x.uop, y.uop}, nil)
+	return &Tensor{uop: u, shape: x.shape}
+}
+
+// CmpLt returns a boolean tensor: out[i] = (a[i] < b[i])
+func (t *Tensor) CmpLt(other *Tensor) *Tensor {
+	return t.binaryOp(OpCmpLt, other)
+}
+
+// CmpEq returns a boolean tensor: out[i] = (a[i] == b[i])
+func (t *Tensor) CmpEq(other *Tensor) *Tensor {
+	return t.binaryOp(OpCmpEq, other)
+}
+
+// Clip clamps values to [min, max].
+func (t *Tensor) Clip(min, max float32) *Tensor {
+	lo := Full(t.Shape(), min)
+	hi := Full(t.Shape(), max)
+	return t.Max(lo).Add(hi.Neg()).Neg().Add(hi)
+}
+
+// ReLU returns max(0, x).
+func (t *Tensor) ReLU() *Tensor {
+	zero := Zeros(t.Shape())
+	return t.Max(zero)
+}
+
+// Sigmoid returns 1 / (1 + exp(-x)).
+func (t *Tensor) Sigmoid() *Tensor {
+	// sigmoid(x) = 1 / (1 + exp2(-x / ln2))
+	// Approximation via exp2
+	t.Realize()
+	data := t.Data()
+	out := make([]float32, len(data))
+	for i, v := range data {
+		out[i] = 1.0 / (1.0 + float32(math.Exp(float64(-v))))
+	}
+	return FromFloat32(out, t.Shape())
 }
