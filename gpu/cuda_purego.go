@@ -149,6 +149,8 @@ type Buffer struct {
 
 // Malloc allocates GPU memory for n float32s.
 func Malloc(n int) (*Buffer, error) {
+	// Ensure context is fully initialized (PTX load finalizes context setup)
+	SgemmReady()
 	var ptr CUdeviceptr
 	size := uint64(n * 4)
 	if r := cuMemAlloc(&ptr, size); r != CUDA_SUCCESS {
