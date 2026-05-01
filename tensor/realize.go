@@ -3,6 +3,11 @@ package tensor
 import "math"
 
 func realize(u *UOp, shape Shape) *Buffer {
+	// Try elementwise fusion first
+	if k := tryFuse(u, shape); k != nil {
+		return k.execute()
+	}
+
 	for _, src := range u.Src {
 		if src.buf == nil && src.Op != OpConst {
 			srcShape := shape

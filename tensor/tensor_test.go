@@ -355,3 +355,41 @@ func TestTransformerBlock(t *testing.T) {
 		t.Fatalf("context shape=%v want [%d,%d]", ctx.Shape(), seqLen, hidden)
 	}
 }
+
+func BenchmarkFusedChain5(b *testing.B) {
+	// 5-op chain: ((((a+b)*a)-b)+a) — fused into single pass
+	n := 1024 * 1024
+	x := Rand([]int{n})
+	y := Rand([]int{n})
+	x.Realize()
+	y.Realize()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		z := x.Add(y).Mul(x).Sub(y).Add(x)
+		z.Realize()
+	}
+}
+
+func TestFusionCorrectness(t *testing.T) {
+	// Verify fused result matches unfused for a chain
+	a := FromFloat32([]float32{1, 2, 3, 4}, []int{4})
+	b := FromFloat32([]float32{5, 6, 7, 8}, []int{4})
+
+	// (a + b) * a = [6*1, 8*2, 10*3, 12*4] = [6, 16, 30, 48]
+	got := a.Add(b).Mul(a).Data()
+	want := []float32{6, 16, 30, 48}
+	for i := range got {
+		if !approx(got[i], want[i], 1e-6) {
+			t.Fatalf("[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+
+	// Longer: ((a+b)*a - b) + a = [6-5+1, 16-6+2, 30-7+3, 48-8+4] = [2, 12, 26, 44]
+	got2 := a.Add(b).Mul(a).Sub(b).Add(a).Data()
+	want2 := []float32{2, 12, 26, 44}
+	for i := range got2 {
+		if !approx(got2[i], want2[i], 1e-6) {
+			t.Fatalf("[%d]=%v want %v", i, got2[i], want2[i])
+		}
+	}
+}
