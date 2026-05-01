@@ -117,3 +117,10 @@ func shapeSize(shape []int) int {
 	}
 	return n
 }
+
+// BroadcastArg stores shapes for broadcast binary ops.
+type BroadcastArg struct {
+	OutDims  []int
+	LhsDims  []int
+	RhsDims  []int
+}

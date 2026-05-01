@@ -275,3 +275,83 @@ func TestGELU(t *testing.T) {
 		t.Fatalf("gelu(1)=%v want ~0.841", got[2])
 	}
 }
+
+func TestBroadcastAdd(t *testing.T) {
+	// [2,3] + [3] → [2,3]
+	a := FromFloat32([]float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	b := FromFloat32([]float32{10, 20, 30}, []int{3})
+	c := a.Add(b)
+	got := c.Data()
+	want := []float32{11, 22, 33, 14, 25, 36}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLinear(t *testing.T) {
+	// X=[2,3], W=[4,3], bias=[4] → Y=[2,4]
+	x := FromFloat32([]float32{1, 0, 0, 0, 1, 0}, []int{2, 3})
+	w := FromFloat32([]float32{
+		1, 0, 0,
+		0, 1, 0,
+		0, 0, 1,
+		1, 1, 1,
+	}, []int{4, 3})
+	bias := FromFloat32([]float32{0, 0, 0, 0}, []int{4})
+	y := x.Linear(w, bias)
+	got := y.Data()
+	// Row 0: [1,0,0] @ W^T = [1,0,0,1]
+	// Row 1: [0,1,0] @ W^T = [0,1,0,1]
+	want := []float32{1, 0, 0, 1, 0, 1, 0, 1}
+	for i := range got {
+		if !approx(got[i], want[i], 1e-5) {
+			t.Fatalf("[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestTransformerBlock(t *testing.T) {
+	// Minimal smoke test: build a fake transformer block
+	seqLen, hidden := 4, 8
+
+	// Input
+	x := Rand([]int{seqLen, hidden})
+	x.Realize()
+
+	// QKV projection
+	wQKV := Rand([]int{hidden * 3, hidden})
+	wQKV.Realize()
+	qkv := x.MatMulTransposed(wQKV)
+
+	// Split Q, K, V (manual for now)
+	qkvData := qkv.Data()
+	q := FromFloat32(qkvData[:seqLen*hidden], []int{seqLen, hidden})
+	k := FromFloat32(qkvData[seqLen*hidden:seqLen*hidden*2], []int{seqLen, hidden})
+	v := FromFloat32(qkvData[seqLen*hidden*2:], []int{seqLen, hidden})
+
+	// Attention scores: Q @ K^T
+	scores := q.MatMulTransposed(k)
+
+	// Softmax
+	probs := scores.Softmax()
+	probsData := probs.Data()
+
+	// Check softmax rows sum to 1
+	for i := 0; i < seqLen; i++ {
+		sum := float32(0)
+		for j := 0; j < seqLen; j++ {
+			sum += probsData[i*seqLen+j]
+		}
+		if !approx(sum, 1.0, 1e-4) {
+			t.Fatalf("attention row %d sum=%v", i, sum)
+		}
+	}
+
+	// Context: probs @ V
+	ctx := probs.MatMul(v)
+	if ctx.Shape()[0] != seqLen || ctx.Shape()[1] != hidden {
+		t.Fatalf("context shape=%v want [%d,%d]", ctx.Shape(), seqLen, hidden)
+	}
+}

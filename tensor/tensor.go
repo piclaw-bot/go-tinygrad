@@ -149,9 +149,27 @@ func (t *Tensor) Data() []float32 {
 // --- Internal helpers ---
 
 func (t *Tensor) binaryOp(op Ops, other *Tensor) *Tensor {
-	// TODO: broadcast shape checking
-	u := newUOp(op, t.uop.DType, []*UOp{t.uop, other.uop}, nil)
-	return &Tensor{uop: u, shape: t.shape}
+	if len(t.shape.Dims) == len(other.shape.Dims) {
+		match := true
+		for i := range t.shape.Dims {
+			if t.shape.Dims[i] != other.shape.Dims[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			u := newUOp(op, t.uop.DType, []*UOp{t.uop, other.uop}, nil)
+			return &Tensor{uop: u, shape: t.shape}
+		}
+	}
+	outDims, _, _, err := broadcast(t.shape, other.shape)
+	if err != nil {
+		panic(err)
+	}
+	arg := BroadcastArg{outDims, cloneShape(t.shape.Dims), cloneShape(other.shape.Dims)}
+	// Don't intern broadcast ops (Arg contains shapes needed for realize)
+	u := &UOp{Op: op, DType: t.uop.DType, Src: []*UOp{t.uop, other.uop}, Arg: arg}
+	return &Tensor{uop: u, shape: NewShape(outDims)}
 }
 
 func (t *Tensor) unaryOp(op Ops) *Tensor {

@@ -2,14 +2,10 @@ package tensor
 
 import "math"
 
-// realize executes a UOp graph eagerly and returns the result buffer.
-// This is the simple interpreter — no fusion, no scheduling.
-// Will be replaced by a proper scheduler+fuser later.
 func realize(u *UOp, shape Shape) *Buffer {
-	// Recursively realize inputs
 	for _, src := range u.Src {
 		if src.buf == nil && src.Op != OpConst {
-			srcShape := shape // TODO: track shapes properly per node
+			srcShape := shape
 			src.buf = realize(src, srcShape)
 		}
 	}
@@ -25,26 +21,22 @@ func realize(u *UOp, shape Shape) *Buffer {
 	case OpConst:
 		val := float32(u.Arg.(float64))
 		buf := allocBuffer(u.DType, n)
-		data := buf.Float32Data()
-		for i := range data {
+		for i, data := 0, buf.Float32Data(); i < n; i++ {
 			data[i] = val
 		}
 		return buf
 
 	case OpAdd:
-		return binaryEval(u.Src[0].buf, u.Src[1].buf, n, func(a, b float32) float32 { return a + b })
+		return binaryBroadcastEval(u, shape, func(a, b float32) float32 { return a + b })
 	case OpSub:
-		return binaryEval(u.Src[0].buf, u.Src[1].buf, n, func(a, b float32) float32 { return a - b })
+		return binaryBroadcastEval(u, shape, func(a, b float32) float32 { return a - b })
 	case OpMul:
-		return binaryEval(u.Src[0].buf, u.Src[1].buf, n, func(a, b float32) float32 { return a * b })
+		return binaryBroadcastEval(u, shape, func(a, b float32) float32 { return a * b })
 	case OpDiv:
-		return binaryEval(u.Src[0].buf, u.Src[1].buf, n, func(a, b float32) float32 { return a / b })
+		return binaryBroadcastEval(u, shape, func(a, b float32) float32 { return a / b })
 	case OpMax:
-		return binaryEval(u.Src[0].buf, u.Src[1].buf, n, func(a, b float32) float32 {
-			if a > b {
-				return a
-			}
-			return b
+		return binaryBroadcastEval(u, shape, func(a, b float32) float32 {
+			if a > b { return a }; return b
 		})
 
 	case OpNeg:
@@ -64,10 +56,7 @@ func realize(u *UOp, shape Shape) *Buffer {
 	case OpReduceMax:
 		srcShape := guessInputShape(u)
 		return reduceEval(u.Src[0].buf, srcShape, u.Arg.([]int), func(acc, v float32) float32 {
-			if v > acc {
-				return v
-			}
-			return acc
+			if v > acc { return v }; return acc
 		}, -math.MaxFloat32)
 
 	case OpReshape:
@@ -83,7 +72,6 @@ func realize(u *UOp, shape Shape) *Buffer {
 		ndim := len(order)
 		outIdx := make([]int, ndim)
 		for i := 0; i < shape.Numel(); i++ {
-			// out[outIdx] = src[srcIdx] where srcIdx[order[d]] = outIdx[d]
 			srcFlat := 0
 			for d := 0; d < ndim; d++ {
 				srcFlat += outIdx[d] * srcShape.Strides[order[d]]
@@ -91,9 +79,7 @@ func realize(u *UOp, shape Shape) *Buffer {
 			outData[i] = srcData[srcFlat]
 			for d := ndim - 1; d >= 0; d-- {
 				outIdx[d]++
-				if outIdx[d] < shape.Dims[d] {
-					break
-				}
+				if outIdx[d] < shape.Dims[d] { break }
 				outIdx[d] = 0
 			}
 		}
@@ -105,30 +91,62 @@ func realize(u *UOp, shape Shape) *Buffer {
 }
 
 func allocBuffer(dtype DType, n int) *Buffer {
-	return &Buffer{
-		Data:   make([]byte, n*dtype.ByteSize()),
-		DType:  dtype,
-		Length: n,
-	}
+	return &Buffer{Data: make([]byte, n*dtype.ByteSize()), DType: dtype, Length: n}
 }
 
 func unaryEval(src *Buffer, n int, f func(float32) float32) *Buffer {
 	out := allocBuffer(src.DType, n)
-	a := src.Float32Data()
-	o := out.Float32Data()
-	for i := 0; i < n; i++ {
-		o[i] = f(a[i])
-	}
+	a, o := src.Float32Data(), out.Float32Data()
+	for i := 0; i < n; i++ { o[i] = f(a[i]) }
 	return out
 }
 
 func binaryEval(lhs, rhs *Buffer, n int, f func(float32, float32) float32) *Buffer {
 	out := allocBuffer(lhs.DType, n)
-	a := lhs.Float32Data()
-	b := rhs.Float32Data()
+	a, b, o := lhs.Float32Data(), rhs.Float32Data(), out.Float32Data()
+	for i := 0; i < n; i++ { o[i] = f(a[i], b[i]) }
+	return out
+}
+
+func binaryBroadcastEval(u *UOp, outShape Shape, f func(float32, float32) float32) *Buffer {
+	lhs, rhs := u.Src[0].buf, u.Src[1].buf
+	n := outShape.Numel()
+
+	if lhs.Length == n && rhs.Length == n {
+		return binaryEval(lhs, rhs, n, f)
+	}
+
+	shapes, ok := u.Arg.(BroadcastArg)
+	if !ok {
+		panic("broadcast binary op without BroadcastArg")
+	}
+	lhsShape := NewShape(shapes.LhsDims)
+	rhsShape := NewShape(shapes.RhsDims)
+
+	a, b := lhs.Float32Data(), rhs.Float32Data()
+	out := allocBuffer(lhs.DType, n)
 	o := out.Float32Data()
+	ndim := outShape.Ndim()
+	idx := make([]int, ndim)
+
 	for i := 0; i < n; i++ {
-		o[i] = f(a[i], b[i])
+		aIdx, bIdx := 0, 0
+		for d := 0; d < ndim; d++ {
+			aOff := d - (ndim - lhsShape.Ndim())
+			if aOff >= 0 && lhsShape.Dims[aOff] > 1 {
+				aIdx += idx[d] * lhsShape.Strides[aOff]
+			}
+			bOff := d - (ndim - rhsShape.Ndim())
+			if bOff >= 0 && rhsShape.Dims[bOff] > 1 {
+				bIdx += idx[d] * rhsShape.Strides[bOff]
+			}
+		}
+		o[i] = f(a[aIdx], b[bIdx])
+		for d := ndim - 1; d >= 0; d-- {
+			idx[d]++
+			if idx[d] < outShape.Dims[d] { break }
+			idx[d] = 0
+		}
 	}
 	return out
 }
@@ -137,66 +155,35 @@ func reduceEval(src *Buffer, shape Shape, axes []int, f func(float32, float32) f
 	data := src.Float32Data()
 	outDims := make([]int, len(shape.Dims))
 	copy(outDims, shape.Dims)
-	for _, ax := range axes {
-		outDims[ax] = 1
-	}
+	for _, ax := range axes { outDims[ax] = 1 }
 	outShape := NewShape(outDims)
-	outN := outShape.Numel()
-	out := allocBuffer(src.DType, outN)
+	out := allocBuffer(src.DType, outShape.Numel())
 	result := out.Float32Data()
-	for i := range result {
-		result[i] = init
-	}
+	for i := range result { result[i] = init }
 
 	ndim := len(shape.Dims)
 	idx := make([]int, ndim)
 	for i := 0; i < shape.Numel(); i++ {
-		// Compute flat output index
 		outIdx := 0
 		for d := 0; d < ndim; d++ {
-			dimIdx := idx[d]
 			isReduced := false
-			for _, ax := range axes {
-				if ax == d {
-					isReduced = true
-					break
-				}
-			}
-			if !isReduced {
-				outIdx += dimIdx * outShape.Strides[d]
-			}
+			for _, ax := range axes { if ax == d { isReduced = true; break } }
+			if !isReduced { outIdx += idx[d] * outShape.Strides[d] }
 		}
 		result[outIdx] = f(result[outIdx], data[i])
-
 		for d := ndim - 1; d >= 0; d-- {
 			idx[d]++
-			if idx[d] < shape.Dims[d] {
-				break
-			}
+			if idx[d] < shape.Dims[d] { break }
 			idx[d] = 0
 		}
 	}
 	return out
 }
 
-// guessInputShape recovers the input shape from a reduce UOp.
-// The source tensor's shape has the unreduced dimensions.
 func guessInputShape(u *UOp) Shape {
-	if u.Src[0].Op == OpBuffer {
-		return NewShape(u.Src[0].Arg.([]int))
-	}
-	// For chained ops, walk to the buffer
 	node := u.Src[0]
-	for node.Op != OpBuffer && len(node.Src) > 0 {
-		node = node.Src[0]
-	}
-	if node.Op == OpBuffer {
-		return NewShape(node.Arg.([]int))
-	}
-	// Fallback: reconstruct from buffer length
-	if u.Src[0].buf != nil {
-		n := u.Src[0].buf.Length
-		return NewShape([]int{n})
-	}
-	panic("cannot determine input shape for reduce")
+	for node.Op != OpBuffer && len(node.Src) > 0 { node = node.Src[0] }
+	if node.Op == OpBuffer && node.Arg != nil { return NewShape(node.Arg.([]int)) }
+	if u.Src[0].buf != nil { return NewShape([]int{u.Src[0].buf.Length}) }
+	panic("cannot determine input shape")
 }
