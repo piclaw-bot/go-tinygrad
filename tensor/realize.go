@@ -96,7 +96,7 @@ func realize(u *UOp, shape Shape) *Buffer {
 }
 
 func allocBuffer(dtype DType, n int) *Buffer {
-	return &Buffer{Data: make([]byte, n*dtype.ByteSize()), DType: dtype, Length: n}
+	return pooledAlloc(dtype, n)
 }
 
 func unaryEval(src *Buffer, n int, f func(float32) float32) *Buffer {

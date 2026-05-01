@@ -100,12 +100,31 @@ func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
 	return FromFloat32(cData, []int{m, n})
 }
 
-// Linear computes Y = X @ W^T + bias.
-// X is [M, K], W is [N, K] (transposed), bias is [N] or nil.
+// Linear computes Y = X @ W^T + bias (standard convention).
+// X is [M, K], W is [N, K], bias is [N] or nil.
 func (t *Tensor) Linear(weight, bias *Tensor) *Tensor {
 	result := t.MatMulTransposed(weight)
 	if bias != nil {
 		// Broadcast add: [M, N] + [N] → need to broadcast bias
+		result.Realize()
+		bData := bias.Data()
+		rData := result.Data()
+		n := result.Shape()[1]
+		m := result.Shape()[0]
+		for i := 0; i < m; i++ {
+			for j := 0; j < n; j++ {
+				rData[i*n+j] += bData[j]
+			}
+		}
+	}
+	return result
+}
+
+// LinearPreT computes Y = X @ W_T + bias where W_T is already transposed [K, N].
+// Used by models that pre-transpose weights at load time for SgemmNN performance.
+func (t *Tensor) LinearPreT(weightT, bias *Tensor) *Tensor {
+	result := t.MatMul(weightT)
+	if bias != nil {
 		result.Realize()
 		bData := bias.Data()
 		rData := result.Data()

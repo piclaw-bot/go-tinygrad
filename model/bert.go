@@ -44,8 +44,9 @@ type BertModel struct {
 }
 
 // BertLayer holds weights for one transformer layer.
+// Weights are stored pre-transposed for SgemmNN (faster than SgemmNT).
 type BertLayer struct {
-	QW, QB, KW, KB, VW, VB       *tensor.Tensor
+	QW, QB, KW, KB, VW, VB       *tensor.Tensor // QW is [hidden, hidden] (transposed)
 	AttnOutW, AttnOutB            *tensor.Tensor
 	AttnLnW, AttnLnB             *tensor.Tensor
 	FfnInterW, FfnInterB         *tensor.Tensor
@@ -71,6 +72,13 @@ func LoadGTESmall(path string) (*BertModel, error) {
 		return tensor.FromFloat32(data, shape)
 	}
 
+	// loadT loads a weight matrix and pre-transposes it for SgemmNN.
+	// Input shape [outDim, inDim] → stored as [inDim, outDim].
+	loadT := func(name string, shape []int) *tensor.Tensor {
+		t := load(name, shape)
+		return t.Transpose2D()
+	}
+
 	h := cfg.HiddenSize
 	inter := cfg.Intermediate
 
@@ -84,26 +92,26 @@ func LoadGTESmall(path string) (*BertModel, error) {
 	for l := 0; l < cfg.NumLayers; l++ {
 		p := fmt.Sprintf("encoder.layer.%d", l)
 		m.Layers[l] = BertLayer{
-			QW: load(p+".attention.self.query.weight", []int{h, h}),
+			QW: loadT(p+".attention.self.query.weight", []int{h, h}),
 			QB: load(p+".attention.self.query.bias", []int{h}),
-			KW: load(p+".attention.self.key.weight", []int{h, h}),
+			KW: loadT(p+".attention.self.key.weight", []int{h, h}),
 			KB: load(p+".attention.self.key.bias", []int{h}),
-			VW: load(p+".attention.self.value.weight", []int{h, h}),
+			VW: loadT(p+".attention.self.value.weight", []int{h, h}),
 			VB: load(p+".attention.self.value.bias", []int{h}),
-			AttnOutW: load(p+".attention.output.dense.weight", []int{h, h}),
+			AttnOutW: loadT(p+".attention.output.dense.weight", []int{h, h}),
 			AttnOutB: load(p+".attention.output.dense.bias", []int{h}),
 			AttnLnW:  load(p+".attention.output.LayerNorm.weight", []int{h}),
 			AttnLnB:  load(p+".attention.output.LayerNorm.bias", []int{h}),
-			FfnInterW: load(p+".intermediate.dense.weight", []int{inter, h}),
+			FfnInterW: loadT(p+".intermediate.dense.weight", []int{inter, h}),
 			FfnInterB: load(p+".intermediate.dense.bias", []int{inter}),
-			FfnOutW:   load(p+".output.dense.weight", []int{h, inter}),
+			FfnOutW:   loadT(p+".output.dense.weight", []int{h, inter}),
 			FfnOutB:   load(p+".output.dense.bias", []int{h}),
 			FfnLnW:    load(p+".output.LayerNorm.weight", []int{h}),
 			FfnLnB:    load(p+".output.LayerNorm.bias", []int{h}),
 		}
 	}
 
-	m.PoolerW = load("pooler.dense.weight", []int{h, h})
+	m.PoolerW = loadT("pooler.dense.weight", []int{h, h})
 	m.PoolerB = load("pooler.dense.bias", []int{h})
 
 	return m, nil
@@ -133,22 +141,22 @@ func (m *BertModel) Forward(tokenIDs []int) *tensor.Tensor {
 		layer := &m.Layers[l]
 
 		// Self-attention
-		q := hidden.Linear(layer.QW, layer.QB) // [seqLen, h]
-		k := hidden.Linear(layer.KW, layer.KB)
-		v := hidden.Linear(layer.VW, layer.VB)
+		q := hidden.LinearPreT(layer.QW, layer.QB) // [seqLen, h]
+		k := hidden.LinearPreT(layer.KW, layer.KB)
+		v := hidden.LinearPreT(layer.VW, layer.VB)
 
 		// Multi-head: reshape to [seqLen, heads, headDim], then score
 		attnOut := multiHeadAttention(q, k, v, seqLen, heads, headDim)
 
 		// Output projection + residual + layernorm
-		attnProj := attnOut.Linear(layer.AttnOutW, layer.AttnOutB)
+		attnProj := attnOut.LinearPreT(layer.AttnOutW, layer.AttnOutB)
 		hidden = hidden.Add(attnProj)
 		hidden = hidden.LayerNorm(layer.AttnLnW, layer.AttnLnB, 1e-12)
 
 		// FFN
-		ffnHidden := hidden.Linear(layer.FfnInterW, layer.FfnInterB)
+		ffnHidden := hidden.LinearPreT(layer.FfnInterW, layer.FfnInterB)
 		ffnHidden = ffnHidden.GELU()
-		ffnOut := ffnHidden.Linear(layer.FfnOutW, layer.FfnOutB)
+		ffnOut := ffnHidden.LinearPreT(layer.FfnOutW, layer.FfnOutB)
 		hidden = hidden.Add(ffnOut)
 		hidden = hidden.LayerNorm(layer.FfnLnW, layer.FfnLnB, 1e-12)
 	}

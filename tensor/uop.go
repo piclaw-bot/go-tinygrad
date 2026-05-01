@@ -36,9 +36,14 @@ func (b *Buffer) Float32Data() []float32 {
 
 // --- UOp constructors ---
 
-// newUOp creates a UOp and interns it.
+// newUOp creates a UOp. Skips interning for common ops to avoid equal() overhead.
 func newUOp(op Ops, dtype DType, src []*UOp, arg any) *UOp {
 	u := &UOp{Op: op, DType: dtype, Src: src, Arg: arg}
+	// Skip interning for ops that are always unique in practice
+	// (different source pointers from different layer iterations)
+	if op.IsUnary() || op.IsBinary() || op.IsReduce() || op == OpReshape || op == OpPermute {
+		return u
+	}
 	u.hash = u.computeHash()
 	return internUOp(u)
 }
@@ -80,11 +85,19 @@ func (u *UOp) equal(other *UOp) bool {
 		return false
 	}
 	for i, s := range u.Src {
-		if s != other.Src[i] { // pointer comparison (interned)
+		if s != other.Src[i] {
 			return false
 		}
 	}
-	return fmt.Sprintf("%v", u.Arg) == fmt.Sprintf("%v", other.Arg)
+	// Fast Arg comparison: nil == nil, otherwise compare by type
+	if u.Arg == nil && other.Arg == nil {
+		return true
+	}
+	if u.Arg == nil || other.Arg == nil {
+		return false
+	}
+	// Same pointer = same value (common for interned slices)
+	return u.Arg == other.Arg
 }
 
 func (u *UOp) computeHash() uint64 {
@@ -99,7 +112,22 @@ func (u *UOp) computeHash() uint64 {
 }
 
 func hashAny(v any) uint64 {
-	return uint64(len(fmt.Sprintf("%v", v))) * 0x2545f4914f6cdd1d
+	if v == nil {
+		return 0
+	}
+	// Fast path for common types
+	switch val := v.(type) {
+	case float64:
+		return uint64(val * 2545.0)
+	case []int:
+		h := uint64(len(val))
+		for _, x := range val {
+			h = h*31 + uint64(x)
+		}
+		return h
+	default:
+		return uint64(len(fmt.Sprintf("%v", v))) * 0x2545f4914f6cdd1d
+	}
 }
 
 // --- Shape helpers ---

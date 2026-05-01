@@ -186,3 +186,22 @@ func (t *Tensor) reduceOp(op Ops, axes []int) *Tensor {
 	u := newUOp(op, t.uop.DType, []*UOp{t.uop}, cloneShape(axes))
 	return &Tensor{uop: u, shape: NewShape(newDims)}
 }
+
+// Transpose2D returns a transposed copy of a 2D tensor.
+// [M, N] → [N, M]. Eagerly realized.
+func (t *Tensor) Transpose2D() *Tensor {
+	t.Realize()
+	dims := t.Shape()
+	if len(dims) != 2 {
+		panic("Transpose2D requires 2D tensor")
+	}
+	m, n := dims[0], dims[1]
+	data := t.Data()
+	out := make([]float32, m*n)
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			out[j*m+i] = data[i*n+j]
+		}
+	}
+	return FromFloat32(out, []int{n, m})
+}
