@@ -171,8 +171,9 @@ type uvmFreeParams struct {
 // --- NV Device ---
 
 type NVDevice struct {
-	fdCtl  int // /dev/nvidiactl
-	fdDev  int // /dev/nvidia0
+	fdCtl      int // /dev/nvidiactl
+	fdDev      int // /dev/nvidia0
+	fdDevAlloc int // /dev/nvidia0 (for memory allocs)
 	fdUVM  int // /dev/nvidia-uvm
 	fdUVM2 int // second UVM fd
 
@@ -229,6 +230,11 @@ func nvInit() (*NVDevice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open /dev/nvidia0: %w", err)
 	}
+	// Keep a separate fd for memory allocs (driver may consume it)
+	d.fdDevAlloc, err = unix.Open("/dev/nvidia0", unix.O_RDWR|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open /dev/nvidia0 (alloc): %w", err)
+	}
 	d.fdUVM, err = unix.Open("/dev/nvidia-uvm", unix.O_RDWR|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open /dev/nvidia-uvm: %w", err)
@@ -257,11 +263,13 @@ func nvInit() (*NVDevice, error) {
 	fmt.Printf("[nv] GPU %d: vendor=0x%04x device=0x%04x minor=%d\n",
 		0, cards[0].Vendor, cards[0].DeviceID, cards[0].Minor)
 
-	// Register device FD
+	// Register device FDs
 	regFD := nvRegisterFD{CtlFD: int32(d.fdCtl)}
 	if err := d.nvIoctl(d.fdDev, NV_ESC_REGISTER_FD, unsafe.Pointer(&regFD), unsafe.Sizeof(regFD)); err != nil {
 		return nil, fmt.Errorf("register fd: %w", err)
 	}
+	regFD2 := nvRegisterFD{CtlFD: int32(d.fdCtl)}
+	d.nvIoctl(d.fdDevAlloc, NV_ESC_REGISTER_FD, unsafe.Pointer(&regFD2), unsafe.Sizeof(regFD2))
 
 	// Initialize UVM
 	uvmInit := uvmInitParams{}

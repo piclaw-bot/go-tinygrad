@@ -72,7 +72,8 @@ type NVBuffer struct {
 	dev      *NVDevice
 	va       uint64 // virtual address (GPU-accessible)
 	size     uint64
-	cpuAddr  uintptr // mmap'd CPU address (if mapped)
+	cpuAddr  uintptr
+	cpuMem   []byte  // keep mmap alive // mmap'd CPU address (if mapped)
 	hMemory  uint32  // RM memory handle
 }
 
@@ -81,10 +82,10 @@ func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
 	// Align to page
 	size = (size + 0xFFF) &^ 0xFFF
 
-	// mmap anonymous memory on host
-	mem, err := unix.Mmap(-1, 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED|unix.MAP_ANONYMOUS)
+	// mmap anonymous page-aligned memory (outside Go heap to avoid GC issues)
+	mem, err := unix.Mmap(-1, 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS)
 	if err != nil {
-		return nil, fmt.Errorf("mmap host: %w", err)
+		return nil, fmt.Errorf("mmap: %w", err)
 	}
 	hostAddr := uintptr(unsafe.Pointer(&mem[0]))
 
@@ -100,7 +101,7 @@ func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
 			(0x1 << 30),     // MAPPING_NO_MAP
 		PMemory: uint64(hostAddr),
 		Limit:   size - 1,
-		FD:      -1,
+		FD:      int32(d.fdDev),
 	}
 
 	if err := d.nvIoctl(d.fdDev, NV_ESC_RM_ALLOC_MEMORY, unsafe.Pointer(&params), unsafe.Sizeof(params)); err != nil {
