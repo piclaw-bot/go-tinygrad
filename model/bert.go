@@ -41,6 +41,15 @@ type BertModel struct {
 	// Pooler
 	PoolerW *tensor.Tensor
 	PoolerB *tensor.Tensor
+
+	// Pre-allocated workspace (call InitWorkspace before inference)
+	ws *Workspace
+}
+
+// InitWorkspace pre-allocates inference buffers for the given max sequence length.
+// Call once after loading, before Embed/EmbedFast.
+func (m *BertModel) InitWorkspace(maxSeqLen int) {
+	m.ws = newWorkspace(maxSeqLen, m.Config)
 }
 
 // BertLayer holds weights for one transformer layer.

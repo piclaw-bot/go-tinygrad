@@ -5,10 +5,17 @@ import (
 	"unsafe"
 
 	"github.com/rcarmo/go-tinygrad/simd"
+	"gonum.org/v1/gonum/blas"
+	"gonum.org/v1/gonum/blas/blas32"
+	blasGonum "gonum.org/v1/gonum/blas/gonum"
 )
 
 // ForwardFast runs the model with zero allocations in the hot path.
 // Uses pre-allocated workspace buffers and SIMD kernels directly.
+func init() {
+	blas32.Use(blasGonum.Implementation{})
+}
+
 func (m *BertModel) ForwardFast(tokenIDs []int, ws *Workspace) []float32 {
 	cfg := m.Config
 	seqLen := len(tokenIDs)
@@ -101,13 +108,19 @@ func (m *BertModel) ForwardFast(tokenIDs []int, ws *Workspace) []float32 {
 }
 
 // EmbedFast produces an L2-normalized embedding using pre-allocated workspace.
+// Call InitWorkspace(maxSeqLen) once before first use.
 func (m *BertModel) EmbedFast(tokenIDs []int, attnMask []bool) []float32 {
-	ws := newWorkspace(len(tokenIDs), m.Config)
+	ws := m.ws
+	if ws == nil || ws.seqLen < len(tokenIDs) {
+		ws = newWorkspace(len(tokenIDs), m.Config)
+		m.ws = ws
+	}
 	hidden := m.ForwardFast(tokenIDs, ws)
 	h := m.Config.HiddenSize
 	seqLen := len(tokenIDs)
 
-	out := make([]float32, h)
+	out := ws.outEmb[:h]
+	for i := range out { out[i] = 0 }
 	count := 0
 	for s := 0; s < seqLen; s++ {
 		if attnMask[s] {
@@ -141,25 +154,19 @@ func (m *BertModel) EmbedFast(tokenIDs []int, attnMask []bool) []float32 {
 
 // linearInPlace: out = x @ wT + bias (wT is pre-transposed [inDim, outDim])
 func linearInPlace(out, x, wT, bias []float32, m, inDim, outDim int) {
-	// Zero output
 	for i := range out[:m*outDim] {
 		out[i] = 0
 	}
-	if simd.HasSgemmAsm {
-		simd.SgemmNN(m, outDim, inDim, 1.0,
-			unsafe.Pointer(&x[0]), unsafe.Pointer(&wT[0]), unsafe.Pointer(&out[0]),
-			inDim, outDim, outDim)
-	} else {
-		for i := 0; i < m; i++ {
-			for j := 0; j < outDim; j++ {
-				sum := float32(0)
-				for p := 0; p < inDim; p++ {
-					sum += x[i*inDim+p] * wT[p*outDim+j]
-				}
-				out[i*outDim+j] = sum
-			}
-		}
-	}
+	// Use gonum BLAS for NN matmul (matches gte-go's gonum path for best cache behavior)
+	blas32.Implementation().Sgemm(
+		blas.NoTrans, blas.NoTrans,
+		m, outDim, inDim,
+		1.0,
+		x, inDim,
+		wT, outDim,
+		0.0,
+		out, outDim,
+	)
 	if bias != nil {
 		for i := 0; i < m; i++ {
 			for j := 0; j < outDim; j++ {

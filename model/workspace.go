@@ -19,6 +19,7 @@ type Workspace struct {
 	ffnBuf    []float32 // [seqLen, intermediate]
 	scores    []float32 // [heads, seqLen, seqLen]
 	tempHidden []float32 // [seqLen, hidden]
+	outEmb    []float32 // [hidden] for output embedding
 }
 
 func newWorkspace(seqLen int, cfg BertConfig) *Workspace {
@@ -39,5 +40,6 @@ func newWorkspace(seqLen int, cfg BertConfig) *Workspace {
 		ffnBuf:     make([]float32, seqLen*inter),
 		scores:     make([]float32, heads*seqLen*seqLen),
 		tempHidden: make([]float32, seqLen*h),
+		outEmb:     make([]float32, h),
 	}
 }
