@@ -2,3 +2,4 @@
 *.pprof
 *.out
 /tmp/
+models/
