@@ -3,45 +3,57 @@
 A minimal tensor computation framework in pure Go with SIMD assembly,
 inspired by [tinygrad](https://github.com/tinygrad/tinygrad).
 
-**Not a 1:1 port.** Takes tinygrad's core ideas — lazy evaluation, graph-based
-fusion, minimal op set — and reimplements them idiomatically in Go with the
-same flat-latency, zero-allocation philosophy from [gte-go](https://github.com/rcarmo/gte-go).
-
-## Status: runs GTE-small end-to-end
+## Runs LLMs in pure Go
 
 ```
-gte-go reference:      [-0.008219, -0.016258,  0.029982,  0.034200, -0.014450]
-go-tinygrad output:    [-0.008220, -0.016258,  0.029980,  0.034193, -0.014451]
+$ llmgen -model SmolLM2-1.7B -tokens 50 -prompt "The capital of France is"
+
+The capital of France is Paris.
+The capital of the United States is Washington, D.C.
+The capital of the United Kingdom is London.
+The capital of Canada is Ottawa.
+The capital of Australia is Canberra.
 ```
 
-Loads a HuggingFace safetensors model, runs 12 transformer layers, produces
-L2-normalized embeddings matching the hand-optimized reference within F16 tolerance.
+| Model | Params | tok/s | ms/tok |
+|---|---|---|---|
+| SmolLM2-135M | 135M | **29.3** | 34 |
+| SmolLM2-360M | 360M | **10.8** | 93 |
+| SmolLM2-1.7B | 1.7B | **1.6** | 621 |
+| GTE-small (encoder) | 23M | — | 10.8ms/embed |
 
-| | go-tinygrad | gte-go |
-|---|---|---|
-| **Latency** | 30 ms | 10 ms |
-| **Correctness** | ✅ | ✅ |
-| **Model format** | Safetensors (any HF model) | Custom .gtemodel |
-| **Code** | 4,240 lines (general framework) | ~8,000 lines (hand-tuned) |
+Single static binary. No Python, no C, no GGUF, no external dependencies.
+AVX2+FMA on amd64, NEON on arm64. Zero per-inference allocations.
+
+## Features
+
+- **Lazy tensor DAG** with elementwise fusion
+- **Pattern matcher + graph rewrite** (tinygrad-style)
+- **SIMD GEMM kernels** — AVX2 VGATHERDPS, NEON GEBP (from gte-go)
+- **Safetensors loader** — F16/BF16/F32 from HuggingFace
+- **LLaMA decoder** — RoPE, GQA, KV cache, SiLU MLP
+- **BERT encoder** — GTE-small at gte-go parity (10.8ms)
+- **BPE tokenizer** — GPT-2 byte-level
+- **NN modules** — Linear, LayerNorm, Embedding
 
 ## Quick Start
 
-```go
-import (
-    "github.com/rcarmo/go-tinygrad/model"
-    "github.com/rcarmo/go-tinygrad/tensor"
-)
+```bash
+# Download a model
+mkdir -p models/smollm2-135m
+curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model.safetensors -o models/smollm2-135m/model.safetensors
+curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/config.json -o models/smollm2-135m/config.json
+curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/tokenizer.json -o models/smollm2-135m/tokenizer.json
 
-m, _ := model.LoadGTESmall("model.safetensors")
-emb := m.Embed([]int{101, 1045, 2293, 8870, 102}, []bool{true, true, true, true, true})
-// emb is a 384-dim L2-normalized float32 embedding
+# Run
+go run ./cmd/llmgen -model models/smollm2-135m -tokens 50 -prompt "Once upon a time"
 ```
 
 ## Documentation
 
-- **[docs/architecture.md](docs/architecture.md)** — design and core abstractions
-- **[docs/development-log.md](docs/development-log.md)** — step-by-step build process
-- **[docs/performance.md](docs/performance.md)** — benchmarks and optimization analysis
+- **[docs/architecture.md](docs/architecture.md)** — UOp graph, fusion, SIMD dispatch
+- **[docs/development-log.md](docs/development-log.md)** — build process
+- **[docs/performance.md](docs/performance.md)** — benchmarks vs gte-go
 
 ## License
 
