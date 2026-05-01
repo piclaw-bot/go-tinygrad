@@ -36,7 +36,8 @@ type LlamaModel struct {
 	Layers []LlamaLayer
 
 	// Pre-computed RoPE frequencies
-	RopeFreqs []float32 // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
+	RopeFreqs []float32
+	Large     bool // true if weights are NOT pre-transposed // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
 }
 
 // LlamaLayer holds weights for one decoder layer.
@@ -45,6 +46,7 @@ type LlamaLayer struct {
 	PostNorm  *tensor.Tensor // [hidden]
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
+	QB, KB, VB     *tensor.Tensor // optional biases (Qwen2 has these)
 	GateW, UpW, DownW *tensor.Tensor // pre-transposed
 }
 
@@ -63,13 +65,30 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		cfg.RMSNormEps = 1e-5
 	}
 
-	f, err := safetensors.Open(dir + "/model.safetensors")
-	if err != nil {
-		return nil, err
+	// Try sharded first, then single file
+	type loader interface {
+		GetFloat32(name string) ([]float32, []int, error)
+	}
+	var f loader
+	if _, err := os.Stat(dir + "/model.safetensors.index.json"); err == nil {
+		sf, err := safetensors.OpenSharded(dir + "/model.safetensors.index.json")
+		if err != nil {
+			return nil, fmt.Errorf("open sharded: %w", err)
+		}
+		f = sf
+	} else {
+		sf, err := safetensors.Open(dir + "/model.safetensors")
+		if err != nil {
+			return nil, fmt.Errorf("open single: %w", err)
+		}
+		f = sf
 	}
 
 	m := &LlamaModel{Config: cfg}
 	h := cfg.HiddenSize
+	// For large models (>2B params), skip pre-transpose to save memory
+	large := cfg.HiddenSize >= 3000
+	m.Large = large
 
 	load := func(name string, shape []int) *tensor.Tensor {
 		data, _, err := f.GetFloat32(name)
@@ -79,6 +98,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		return tensor.FromFloat32(data, shape)
 	}
 	loadT := func(name string, shape []int) *tensor.Tensor {
+		if large {
+			return load(name, shape) // keep original layout, use NT path
+		}
 		return load(name, shape).Transpose2D()
 	}
 
@@ -86,7 +108,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	m.Norm = load("model.norm.weight", []int{h})
 
 	// LM head: often tied to embed_tokens
-	if _, ok := f.Tensors["lm_head.weight"]; ok {
+	if _, _, err := f.GetFloat32("lm_head.weight"); err == nil {
 		m.LMHead = load("lm_head.weight", []int{cfg.VocabSize, h})
 	} else {
 		m.LMHead = m.EmbedTokens // tied weights
@@ -94,10 +116,17 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	kvDim := h / cfg.NumHeads * cfg.NumKVHeads
 
+	// tryLoad checks if a tensor exists
+	tryLoad := func(name string) bool {
+		_, _, err := f.GetFloat32(name)
+		return err == nil
+	}
+	_ = tryLoad
+
 	m.Layers = make([]LlamaLayer, cfg.NumLayers)
 	for l := 0; l < cfg.NumLayers; l++ {
 		p := fmt.Sprintf("model.layers.%d", l)
-		m.Layers[l] = LlamaLayer{
+		layer := LlamaLayer{
 			InputNorm: load(p+".input_layernorm.weight", []int{h}),
 			PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
 			QW: loadT(p+".self_attn.q_proj.weight", []int{h, h}),
@@ -108,6 +137,13 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			UpW:   loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
 			DownW: loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
 		}
+		// Optional Q/K/V biases (Qwen2 has these, LLaMA doesn't)
+		if tryLoad(p+".self_attn.q_proj.bias") {
+			layer.QB = load(p+".self_attn.q_proj.bias", []int{h})
+			layer.KB = load(p+".self_attn.k_proj.bias", []int{kvDim})
+			layer.VB = load(p+".self_attn.v_proj.bias", []int{kvDim})
+		}
+		m.Layers[l] = layer
 	}
 
 	// Pre-compute RoPE frequencies
@@ -139,6 +175,14 @@ func (m *LlamaModel) precomputeRoPE() {
 }
 
 // Generate produces tokens autoregressively.
+func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
+	if m.Large {
+		gemvNT(out, x, w, inDim, outDim)
+	} else {
+		gemv(out, x, w, inDim, outDim)
+	}
+}
+
 func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	cfg := m.Config
 	h := cfg.HiddenSize
@@ -187,9 +231,17 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			q := make([]float32, h)
 			k := make([]float32, kvDim)
 			v := make([]float32, kvDim)
-			gemv(q, hidden, layer.QW.Data(), h, h)
-			gemv(k, hidden, layer.KW.Data(), h, kvDim)
-			gemv(v, hidden, layer.VW.Data(), h, kvDim)
+			m.mv(q, hidden, layer.QW.Data(), h, h)
+			m.mv(k, hidden, layer.KW.Data(), h, kvDim)
+			m.mv(v, hidden, layer.VW.Data(), h, kvDim)
+
+			// Add bias if present (Qwen2)
+			if layer.QB != nil {
+				qb, kb, vb := layer.QB.Data(), layer.KB.Data(), layer.VB.Data()
+				for i := range q { q[i] += qb[i] }
+				for i := range k { k[i] += kb[i] }
+				for i := range v { v[i] += vb[i] }
+			}
 
 			// RoPE on Q and K
 			applyRoPE(q, m.RopeFreqs, pos, numHeads, headDim)
@@ -205,7 +257,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Output projection
 			oOut := make([]float32, h)
-			gemv(oOut, attnOut, layer.OW.Data(), h, h)
+			m.mv(oOut, attnOut, layer.OW.Data(), h, h)
 
 			// Residual
 			for i := range hidden {
@@ -219,8 +271,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// MLP: gate * up → SiLU → down
 			gate := make([]float32, inter)
 			up := make([]float32, inter)
-			gemv(gate, hidden, layer.GateW.Data(), h, inter)
-			gemv(up, hidden, layer.UpW.Data(), h, inter)
+			m.mv(gate, hidden, layer.GateW.Data(), h, inter)
+			m.mv(up, hidden, layer.UpW.Data(), h, inter)
 
 			// SiLU(gate) * up
 			for i := range gate {
@@ -229,7 +281,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Down projection
 			down := make([]float32, h)
-			gemv(down, gate, layer.DownW.Data(), inter, h)
+			m.mv(down, gate, layer.DownW.Data(), inter, h)
 
 			// Residual
 			for i := range hidden {
@@ -286,23 +338,46 @@ func rmsNormInPlace(x, weight []float32, eps float32) {
 	}
 }
 
-// gemv: out = x @ wT where wT is pre-transposed [inDim, outDim]
-func gemv(out, x, wT []float32, inDim, outDim int) {
-	if simd.HasSgemmAsm {
-		for i := range out {
-			out[i] = 0
-		}
-		simd.SgemmNN(1, outDim, inDim, 1.0,
-			unsafe.Pointer(&x[0]), unsafe.Pointer(&wT[0]), unsafe.Pointer(&out[0]),
-			inDim, outDim, outDim)
-	} else {
-		for j := 0; j < outDim; j++ {
-			sum := float32(0)
-			for p := 0; p < inDim; p++ {
-				sum += x[p] * wT[p*outDim+j]
+// gemv: out = x @ w where w is either:
+//   pre-transposed [inDim, outDim] (use NN), or
+//   original [outDim, inDim] (use NT via dot products)
+func gemv(out, x []float32, w []float32, inDim, outDim int) {
+	for i := range out {
+		out[i] = 0
+	}
+	if len(w) == inDim*outDim {
+		// Detect layout: if w is [inDim, outDim] (pre-transposed), use NN
+		// If w is [outDim, inDim] (original), use NT (dot per output)
+		// Heuristic: try NN first (pre-transposed path)
+		if simd.HasSgemmAsm {
+			simd.SgemmNN(1, outDim, inDim, 1.0,
+				unsafe.Pointer(&x[0]), unsafe.Pointer(&w[0]), unsafe.Pointer(&out[0]),
+				inDim, outDim, outDim)
+		} else {
+			for j := 0; j < outDim; j++ {
+				sum := float32(0)
+				for p := 0; p < inDim; p++ {
+					sum += x[p] * w[p*outDim+j]
+				}
+				out[j] = sum
 			}
-			out[j] = sum
 		}
+	}
+}
+
+// gemvNT: out = x @ w^T where w is [outDim, inDim] (original layout)
+func gemvNT(out, x []float32, w []float32, inDim, outDim int) {
+	for j := 0; j < outDim; j++ {
+		sum := float32(0)
+		row := w[j*inDim : (j+1)*inDim]
+		if inDim >= 8 {
+			sum = simd.Sdot(x, row)
+		} else {
+			for p := 0; p < inDim; p++ {
+				sum += x[p] * row[p]
+			}
+		}
+		out[j] = sum
 	}
 }
 

@@ -154,3 +154,75 @@ func float16ToFloat32(h uint16) float32 {
 		return math.Float32frombits((sign << 31) | 0x7fc00000) // NaN
 	}
 }
+
+// ShardedFile represents a sharded safetensors model (multiple files).
+type ShardedFile struct {
+	shards  map[string]*File // filename → loaded shard
+	mapping map[string]string // tensor name → filename
+}
+
+// OpenSharded loads a sharded safetensors model from an index file.
+func OpenSharded(indexPath string) (*ShardedFile, error) {
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, fmt.Errorf("read index: %w", err)
+	}
+	var index struct {
+		WeightMap map[string]string `json:"weight_map"`
+	}
+	if err := json.Unmarshal(data, &index); err != nil {
+		return nil, fmt.Errorf("parse index: %w", err)
+	}
+
+	// Determine directory
+	dir := indexPath
+	for i := len(dir) - 1; i >= 0; i-- {
+		if dir[i] == '/' {
+			dir = dir[:i]
+			break
+		}
+	}
+
+	sf := &ShardedFile{
+		shards:  map[string]*File{},
+		mapping: index.WeightMap,
+	}
+
+	// Load each unique shard file
+	shardFiles := map[string]bool{}
+	for _, filename := range index.WeightMap {
+		shardFiles[filename] = true
+	}
+	for filename := range shardFiles {
+		path := dir + "/" + filename
+		f, err := Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("open shard %s: %w", filename, err)
+		}
+		sf.shards[filename] = f
+	}
+
+	return sf, nil
+}
+
+// GetFloat32 returns a tensor's data, looking up the correct shard.
+func (sf *ShardedFile) GetFloat32(name string) ([]float32, []int, error) {
+	filename, ok := sf.mapping[name]
+	if !ok {
+		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
+	}
+	shard, ok := sf.shards[filename]
+	if !ok {
+		return nil, nil, fmt.Errorf("shard %q not loaded", filename)
+	}
+	return shard.GetFloat32(name)
+}
+
+// Tensors returns all tensor names.
+func (sf *ShardedFile) Names() []string {
+	names := make([]string, 0, len(sf.mapping))
+	for k := range sf.mapping {
+		names = append(names, k)
+	}
+	return names
+}
