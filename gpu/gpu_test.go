@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+func TestNVDirect(t *testing.T) {
+	dev, err := NVInit()
+	if err != nil {
+		t.Skipf("NV direct not available: %v", err)
+	}
+	defer dev.Close()
+	t.Logf("NV device initialized via direct ioctl")
+}
+
 func TestGPUInit(t *testing.T) {
 	if !Available() {
 		t.Skip("GPU not available (no libcuda.so.1)")
