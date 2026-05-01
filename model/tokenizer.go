@@ -52,59 +52,63 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 
 // Encode tokenizes a string into token IDs.
 func (t *Tokenizer) Encode(text string) []int {
-	// Pre-tokenize: split on whitespace, prefix space tokens with Ġ
+	// Pre-tokenize: split on word boundaries, prefix non-first words with Ġ (space)
 	words := strings.Fields(text)
-	var tokens []string
+	var pieces []string
 	for i, w := range words {
 		if i > 0 {
-			w = "Ġ" + w // GPT-2 style space prefix
+			w = "\u0120" + w // Ġ = U+0120 = space prefix in GPT-2 BPE
 		}
-		// Split into individual bytes as initial tokens
-		for _, b := range []byte(w) {
-			ch := byteToToken(b)
-			tokens = append(tokens, ch)
-		}
+		pieces = append(pieces, w)
 	}
 
-	// Apply BPE merges
+	// For each piece, try direct vocab lookup first, then BPE
 	mergeRank := make(map[[2]string]int, len(t.Merges))
 	for i, m := range t.Merges {
 		mergeRank[m] = i
 	}
 
-	for {
-		if len(tokens) < 2 {
-			break
+	var ids []int
+	for _, piece := range pieces {
+		// Direct lookup
+		if id, ok := t.Vocab[piece]; ok {
+			ids = append(ids, id)
+			continue
 		}
-		// Find best merge
-		bestRank := len(t.Merges)
-		bestIdx := -1
-		for i := 0; i < len(tokens)-1; i++ {
-			pair := [2]string{tokens[i], tokens[i+1]}
-			if rank, ok := mergeRank[pair]; ok && rank < bestRank {
-				bestRank = rank
-				bestIdx = i
+
+		// BPE: split into characters
+		chars := make([]string, 0, len(piece))
+		for _, r := range piece {
+			chars = append(chars, string(r))
+		}
+
+		// Apply BPE merges
+		for len(chars) >= 2 {
+			bestRank := len(t.Merges)
+			bestIdx := -1
+			for i := 0; i < len(chars)-1; i++ {
+				pair := [2]string{chars[i], chars[i+1]}
+				if rank, ok := mergeRank[pair]; ok && rank < bestRank {
+					bestRank = rank
+					bestIdx = i
+				}
+			}
+			if bestIdx < 0 {
+				break
+			}
+			merged := chars[bestIdx] + chars[bestIdx+1]
+			newChars := make([]string, 0, len(chars)-1)
+			newChars = append(newChars, chars[:bestIdx]...)
+			newChars = append(newChars, merged)
+			newChars = append(newChars, chars[bestIdx+2:]...)
+			chars = newChars
+		}
+
+		for _, ch := range chars {
+			if id, ok := t.Vocab[ch]; ok {
+				ids = append(ids, id)
 			}
 		}
-		if bestIdx < 0 {
-			break
-		}
-		// Apply merge
-		merged := tokens[bestIdx] + tokens[bestIdx+1]
-		newTokens := make([]string, 0, len(tokens)-1)
-		newTokens = append(newTokens, tokens[:bestIdx]...)
-		newTokens = append(newTokens, merged)
-		newTokens = append(newTokens, tokens[bestIdx+2:]...)
-		tokens = newTokens
-	}
-
-	// Look up IDs
-	ids := make([]int, 0, len(tokens))
-	for _, tok := range tokens {
-		if id, ok := t.Vocab[tok]; ok {
-			ids = append(ids, id)
-		}
-		// Skip unknown tokens silently
 	}
 	return ids
 }
