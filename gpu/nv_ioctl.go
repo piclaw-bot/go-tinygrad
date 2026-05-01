@@ -277,6 +277,11 @@ func nvInit() (*NVDevice, error) {
 		return nil, fmt.Errorf("setup device: %w", err)
 	}
 
+	// Setup VA space and UVM
+	if err := d.SetupVASpace(); err != nil {
+		fmt.Printf("[nv] Warning: VA space setup: %v\n", err)
+	}
+
 	fmt.Println("[nv] Direct ioctl interface initialized — pure Go, no libcuda")
 	return d, nil
 }
@@ -417,10 +422,13 @@ func (d *NVDevice) SetupDevice(gpuID uint32) error {
 	// Allocate virtual memory handle
 	// NV_MEMORY_VIRTUAL_ALLOCATION_PARAMS has just an offset and limit
 	type vmemParams struct {
-		Limit uint64
+		Offset   uint64
+		Limit    uint64
+		HVASpace uint32
+		_pad     uint32
 	}
 	vp := vmemParams{
-		Limit: 0x1FFFFFFFFFFFF, // 48-bit VA space
+		Limit: 0x1FFFFFFFFFFFF,
 	}
 	d.virtmem, err = d.rmAlloc(d.device, NV01_MEMORY_VIRTUAL, unsafe.Pointer(&vp), uint32(unsafe.Sizeof(vp)))
 	if err != nil {
@@ -433,7 +441,6 @@ func (d *NVDevice) SetupDevice(gpuID uint32) error {
 		Index  uint32
 		Flags  uint32
 		Length uint32
-		_pad   uint32
 		Data   [256]byte
 	}
 	gid := gidInfoParams{

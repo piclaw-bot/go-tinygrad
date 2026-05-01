@@ -11,8 +11,41 @@ func TestNVDirect(t *testing.T) {
 	if err != nil {
 		t.Skipf("NV direct not available: %v", err)
 	}
-	defer dev.Close()
+	// Don't close — singleton, needed by other tests
 	t.Logf("NV device initialized via direct ioctl")
+	t.Logf("GPU UUID: %x", dev.gpuUUID)
+}
+
+func TestNVMemory(t *testing.T) {
+	dev, err := NVInit()
+	if err != nil {
+		t.Skipf("NV direct not available: %v", err)
+	}
+	defer dev.Close()
+
+	buf, err := dev.AllocHostMem(4096)
+	if err != nil {
+		t.Fatalf("alloc: %v", err)
+	}
+	defer buf.Free()
+
+	// Write and read back
+	data := []float32{42.0, 3.14, 2.718, 1.414}
+	if err := buf.Upload(data); err != nil {
+		t.Fatal(err)
+	}
+
+	out := make([]float32, 4)
+	if err := buf.Download(out); err != nil {
+		t.Fatal(err)
+	}
+
+	for i, v := range out {
+		if v != data[i] {
+			t.Fatalf("out[%d]=%v want %v", i, v, data[i])
+		}
+	}
+	t.Logf("NV host memory: write/read OK (hMemory=0x%x)", buf.hMemory)
 }
 
 func TestGPUInit(t *testing.T) {
