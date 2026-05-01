@@ -45,8 +45,9 @@ type BertModel struct {
 
 // BertLayer holds weights for one transformer layer.
 // Weights are stored pre-transposed for SgemmNN (faster than SgemmNT).
+// QKV weights are fused into a single [hidden, 3*hidden] matrix.
 type BertLayer struct {
-	QW, QB, KW, KB, VW, VB       *tensor.Tensor // QW is [hidden, hidden] (transposed)
+	QKVW, QKVB                   *tensor.Tensor // fused [hidden, 3*hidden]
 	AttnOutW, AttnOutB            *tensor.Tensor
 	AttnLnW, AttnLnB             *tensor.Tensor
 	FfnInterW, FfnInterB         *tensor.Tensor
@@ -91,13 +92,18 @@ func LoadGTESmall(path string) (*BertModel, error) {
 	m.Layers = make([]BertLayer, cfg.NumLayers)
 	for l := 0; l < cfg.NumLayers; l++ {
 		p := fmt.Sprintf("encoder.layer.%d", l)
+		// Fuse Q, K, V weights into single [h, 3h] matrix (pre-transposed)
+		qwOrig := load(p+".attention.self.query.weight", []int{h, h})
+		kwOrig := load(p+".attention.self.key.weight", []int{h, h})
+		vwOrig := load(p+".attention.self.value.weight", []int{h, h})
+		qkvW := fuseQKVWeights(qwOrig, kwOrig, vwOrig, h)
+		qb := load(p+".attention.self.query.bias", []int{h})
+		kb := load(p+".attention.self.key.bias", []int{h})
+		vb := load(p+".attention.self.value.bias", []int{h})
+		qkvB := fuseQKVBias(qb, kb, vb, h)
 		m.Layers[l] = BertLayer{
-			QW: loadT(p+".attention.self.query.weight", []int{h, h}),
-			QB: load(p+".attention.self.query.bias", []int{h}),
-			KW: loadT(p+".attention.self.key.weight", []int{h, h}),
-			KB: load(p+".attention.self.key.bias", []int{h}),
-			VW: loadT(p+".attention.self.value.weight", []int{h, h}),
-			VB: load(p+".attention.self.value.bias", []int{h}),
+			QKVW: qkvW,
+			QKVB: qkvB,
 			AttnOutW: loadT(p+".attention.output.dense.weight", []int{h, h}),
 			AttnOutB: load(p+".attention.output.dense.bias", []int{h}),
 			AttnLnW:  load(p+".attention.output.LayerNorm.weight", []int{h}),
@@ -140,10 +146,30 @@ func (m *BertModel) Forward(tokenIDs []int) *tensor.Tensor {
 	for l := 0; l < cfg.NumLayers; l++ {
 		layer := &m.Layers[l]
 
-		// Self-attention
-		q := hidden.LinearPreT(layer.QW, layer.QB) // [seqLen, h]
-		k := hidden.LinearPreT(layer.KW, layer.KB)
-		v := hidden.LinearPreT(layer.VW, layer.VB)
+		// Fused QKV: [seqLen, h] @ [3h, h]^T → [seqLen, 3h] with contiguous Q,K,V blocks
+		qkv := hidden.MatMulTransposed(layer.QKVW)
+		qkv.Realize()
+		qkvData := qkv.Data()
+		// Add bias
+		qkvBias := layer.QKVB.Data()
+		for s := 0; s < seqLen; s++ {
+			for d := 0; d < 3*h; d++ {
+				qkvData[s*3*h+d] += qkvBias[d]
+			}
+		}
+		// Split: Q=[0:seqLen*h], K=[seqLen*h:2*seqLen*h], V=[2*seqLen*h:]
+		// Each row s has [q_s(h), k_s(h), v_s(h)] — need to gather into contiguous blocks
+		qData := make([]float32, seqLen*h)
+		kData := make([]float32, seqLen*h)
+		vData := make([]float32, seqLen*h)
+		for s := 0; s < seqLen; s++ {
+			copy(qData[s*h:(s+1)*h], qkvData[s*3*h:s*3*h+h])
+			copy(kData[s*h:(s+1)*h], qkvData[s*3*h+h:s*3*h+2*h])
+			copy(vData[s*h:(s+1)*h], qkvData[s*3*h+2*h:s*3*h+3*h])
+		}
+		q := tensor.FromFloat32(qData, []int{seqLen, h})
+		k := tensor.FromFloat32(kData, []int{seqLen, h})
+		v := tensor.FromFloat32(vData, []int{seqLen, h})
 
 		// Multi-head: reshape to [seqLen, heads, headDim], then score
 		attnOut := multiHeadAttention(q, k, v, seqLen, heads, headDim)
@@ -249,4 +275,24 @@ func multiHeadAttention(q, k, v *tensor.Tensor, seqLen, heads, headDim int) *ten
 	}
 
 	return tensor.FromFloat32(out, []int{seqLen, hidden})
+}
+
+// fuseQKVWeights concatenates 3 weight matrices [h, h] into [3h, h] (row-major).
+// Used with MatMulTransposed for contiguous Q,K,V output blocks.
+func fuseQKVWeights(qOrig, kOrig, vOrig *tensor.Tensor, h int) *tensor.Tensor {
+	qD, kD, vD := qOrig.Data(), kOrig.Data(), vOrig.Data()
+	fused := make([]float32, 3*h*h)
+	copy(fused[0:h*h], qD)
+	copy(fused[h*h:2*h*h], kD)
+	copy(fused[2*h*h:3*h*h], vD)
+	return tensor.FromFloat32(fused, []int{3 * h, h})
+}
+
+// fuseQKVBias concatenates 3 bias vectors [h] into [3h].
+func fuseQKVBias(q, k, v *tensor.Tensor, h int) *tensor.Tensor {
+	fused := make([]float32, 3*h)
+	copy(fused[0:h], q.Data())
+	copy(fused[h:2*h], k.Data())
+	copy(fused[2*h:3*h], v.Data())
+	return tensor.FromFloat32(fused, []int{3 * h})
 }

@@ -39,19 +39,47 @@ func (m *BertModel) ForwardFast(tokenIDs []int, ws *Workspace) []float32 {
 		layer := &m.Layers[l]
 		temp := ws.buf1[:seqLen*h]
 
-		// QKV projection: [seqLen, h] @ [h, 3h] → [seqLen, 3h]
+		// Fused QKV: [seqLen, h] @ [3h, h]^T → [seqLen, 3h]
+		// Uses NT matmul so output has contiguous Q,K,V per row
 		qkv := ws.qkvBuf[:seqLen*h*3]
-		linearInPlace(qkv, hidden, layer.QW.Data(), layer.QB.Data(), seqLen, h, h)
-		linearInPlace(qkv[seqLen*h:], hidden, layer.KW.Data(), layer.KB.Data(), seqLen, h, h)
-		linearInPlace(qkv[seqLen*h*2:], hidden, layer.VW.Data(), layer.VB.Data(), seqLen, h, h)
+		for i := range qkv { qkv[i] = 0 }
+		qkvW := layer.QKVW.Data()
+		qkvB := layer.QKVB.Data()
+		if simd.HasSgemmAsm {
+			simd.SgemmNT(seqLen, 3*h, h, 1.0,
+				unsafe.Pointer(&hidden[0]), unsafe.Pointer(&qkvW[0]), unsafe.Pointer(&qkv[0]),
+				h, h, 3*h)
+		} else {
+			for i := 0; i < seqLen; i++ {
+				for j := 0; j < 3*h; j++ {
+					sum := float32(0)
+					for p := 0; p < h; p++ {
+						sum += hidden[i*h+p] * qkvW[j*h+p]
+					}
+					qkv[i*3*h+j] = sum
+				}
+			}
+		}
+		// Add bias
+		for s := 0; s < seqLen; s++ {
+			for d := 0; d < 3*h; d++ {
+				qkv[s*3*h+d] += qkvB[d]
+			}
+		}
 
-		q := qkv[:seqLen*h]
-		k := qkv[seqLen*h : seqLen*h*2]
-		v := qkv[seqLen*h*2:]
+		// Split Q,K,V: each row has [q(h), k(h), v(h)]
+		q := ws.buf1[:seqLen*h]
+		kBuf := ws.tempHidden[:seqLen*h]
+		vBuf := ws.attnOut[:seqLen*h]
+		for s := 0; s < seqLen; s++ {
+			copy(q[s*h:(s+1)*h], qkv[s*3*h:s*3*h+h])
+			copy(kBuf[s*h:(s+1)*h], qkv[s*3*h+h:s*3*h+2*h])
+			copy(vBuf[s*h:(s+1)*h], qkv[s*3*h+2*h:s*3*h+3*h])
+		}
 
-		// Multi-head attention (in-place)
-		attnOut := ws.attnOut[:seqLen*h]
-		mhaInPlace(attnOut, q, k, v, ws.scores, seqLen, heads, headDim)
+		// Multi-head attention
+		attnOut := ws.qkvBuf[:seqLen*h] // reuse qkvBuf since QKV split is done
+		mhaInPlace(attnOut, q, kBuf, vBuf, ws.scores, seqLen, heads, headDim)
 
 		// Output projection + residual + layernorm
 		linearInPlace(temp, attnOut, layer.AttnOutW.Data(), layer.AttnOutB.Data(), seqLen, h, h)
