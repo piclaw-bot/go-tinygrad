@@ -61,6 +61,7 @@ func TestGPUInit(t *testing.T) {
 }
 
 func TestGPUMalloc(t *testing.T) {
+	if !SgemmReady() { t.Skip("no GPU SGEMM") }
 	if !Available() {
 		t.Skip("GPU not available")
 	}

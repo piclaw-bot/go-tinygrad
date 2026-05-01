@@ -16,6 +16,12 @@ func initSgemm() {
 	if !Available() {
 		return
 	}
+	// Pre-warm GPU memory allocator before PTX load
+	// (driver may fragment VA space during module load)
+	var warmPtr CUdeviceptr
+	if r := cuMemAlloc(&warmPtr, 1024*1024*1024); r == CUDA_SUCCESS {
+		cuMemFree(warmPtr)
+	}
 	fn, err := LoadPTX(SgemmPTX, "sgemm_nn")
 	if err != nil {
 		fmt.Printf("[gpu] failed to load SGEMM PTX: %v\n", err)

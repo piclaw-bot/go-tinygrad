@@ -21,7 +21,7 @@ type CUdevice int32
 type CUcontext uintptr
 type CUmodule uintptr
 type CUfunction uintptr
-type CUdeviceptr uintptr
+type CUdeviceptr uint64
 type CUresult int32
 
 const (
@@ -124,6 +124,17 @@ func Init() bool {
 			return
 		}
 
+		// Pre-allocate GPU memory pool (must happen before PTX load)
+		var testPtr CUdeviceptr
+		testSize := uint64(512 * 1024 * 1024) // Try 512MB
+		for testSize >= 64*1024*1024 {
+			if r := cuMemAlloc(&testPtr, testSize); r == CUDA_SUCCESS {
+				cuMemFree(testPtr)
+				break
+			}
+			testSize /= 2
+		}
+
 		gpuOK = true
 		fmt.Printf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
 	})
@@ -149,8 +160,6 @@ type Buffer struct {
 
 // Malloc allocates GPU memory for n float32s.
 func Malloc(n int) (*Buffer, error) {
-	// Ensure context is fully initialized (PTX load finalizes context setup)
-	SgemmReady()
 	var ptr CUdeviceptr
 	size := uint64(n * 4)
 	if r := cuMemAlloc(&ptr, size); r != CUDA_SUCCESS {
