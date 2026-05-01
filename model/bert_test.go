@@ -76,3 +76,30 @@ func TestForwardGTESmall(t *testing.T) {
 	t.Logf("Embedding[0:5]: %v", emb[:5])
 	t.Logf("Norm: %v, non-zero: %d/384", norm, nonZero)
 }
+
+func BenchmarkGTESmallEmbed(b *testing.B) {
+	path := os.Getenv("SAFETENSORS_PATH")
+	if path == "" {
+		path = "../../gte-go/models/gte-small/model.safetensors"
+	}
+	if _, err := os.Stat(path); err != nil {
+		b.Skipf("model not found: %s", path)
+	}
+	m, err := LoadGTESmall(path)
+	if err != nil {
+		b.Fatalf("load: %v", err)
+	}
+	tokenIDs := []int{101, 1045, 2293, 8870, 102} // "I love cats"
+	attnMask := []bool{true, true, true, true, true}
+
+	// Warmup
+	for i := 0; i < 3; i++ {
+		_ = m.Embed(tokenIDs, attnMask)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = m.Embed(tokenIDs, attnMask)
+	}
+}
