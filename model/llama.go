@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	
 	"math"
 	"os"
 	"unsafe"
@@ -13,6 +14,15 @@ import (
 )
 
 // LlamaConfig holds model hyperparameters.
+// QuantWeight holds GPTQ INT4 weight data for on-the-fly dequantization.
+type QuantWeight struct {
+	QWeight []int32   // [inDim/8, outDim] packed
+	GIdx    []int32   // [inDim] group index
+	Scales  []float32 // [numGroups, outDim]
+	InDim   int
+	OutDim  int
+}
+
 type LlamaConfig struct {
 	VocabSize      int     `json:"vocab_size"`
 	HiddenSize     int     `json:"hidden_size"`
@@ -23,6 +33,11 @@ type LlamaConfig struct {
 	MaxSeqLen      int     `json:"max_position_embeddings"`
 	RopeTheta      float64 `json:"rope_theta"`
 	RMSNormEps     float64 `json:"rms_norm_eps"`
+
+	// Quantization (populated from quantize_config.json)
+	QuantBits     int  `json:"-"`
+	QuantGroup    int  `json:"-"`
+	QuantSym      bool `json:"-"`
 }
 
 // LlamaModel holds loaded weights for a LLaMA-style decoder.
@@ -37,7 +52,9 @@ type LlamaModel struct {
 
 	// Pre-computed RoPE frequencies
 	RopeFreqs []float32
-	Large     bool // true if weights are NOT pre-transposed // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
+	Large     bool // true if weights are NOT pre-transposed
+	Quantized     bool // true if using GPTQ INT4 weights
+	OnTheFlyQuant bool // true = keep INT4 in memory, dequant per token (slow but low memory) // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
 }
 
 // LlamaLayer holds weights for one decoder layer.
@@ -47,6 +64,10 @@ type LlamaLayer struct {
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
 	QB, KB, VB     *tensor.Tensor // optional biases (Qwen2 has these)
+
+	// GPTQ INT4 quantized weights (nil if not quantized)
+	QWq, KWq, VWq, OWq         *QuantWeight
+	GateWq, UpWq, DownWq       *QuantWeight
 	GateW, UpW, DownW *tensor.Tensor // pre-transposed
 }
 
@@ -68,6 +89,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	// Try sharded first, then single file
 	type loader interface {
 		GetFloat32(name string) ([]float32, []int, error)
+		GetInt32(name string) ([]int32, []int, error)
+		GetRaw(name string) ([]byte, string, []int, error)
 	}
 	var f loader
 	if _, err := os.Stat(dir + "/model.safetensors.index.json"); err == nil {
@@ -84,11 +107,32 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		f = sf
 	}
 
+	// Try loading quantization config
+	if qcData, err := os.ReadFile(dir + "/quantize_config.json"); err == nil {
+		var qc struct {
+			Bits      int  `json:"bits"`
+			GroupSize int  `json:"group_size"`
+			Sym       bool `json:"sym"`
+		}
+		if err := json.Unmarshal(qcData, &qc); err == nil && qc.Bits > 0 {
+			cfg.QuantBits = qc.Bits
+			cfg.QuantGroup = qc.GroupSize
+			cfg.QuantSym = qc.Sym
+			fmt.Printf("  GPTQ: %d-bit, group=%d, sym=%v\n", qc.Bits, qc.GroupSize, qc.Sym)
+		}
+	}
+
 	m := &LlamaModel{Config: cfg}
 	h := cfg.HiddenSize
 	// For large models (>2B params), skip pre-transpose to save memory
 	large := cfg.HiddenSize >= 3000
 	m.Large = large
+	m.Quantized = cfg.QuantBits > 0
+	// Heuristic: dequant at load if enough RAM, on-the-fly for very large models
+	// F32 dequant needs ~4× model_params bytes. For 7B = ~28GB.
+	// On-the-fly keeps INT4 packed (~4GB for 7B) but inference is 20× slower.
+	onTheFly := false // default: dequant at load for speed
+	m.OnTheFlyQuant = onTheFly
 
 	load := func(name string, shape []int) *tensor.Tensor {
 		data, _, err := f.GetFloat32(name)
@@ -103,6 +147,80 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		}
 		return load(name, shape).Transpose2D()
 	}
+
+	// loadQW loads raw GPTQ quantized weight without dequantization.
+	loadQW := func(name string, outDim, inDim int) *QuantWeight {
+		qw, _, err := f.GetInt32(name + ".qweight")
+		if err != nil {
+			panic(fmt.Sprintf("loadQW %s.qweight: %v", name, err))
+		}
+		gIdx, _, err := f.GetInt32(name + ".g_idx")
+		if err != nil {
+			panic(fmt.Sprintf("loadQW %s.g_idx: %v", name, err))
+		}
+		scRaw, scDtype, _, err := f.GetRaw(name + ".scales")
+		if err != nil {
+			panic(fmt.Sprintf("loadQW %s.scales: %v", name, err))
+		}
+		var scales []float32
+		if scDtype == "F16" {
+			n := len(scRaw) / 2
+			scales = make([]float32, n)
+			for i := 0; i < n; i++ {
+				h := uint16(scRaw[i*2]) | uint16(scRaw[i*2+1])<<8
+				scales[i] = float16ToFloat32(h)
+			}
+		} else {
+			scales, _, _ = f.GetFloat32(name + ".scales")
+		}
+		return &QuantWeight{QWeight: qw, GIdx: gIdx, Scales: scales, InDim: inDim, OutDim: outDim}
+	}
+	_ = loadQW
+
+	// loadQ loads a GPTQ quantized weight, dequantizes to F32.
+	// name is the base name (e.g. "model.layers.0.mlp.gate_proj")
+	// shape is [outFeatures, inFeatures] (the original weight shape)
+	loadQ := func(name string, outDim, inDim int) *tensor.Tensor {
+		qw, _, err := f.GetInt32(name + ".qweight")
+		if err != nil {
+			panic(fmt.Sprintf("loadQ %s.qweight: %v", name, err))
+		}
+		gIdx, _, err := f.GetInt32(name + ".g_idx")
+		if err != nil {
+			panic(fmt.Sprintf("loadQ %s.g_idx: %v", name, err))
+		}
+		// Scales are F16, load raw and convert
+		scRaw, scDtype, _, err := f.GetRaw(name + ".scales")
+		if err != nil {
+			panic(fmt.Sprintf("loadQ %s.scales: %v", name, err))
+		}
+		var scales []float32
+		if scDtype == "F16" {
+			n := len(scRaw) / 2
+			scales = make([]float32, n)
+			for i := 0; i < n; i++ {
+				h := uint16(scRaw[i*2]) | uint16(scRaw[i*2+1])<<8
+				scales[i] = float16ToFloat32(h)
+			}
+		} else {
+			scales, _, _ = f.GetFloat32(name + ".scales")
+		}
+
+		var data []float32
+		if cfg.QuantSym {
+			data = DequantGPTQSym(qw, gIdx, scales, inDim, outDim)
+		} else {
+			qz, _, _ := f.GetInt32(name + ".qzeros")
+			data = DequantGPTQ(qw, qz, gIdx, scales, inDim, outDim, false)
+		}
+		// data is [outDim, inDim] row-major
+		t := tensor.FromFloat32(data, []int{outDim, inDim})
+		if !large {
+			t = t.Transpose2D() // pre-transpose for NN path
+		}
+		return t
+	}
+	_ = loadQ
 
 	m.EmbedTokens = load("model.embed_tokens.weight", []int{cfg.VocabSize, h})
 	m.Norm = load("model.norm.weight", []int{h})
@@ -126,16 +244,43 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	m.Layers = make([]LlamaLayer, cfg.NumLayers)
 	for l := 0; l < cfg.NumLayers; l++ {
 		p := fmt.Sprintf("model.layers.%d", l)
-		layer := LlamaLayer{
-			InputNorm: load(p+".input_layernorm.weight", []int{h}),
-			PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-			QW: loadT(p+".self_attn.q_proj.weight", []int{h, h}),
-			KW: loadT(p+".self_attn.k_proj.weight", []int{kvDim, h}),
-			VW: loadT(p+".self_attn.v_proj.weight", []int{kvDim, h}),
-			OW: loadT(p+".self_attn.o_proj.weight", []int{h, h}),
-			GateW: loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h}),
-			UpW:   loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
-			DownW: loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
+		var layer LlamaLayer
+		if cfg.QuantBits > 0 && onTheFly {
+			layer = LlamaLayer{
+				InputNorm: load(p+".input_layernorm.weight", []int{h}),
+				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
+				QWq:    loadQW(p+".self_attn.q_proj", h, h),
+				KWq:    loadQW(p+".self_attn.k_proj", kvDim, h),
+				VWq:    loadQW(p+".self_attn.v_proj", kvDim, h),
+				OWq:    loadQW(p+".self_attn.o_proj", h, h),
+				GateWq: loadQW(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpWq:   loadQW(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownWq: loadQW(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+		} else if cfg.QuantBits > 0 {
+			layer = LlamaLayer{
+				InputNorm: load(p+".input_layernorm.weight", []int{h}),
+				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
+				QW: loadQ(p+".self_attn.q_proj", h, h),
+				KW: loadQ(p+".self_attn.k_proj", kvDim, h),
+				VW: loadQ(p+".self_attn.v_proj", kvDim, h),
+				OW: loadQ(p+".self_attn.o_proj", h, h),
+				GateW: loadQ(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpW:   loadQ(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownW: loadQ(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+		} else {
+			layer = LlamaLayer{
+				InputNorm: load(p+".input_layernorm.weight", []int{h}),
+				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
+				QW: loadT(p+".self_attn.q_proj.weight", []int{h, h}),
+				KW: loadT(p+".self_attn.k_proj.weight", []int{kvDim, h}),
+				VW: loadT(p+".self_attn.v_proj.weight", []int{kvDim, h}),
+				OW: loadT(p+".self_attn.o_proj.weight", []int{h, h}),
+				GateW: loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h}),
+				UpW:   loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
+				DownW: loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
+			}
 		}
 		// Optional Q/K/V biases (Qwen2 has these, LLaMA doesn't)
 		if tryLoad(p+".self_attn.q_proj.bias") {
@@ -175,6 +320,12 @@ func (m *LlamaModel) precomputeRoPE() {
 }
 
 // Generate produces tokens autoregressively.
+func (m *LlamaModel) mvQ(out, x []float32, qw *QuantWeight) {
+	if qw != nil {
+		gemvQ4Sym(out, x, qw.QWeight, qw.GIdx, qw.Scales, qw.InDim, qw.OutDim)
+	}
+}
+
 func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 	if m.Large {
 		gemvNT(out, x, w, inDim, outDim)
@@ -231,9 +382,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			q := make([]float32, h)
 			k := make([]float32, kvDim)
 			v := make([]float32, kvDim)
-			m.mv(q, hidden, layer.QW.Data(), h, h)
-			m.mv(k, hidden, layer.KW.Data(), h, kvDim)
-			m.mv(v, hidden, layer.VW.Data(), h, kvDim)
+			if layer.QWq != nil {
+				m.mvQ(q, hidden, layer.QWq)
+				m.mvQ(k, hidden, layer.KWq)
+				m.mvQ(v, hidden, layer.VWq)
+			} else {
+				m.mv(q, hidden, layer.QW.Data(), h, h)
+				m.mv(k, hidden, layer.KW.Data(), h, kvDim)
+				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
+			}
 
 			// Add bias if present (Qwen2)
 			if layer.QB != nil {
@@ -257,7 +414,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Output projection
 			oOut := make([]float32, h)
-			m.mv(oOut, attnOut, layer.OW.Data(), h, h)
+			if layer.OWq != nil {
+				m.mvQ(oOut, attnOut, layer.OWq)
+			} else {
+				m.mv(oOut, attnOut, layer.OW.Data(), h, h)
+			}
 
 			// Residual
 			for i := range hidden {
@@ -271,8 +432,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// MLP: gate * up → SiLU → down
 			gate := make([]float32, inter)
 			up := make([]float32, inter)
-			m.mv(gate, hidden, layer.GateW.Data(), h, inter)
-			m.mv(up, hidden, layer.UpW.Data(), h, inter)
+			if layer.GateWq != nil {
+				m.mvQ(gate, hidden, layer.GateWq)
+				m.mvQ(up, hidden, layer.UpWq)
+			} else {
+				m.mv(gate, hidden, layer.GateW.Data(), h, inter)
+				m.mv(up, hidden, layer.UpW.Data(), h, inter)
+			}
 
 			// SiLU(gate) * up
 			for i := range gate {
@@ -281,7 +447,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Down projection
 			down := make([]float32, h)
-			m.mv(down, gate, layer.DownW.Data(), inter, h)
+			if layer.DownWq != nil {
+				m.mvQ(down, gate, layer.DownWq)
+			} else {
+				m.mv(down, gate, layer.DownW.Data(), inter, h)
+			}
 
 			// Residual
 			for i := range hidden {

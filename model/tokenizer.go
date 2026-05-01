@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -23,8 +24,8 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 
 	var raw struct {
 		Model struct {
-			Vocab  map[string]int `json:"vocab"`
-			Merges []string       `json:"merges"`
+			Vocab  map[string]int  `json:"vocab"`
+			Merges json.RawMessage `json:"merges"`
 		} `json:"model"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -39,11 +40,22 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 		t.InvVocab[v] = k
 	}
 
-	t.Merges = make([][2]string, len(raw.Model.Merges))
-	for i, m := range raw.Model.Merges {
-		parts := strings.SplitN(m, " ", 2)
-		if len(parts) == 2 {
-			t.Merges[i] = [2]string{parts[0], parts[1]}
+	// Merges can be ["a b", ...] (strings) or [["a","b"], ...] (arrays)
+	var mergeStrings []string
+	if err := json.Unmarshal(raw.Model.Merges, &mergeStrings); err == nil {
+		t.Merges = make([][2]string, len(mergeStrings))
+		for i, m := range mergeStrings {
+			parts := strings.SplitN(m, " ", 2)
+			if len(parts) == 2 {
+				t.Merges[i] = [2]string{parts[0], parts[1]}
+			}
+		}
+	} else {
+		var mergeArrays [][2]string
+		if err := json.Unmarshal(raw.Model.Merges, &mergeArrays); err == nil {
+			t.Merges = mergeArrays
+		} else {
+			return nil, fmt.Errorf("unsupported merges format")
 		}
 	}
 

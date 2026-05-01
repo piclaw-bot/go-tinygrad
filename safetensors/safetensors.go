@@ -226,3 +226,49 @@ func (sf *ShardedFile) Names() []string {
 	}
 	return names
 }
+
+// GetRaw returns raw bytes and shape for a tensor without conversion.
+func (f *File) GetRaw(name string) ([]byte, string, []int, error) {
+	t, ok := f.Tensors[name]
+	if !ok {
+		return nil, "", nil, fmt.Errorf("tensor %q not found", name)
+	}
+	data := f.data[t.DataOffsets[0]:t.DataOffsets[1]]
+	return data, t.DType, t.Shape, nil
+}
+
+// GetInt32 returns a tensor's data as []int32.
+func (f *File) GetInt32(name string) ([]int32, []int, error) {
+	raw, dtype, shape, err := f.GetRaw(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if dtype != "I32" {
+		return nil, nil, fmt.Errorf("tensor %q is %s, not I32", name, dtype)
+	}
+	n := len(raw) / 4
+	out := make([]int32, n)
+	for i := 0; i < n; i++ {
+		out[i] = int32(binary.LittleEndian.Uint32(raw[i*4:]))
+	}
+	return out, shape, nil
+}
+
+// ShardedFile GetRaw/GetInt32
+func (sf *ShardedFile) GetRaw(name string) ([]byte, string, []int, error) {
+	filename, ok := sf.mapping[name]
+	if !ok {
+		return nil, "", nil, fmt.Errorf("tensor %q not in weight map", name)
+	}
+	shard := sf.shards[filename]
+	return shard.GetRaw(name)
+}
+
+func (sf *ShardedFile) GetInt32(name string) ([]int32, []int, error) {
+	filename, ok := sf.mapping[name]
+	if !ok {
+		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
+	}
+	shard := sf.shards[filename]
+	return shard.GetInt32(name)
+}
