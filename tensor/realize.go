@@ -71,8 +71,33 @@ func realize(u *UOp, shape Shape) *Buffer {
 		}, -math.MaxFloat32)
 
 	case OpReshape:
-		// Reshape is a view — just pass through the buffer
 		return u.Src[0].buf
+
+	case OpPermute:
+		srcBuf := u.Src[0].buf
+		order := u.Arg.([]int)
+		srcData := srcBuf.Float32Data()
+		srcShape := guessInputShape(u)
+		outBuf := allocBuffer(srcBuf.DType, shape.Numel())
+		outData := outBuf.Float32Data()
+		ndim := len(order)
+		outIdx := make([]int, ndim)
+		for i := 0; i < shape.Numel(); i++ {
+			// out[outIdx] = src[srcIdx] where srcIdx[order[d]] = outIdx[d]
+			srcFlat := 0
+			for d := 0; d < ndim; d++ {
+				srcFlat += outIdx[d] * srcShape.Strides[order[d]]
+			}
+			outData[i] = srcData[srcFlat]
+			for d := ndim - 1; d >= 0; d-- {
+				outIdx[d]++
+				if outIdx[d] < shape.Dims[d] {
+					break
+				}
+				outIdx[d] = 0
+			}
+		}
+		return outBuf
 
 	default:
 		panic("realize: unimplemented op " + u.Op.String())

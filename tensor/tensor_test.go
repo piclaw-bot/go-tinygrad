@@ -168,3 +168,110 @@ func BenchmarkAddMul(b *testing.B) {
 		z.Realize()
 	}
 }
+
+func TestMatMul(t *testing.T) {
+	// [2,3] @ [3,2] = [2,2]
+	a := FromFloat32([]float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	b := FromFloat32([]float32{7, 8, 9, 10, 11, 12}, []int{3, 2})
+	c := a.MatMul(b)
+	got := c.Data()
+	// [1*7+2*9+3*11, 1*8+2*10+3*12] = [58, 64]
+	// [4*7+5*9+6*11, 4*8+5*10+6*12] = [139, 154]
+	want := []float32{58, 64, 139, 154}
+	for i := range got {
+		if !approx(got[i], want[i], 1e-4) {
+			t.Fatalf("c[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+	if c.Shape()[0] != 2 || c.Shape()[1] != 2 {
+		t.Fatalf("shape=%v want [2 2]", c.Shape())
+	}
+}
+
+func TestMatMulLarger(t *testing.T) {
+	// Identity: [4,4] @ I = [4,4]
+	data := make([]float32, 16)
+	for i := range data {
+		data[i] = float32(i + 1)
+	}
+	a := FromFloat32(data, []int{4, 4})
+	eye := FromFloat32([]float32{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, []int{4, 4})
+	c := a.MatMul(eye)
+	got := c.Data()
+	for i := range got {
+		if !approx(got[i], data[i], 1e-4) {
+			t.Fatalf("[%d]=%v want %v", i, got[i], data[i])
+		}
+	}
+}
+
+func TestPermute(t *testing.T) {
+	// [2,3] → [3,2]
+	a := FromFloat32([]float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	b := a.Permute([]int{1, 0})
+	got := b.Data()
+	// Transpose of [[1,2,3],[4,5,6]] = [[1,4],[2,5],[3,6]]
+	want := []float32{1, 4, 2, 5, 3, 6}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func BenchmarkMatMul(b *testing.B) {
+	m, k, n := 64, 384, 384
+	a := Rand([]int{m, k})
+	x := Rand([]int{k, n})
+	a.Realize()
+	x.Realize()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = a.MatMul(x).Data()
+	}
+}
+
+func TestSoftmax(t *testing.T) {
+	a := FromFloat32([]float32{1, 2, 3}, []int{1, 3})
+	got := a.Softmax().Data()
+	// softmax([1,2,3]) ≈ [0.0900, 0.2447, 0.6652]
+	sum := float32(0)
+	for _, v := range got {
+		sum += v
+		if v < 0 || v > 1 {
+			t.Fatalf("softmax value out of range: %v", v)
+		}
+	}
+	if !approx(sum, 1.0, 1e-5) {
+		t.Fatalf("softmax sum=%v want 1.0", sum)
+	}
+	if got[2] < got[1] || got[1] < got[0] {
+		t.Fatalf("softmax not monotonic: %v", got)
+	}
+}
+
+func TestLayerNorm(t *testing.T) {
+	a := FromFloat32([]float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	gamma := FromFloat32([]float32{1, 1, 1}, []int{3})
+	beta := FromFloat32([]float32{0, 0, 0}, []int{3})
+	got := a.LayerNorm(gamma, beta, 1e-5).Data()
+	// Each row normalized to ~0 mean, ~1 std
+	for i := 0; i < 2; i++ {
+		row := got[i*3 : i*3+3]
+		mean := (row[0] + row[1] + row[2]) / 3
+		if !approx(mean, 0, 0.01) {
+			t.Fatalf("row %d mean=%v want ~0", i, mean)
+		}
+	}
+}
+
+func TestGELU(t *testing.T) {
+	a := FromFloat32([]float32{-1, 0, 1, 2}, []int{4})
+	got := a.GELU().Data()
+	if got[1] != 0 {
+		t.Fatalf("gelu(0)=%v want 0", got[1])
+	}
+	if !approx(got[2], 0.841, 0.01) {
+		t.Fatalf("gelu(1)=%v want ~0.841", got[2])
+	}
+}
