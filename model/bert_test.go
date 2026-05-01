@@ -103,3 +103,57 @@ func BenchmarkGTESmallEmbed(b *testing.B) {
 		_ = m.Embed(tokenIDs, attnMask)
 	}
 }
+
+func TestForwardFastCorrectness(t *testing.T) {
+	path := os.Getenv("SAFETENSORS_PATH")
+	if path == "" {
+		path = "../../gte-go/models/gte-small/model.safetensors"
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("model not found: %s", path)
+	}
+	m, err := LoadGTESmall(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	tokenIDs := []int{101, 1045, 2293, 8870, 102}
+	attnMask := []bool{true, true, true, true, true}
+
+	slow := m.Embed(tokenIDs, attnMask)
+	fast := m.EmbedFast(tokenIDs, attnMask)
+
+	maxDiff := float32(0)
+	for i := range slow {
+		d := slow[i] - fast[i]
+		if d < 0 { d = -d }
+		if d > maxDiff { maxDiff = d }
+	}
+	if maxDiff > 0.001 {
+		t.Fatalf("fast vs slow maxDiff=%v (too large)", maxDiff)
+	}
+	t.Logf("fast vs slow maxDiff=%v", maxDiff)
+}
+
+func BenchmarkGTESmallEmbedFast(b *testing.B) {
+	path := os.Getenv("SAFETENSORS_PATH")
+	if path == "" {
+		path = "../../gte-go/models/gte-small/model.safetensors"
+	}
+	if _, err := os.Stat(path); err != nil {
+		b.Skipf("model not found: %s", path)
+	}
+	m, err := LoadGTESmall(path)
+	if err != nil {
+		b.Fatalf("load: %v", err)
+	}
+	tokenIDs := []int{101, 1045, 2293, 8870, 102}
+	attnMask := []bool{true, true, true, true, true}
+	for i := 0; i < 3; i++ {
+		_ = m.EmbedFast(tokenIDs, attnMask)
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = m.EmbedFast(tokenIDs, attnMask)
+	}
+}
