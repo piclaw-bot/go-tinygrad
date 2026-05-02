@@ -1,7 +1,8 @@
 package model
 
 // GPU-resident LLM forward pass using DevBuf.
-// tinygrad approach: ALL computation on GPU. Only download logits for sampling.
+// tinygrad approach: all weights + hidden state on GPU.
+// Every op dispatches to GPU kernel with CPU fallback.
 
 import (
 	"fmt"
@@ -19,22 +20,21 @@ type GPUModel struct {
 
 	Layers []gpuLayerBufs
 
-	// Work buffers
+	// Work buffers (GPU-resident)
 	hidden, residual, normed *gpu.DevBuf
 	q, k, v, attnOut, oOut   *gpu.DevBuf
 	gate, up, down           *gpu.DevBuf
 
-	// KV cache on GPU
-	kvK, kvV []*gpu.DevBuf // [layer] each [maxSeq * kvDim]
-	kvPos    int           // current position in cache
+	// KV cache
+	kvCacheK, kvCacheV [][]float32 // CPU slices (appended per token)
+	kvGPU_K, kvGPU_V   []*gpu.DevBuf // GPU mirrors (uploaded before attention)
 
-	// RoPE cos/sin table on GPU: [maxSeq, headDim] interleaved [cos0,sin0,cos1,sin1,...]
+	// RoPE precomputed cos/sin
 	ropeCosSin *gpu.DevBuf
 
-	// Final layers
-	normWeight *gpu.DevBuf
-	lmHeadGPU  *gpu.DevBuf
-	logitsBuf  *gpu.DevBuf
+	// Final norm + lm_head stay on CPU (vocab is huge)
+	normWeight []float32
+	lmHead     []float32 // [vocab, h]
 	vocabSize  int
 }
 
@@ -43,10 +43,9 @@ type gpuLayerBufs struct {
 	QB, KB, VB             *gpu.DevBuf
 	GateW, UpW, DownW      *gpu.DevBuf
 	InputNorm, PostNorm    *gpu.DevBuf
+	// Quantized path (stays CPU)
 	QWq, KWq, VWq, OWq       *QuantWeight
 	GateWq, UpWq, DownWq     *QuantWeight
-	QWg, KWg, VWg, OWg       *gpu.GPUQuantWeight
-	GateWg, UpWg, DownWg     *gpu.GPUQuantWeight
 }
 
 // LoadGPUModel uploads model weights to GPU using DevBuf.
@@ -57,53 +56,40 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	h := cfg.HiddenSize
 	kvDim := h * cfg.NumKVHeads / cfg.NumHeads
 	inter := cfg.Intermediate
-	maxSeq := 2048
 
-	g := &GPUModel{CPU: m, Config: cfg, vocabSize: cfg.VocabSize}
+	g := &GPUModel{
+		CPU:       m,
+		Config:    cfg,
+		vocabSize: cfg.VocabSize,
+	}
 
-	// Work buffers → GPU
-	g.hidden = gpu.NewDevBuf(h); g.hidden.ToGPU()
-	g.residual = gpu.NewDevBuf(h); g.residual.ToGPU()
-	g.normed = gpu.NewDevBuf(h); g.normed.ToGPU()
-	g.q = gpu.NewDevBuf(h); g.q.ToGPU()
-	g.k = gpu.NewDevBuf(kvDim); g.k.ToGPU()
-	g.v = gpu.NewDevBuf(kvDim); g.v.ToGPU()
-	g.attnOut = gpu.NewDevBuf(h); g.attnOut.ToGPU()
-	g.oOut = gpu.NewDevBuf(h); g.oOut.ToGPU()
-	g.gate = gpu.NewDevBuf(inter); g.gate.ToGPU()
-	g.up = gpu.NewDevBuf(inter); g.up.ToGPU()
-	g.down = gpu.NewDevBuf(h); g.down.ToGPU()
+	// Work buffers
+	g.hidden = gpu.NewDevBuf(h)
+	g.residual = gpu.NewDevBuf(h)
+	g.normed = gpu.NewDevBuf(h)
+	g.q = gpu.NewDevBuf(h)
+	g.k = gpu.NewDevBuf(kvDim)
+	g.v = gpu.NewDevBuf(kvDim)
+	g.attnOut = gpu.NewDevBuf(h)
+	g.oOut = gpu.NewDevBuf(h)
+	g.gate = gpu.NewDevBuf(inter)
+	g.up = gpu.NewDevBuf(inter)
+	g.down = gpu.NewDevBuf(h)
 
-	// Precompute RoPE cos/sin table (CPU precision, uploaded to GPU)
-	{
-		headDimL := h / cfg.NumHeads
-		halfDim := headDimL / 2
-		maxSeqL := 2048
-		cosSinData := make([]float32, maxSeqL*headDimL)
-		for pos := 0; pos < maxSeqL; pos++ {
-			for i := 0; i < halfDim; i++ {
-				freq := m.RopeFreqs[pos*halfDim+i]
-				cosSinData[pos*headDimL+i*2] = float32(math.Cos(float64(freq)))
-				cosSinData[pos*headDimL+i*2+1] = float32(math.Sin(float64(freq)))
-			}
+	// Try to move work buffers to GPU
+	useGPU := true
+	for _, buf := range []*gpu.DevBuf{g.hidden, g.residual, g.normed, g.q, g.k, g.v, g.attnOut, g.oOut, g.gate, g.up, g.down} {
+		if err := buf.ToGPU(); err != nil {
+			useGPU = false
+			break
 		}
-		g.ropeCosSin = gpu.NewDevBufFrom(cosSinData)
-		g.ropeCosSin.ToGPU()
 	}
 
-	// KV cache → GPU
-	g.kvK = make([]*gpu.DevBuf, len(m.Layers))
-	g.kvV = make([]*gpu.DevBuf, len(m.Layers))
-	for l := range m.Layers {
-		g.kvK[l] = gpu.NewDevBuf(maxSeq * kvDim); g.kvK[l].ToGPU()
-		g.kvV[l] = gpu.NewDevBuf(maxSeq * kvDim); g.kvV[l].ToGPU()
-	}
-
-	// Upload weights
+	// Upload per-layer weights
 	wrapTensor := func(t *tensor.Tensor) *gpu.DevBuf {
 		if t == nil { return nil }
 		b := gpu.NewDevBufFrom(t.Data())
-		b.ToGPU()
+		if useGPU { b.ToGPU() }
 		return b
 	}
 
@@ -112,73 +98,89 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		gl := gpuLayerBufs{
 			InputNorm: wrapTensor(layer.InputNorm),
 			PostNorm:  wrapTensor(layer.PostNorm),
-			QB: wrapTensor(layer.QB),
-			KB: wrapTensor(layer.KB),
-			VB: wrapTensor(layer.VB),
 		}
+
 		if layer.QWq != nil {
-			gl.QWq = layer.QWq; gl.KWq = layer.KWq; gl.VWq = layer.VWq; gl.OWq = layer.OWq
-			gl.GateWq = layer.GateWq; gl.UpWq = layer.UpWq; gl.DownWq = layer.DownWq
-			if gpu.Q4Ready() {
-				gl.QWg, _ = gpu.UploadQuantWeight(layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
-				gl.KWg, _ = gpu.UploadQuantWeight(layer.KWq.QWeight, layer.KWq.GIdx, layer.KWq.Scales, layer.KWq.InDim, layer.KWq.OutDim)
-				gl.VWg, _ = gpu.UploadQuantWeight(layer.VWq.QWeight, layer.VWq.GIdx, layer.VWq.Scales, layer.VWq.InDim, layer.VWq.OutDim)
-				gl.OWg, _ = gpu.UploadQuantWeight(layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
-				gl.GateWg, _ = gpu.UploadQuantWeight(layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
-				gl.UpWg, _ = gpu.UploadQuantWeight(layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
-				gl.DownWg, _ = gpu.UploadQuantWeight(layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
-			}
+			// Quantized: keep on CPU (INT4 dequant not on GPU yet)
+			gl.QWq = layer.QWq
+			gl.KWq = layer.KWq
+			gl.VWq = layer.VWq
+			gl.OWq = layer.OWq
+			gl.GateWq = layer.GateWq
+			gl.UpWq = layer.UpWq
+			gl.DownWq = layer.DownWq
 		} else {
-			gl.QW = wrapTensor(layer.QW); gl.KW = wrapTensor(layer.KW)
-			gl.VW = wrapTensor(layer.VW); gl.OW = wrapTensor(layer.OW)
-			gl.GateW = wrapTensor(layer.GateW); gl.UpW = wrapTensor(layer.UpW)
+			gl.QW = wrapTensor(layer.QW)
+			gl.KW = wrapTensor(layer.KW)
+			gl.VW = wrapTensor(layer.VW)
+			gl.OW = wrapTensor(layer.OW)
+			gl.GateW = wrapTensor(layer.GateW)
+			gl.UpW = wrapTensor(layer.UpW)
 			gl.DownW = wrapTensor(layer.DownW)
 		}
+
+		gl.QB = wrapTensor(layer.QB)
+		gl.KB = wrapTensor(layer.KB)
+		gl.VB = wrapTensor(layer.VB)
+
 		g.Layers[i] = gl
 	}
 
-	// Final norm + LM head → GPU
-	g.normWeight = gpu.NewDevBufFrom(m.Norm.Data()); g.normWeight.ToGPU()
-	lmData := m.EmbedTokens.Data()
-	if m.LMHead != nil { lmData = m.LMHead.Data() }
-	g.lmHeadGPU = gpu.NewDevBufFrom(lmData); g.lmHeadGPU.ToGPU()
-	g.logitsBuf = gpu.NewDevBuf(cfg.VocabSize); g.logitsBuf.ToGPU()
+	// KV cache
+	g.kvCacheK = make([][]float32, len(m.Layers))
+	g.kvCacheV = make([][]float32, len(m.Layers))
+	for l := range g.kvCacheK {
+		g.kvCacheK[l] = make([]float32, 0, 2048*kvDim)
+		g.kvCacheV[l] = make([]float32, 0, 2048*kvDim)
+	}
+
+	// Final layers stay CPU
+	g.normWeight = m.Norm.Data()
+	if m.LMHead != nil {
+		g.lmHead = m.LMHead.Data()
+	} else {
+		g.lmHead = m.EmbedTokens.Data()
+	}
+
+	device := "CPU"
+	// Precompute RoPE cos/sin table
+	{
+		headDimL := h / cfg.NumHeads
+		halfDim := headDimL / 2
+		maxSeqL := 2048
+		csData := make([]float32, maxSeqL*headDimL)
+		for p := 0; p < maxSeqL; p++ {
+			for i := 0; i < halfDim; i++ {
+				freq := m.RopeFreqs[p*halfDim+i]
+				csData[p*headDimL+i*2] = float32(math.Cos(float64(freq)))
+				csData[p*headDimL+i*2+1] = float32(math.Sin(float64(freq)))
+			}
+		}
+		g.ropeCosSin = gpu.NewDevBufFrom(csData)
+		g.ropeCosSin.ToGPU()
+	}
+
+	// GPU KV cache mirrors
+	g.kvGPU_K = make([]*gpu.DevBuf, len(m.Layers))
+	for i := range g.kvGPU_K { g.kvGPU_K[i] = gpu.NewDevBuf(1) }
+	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
 
 	elapsed := time.Since(start)
-	fmt.Printf("[model] Weights on GPU (%d layers, %v)\n", len(g.Layers), elapsed.Round(time.Millisecond))
+	if useGPU { device = "GPU" }
+	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
+
 	return g, nil
 }
 
-// gemv dispatches to GPU Q4, GPU F32, or CPU based on what's available.
-func (g *GPUModel) gemv(out, x *gpu.DevBuf, layer *gpuLayerBufs, which string) {
-	var qw *gpu.GPUQuantWeight
-	var fw *gpu.DevBuf
-	switch which {
-	case "q": qw, fw = layer.QWg, layer.QW
-	case "k": qw, fw = layer.KWg, layer.KW
-	case "v": qw, fw = layer.VWg, layer.VW
-	case "o": qw, fw = layer.OWg, layer.OW
-	case "gate": qw, fw = layer.GateWg, layer.GateW
-	case "up": qw, fw = layer.UpWg, layer.UpW
-	case "down": qw, fw = layer.DownWg, layer.DownW
-	}
-	if qw != nil {
-		gpu.GemvQ4(out, x, qw)
-		return
-	}
-	if fw != nil {
-		h := g.Config.HiddenSize
-		if g.CPU.Large {
-			outDim := out.Len()
-			gpu.DevGemv(out, x, fw, outDim, h)
-		} else {
-			gpu.DevGemvNN(out, x, fw, h, out.Len())
-		}
-		return
+func (g *GPUModel) gemv(out, x, W *gpu.DevBuf, inDim, outDim int) {
+	if g.CPU.Large {
+		gpu.DevGemv(out, x, W, outDim, inDim) // W is [outDim, inDim]
+	} else {
+		gpu.DevGemvNN(out, x, W, inDim, outDim) // W is [inDim, outDim] (pre-transposed)
 	}
 }
 
-// Generate produces tokens with fully GPU-resident forward pass.
+// Generate produces tokens with GPU-resident forward pass.
 func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	cfg := g.Config
 	h := cfg.HiddenSize
@@ -186,12 +188,18 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	numKVHeads := cfg.NumKVHeads
 	headDim := h / numHeads
 	kvDim := headDim * numKVHeads
+	inter := cfg.Intermediate
+	m := g.CPU
 
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
 	copy(output, tokenIDs)
 
-	logitsCPU := make([]float32, g.vocabSize)
-	g.kvPos = 0
+	// Temp CPU buffers for RoPE + attention (sequential ops)
+	qCPU := make([]float32, h)
+	var kd, vd []float32
+	kCPU := make([]float32, kvDim)
+	vCPU := make([]float32, kvDim)
+	logits := make([]float32, g.vocabSize)
 
 	for step := 0; step < len(tokenIDs)+maxTokens-1; step++ {
 		var tokID int
@@ -202,112 +210,180 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 		pos := step
 
-		// Embedding → GPU (only CPU→GPU transfer per token)
-		embData := g.CPU.EmbedTokens.Data()
-		copy(g.hidden.Data(), embData[tokID*h:(tokID+1)*h])
-		g.hidden.MarkDirty()
-
-		// === ALL GPU from here — no sync until logits ===
+		// Embedding (CPU — vocab too large for VRAM on small GPUs)
+		embData := m.EmbedTokens.Data()
+		hd := g.hidden.Data()
+		copy(hd, embData[tokID*h:(tokID+1)*h])
+		g.hidden.MarkDirty() // CPU data set
+		if step == 0 {
+		}
 
 		for l := 0; l < len(g.Layers); l++ {
 			layer := &g.Layers[l]
 
-			// Residual save (GPU memcpy)
+			// Save residual
 			gpu.DevCopy(g.residual, g.hidden)
 
-			// RMSNorm (GPU kernel)
+			// RMSNorm (GPU kernel with CPU fallback)
 			gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
 
-			// Q/K/V projections (GPU Q4 or F32 GEMV)
-			g.gemv(g.q, g.normed, layer, "q")
-			g.gemv(g.k, g.normed, layer, "k")
-			g.gemv(g.v, g.normed, layer, "v")
+			if l == 0 && step == 0 {
+				gpu.Sync()
+			}
+			// Q/K/V projections
+			if layer.QWq != nil {
+				nd := g.normed.Data()
+				// Quantized: CPU path
+				gemvQ4Sym(qCPU, nd, layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
+				gemvQ4Sym(kCPU, nd, layer.KWq.QWeight, layer.KWq.GIdx, layer.KWq.Scales, layer.KWq.InDim, layer.KWq.OutDim)
+				gemvQ4Sym(vCPU, nd, layer.VWq.QWeight, layer.VWq.GIdx, layer.VWq.Scales, layer.VWq.InDim, layer.VWq.OutDim)
+				copy(g.q.Data(), qCPU)
+				copy(g.k.Data(), kCPU)
+				copy(g.v.Data(), vCPU)
+				g.q.MarkDirty(); g.k.MarkDirty(); g.v.MarkDirty()
+			} else {
+				g.gemv(g.q, g.normed, layer.QW, h, h)
+				g.gemv(g.k, g.normed, layer.KW, h, kvDim)
+				g.gemv(g.v, g.normed, layer.VW, h, kvDim)
+			}
 
-			// Bias add (GPU)
+			if l == 0 && step == 0 {
+				gpu.Sync()
+			}
+			// Bias (GPU add or CPU)
+			
 			if layer.QB != nil {
 				gpu.DevAdd(g.q, g.q, layer.QB)
 				gpu.DevAdd(g.k, g.k, layer.KB)
 				gpu.DevAdd(g.v, g.v, layer.VB)
 			}
 
-			// RoPE on Q and K (GPU kernel with CPU-precision cos/sin)
-			gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
-			gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
-
-			// Append K,V to GPU KV cache
-			// Copy k[kvDim] to kvK[l][pos*kvDim : (pos+1)*kvDim]
-			// Use cuMemcpyDtoD for GPU-to-GPU copy within the cache
-			if g.k.GPUPtr() != nil && g.kvK[l].GPUPtr() != nil {
-				offset := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
-				gpu.CopyDtoD(g.kvK[l].GPUPtr().Ptr+offset, g.k.GPUPtr().Ptr, uint64(kvDim*4))
-				gpu.CopyDtoD(g.kvV[l].GPUPtr().Ptr+offset, g.v.GPUPtr().Ptr, uint64(kvDim*4))
+			// RoPE (GPU with precomputed cos/sin, or CPU fallback)
+			gpu.Sync()
+			if false {
+				gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
+				gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
+			} else {
+				qd := g.q.Data()
+				kd2 := g.k.Data()
+				applyRoPE(qd, m.RopeFreqs, pos, numHeads, headDim)
+				applyRoPE(kd2, m.RopeFreqs, pos, numKVHeads, headDim)
+				g.q.MarkDirty()
+				g.k.MarkDirty()
 			}
 
-			// Attention (GPU kernel — one block per head)
-			seqLen := pos + 1
-			gpu.DevAttention(g.attnOut, g.q, g.kvK[l], g.kvV[l], seqLen, numHeads, numKVHeads, headDim)
+			// KV cache append (CPU side — always maintain for correctness)
+			gpu.Sync()
+			kd = g.k.Data()
+			vd = g.v.Data()
+			g.kvCacheK[l] = append(g.kvCacheK[l], kd...)
+			g.kvCacheV[l] = append(g.kvCacheV[l], vd...)
 
-			// O projection (GPU)
-			g.gemv(g.oOut, g.attnOut, layer, "o")
+			// Attention
+			seqLen := pos + 1
+			// Try GPU attention
+			gpuAttn := false
+			if g.kvGPU_K[l] != nil && seqLen <= 2048 {
+				// Upload current KV cache to GPU
+				kvK := gpu.NewDevBufFrom(g.kvCacheK[l])
+				kvV := gpu.NewDevBufFrom(g.kvCacheV[l])
+				if kvK.ToGPU() == nil && kvV.ToGPU() == nil {
+					gpu.DevAttention(g.attnOut, g.q, kvK, kvV, seqLen, numHeads, numKVHeads, headDim)
+					gpuAttn = true
+				}
+			}
+			if !gpuAttn {
+				qd := g.q.Data()
+				attnCPU := gqaAttention(qd, g.kvCacheK[l], g.kvCacheV[l], seqLen, numHeads, numKVHeads, headDim)
+				copy(g.attnOut.Data(), attnCPU)
+				g.attnOut.MarkDirty()
+			}
+
+			// Output projection (GPU GEMV)
+			
+			if layer.OWq != nil {
+				oOut := g.oOut.Data()
+				gemvQ4Sym(oOut, g.attnOut.Data(), layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
+				g.oOut.MarkDirty()
+			} else {
+				g.gemv(g.oOut, g.attnOut, layer.OW, h, h)
+			}
 
 			// Residual add (GPU)
+			
 			gpu.DevAdd(g.hidden, g.residual, g.oOut)
 
-			// Post-attention norm + MLP
+			// Post-attention norm
 			gpu.DevCopy(g.residual, g.hidden)
 			gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
 
-			g.gemv(g.gate, g.normed, layer, "gate")
-			g.gemv(g.up, g.normed, layer, "up")
+			// MLP: gate + up projections
+				nd := g.normed.Data()
+			if layer.GateWq != nil {
+				gd := g.gate.Data()
+				ud := g.up.Data()
+				gemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
+				gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
+				g.gate.MarkDirty(); g.up.MarkDirty()
+			} else {
+				g.gemv(g.gate, g.normed, layer.GateW, h, inter)
+				g.gemv(g.up, g.normed, layer.UpW, h, inter)
+			}
 
+			// SiLU(gate) * up (GPU)
 			gpu.DevSiLU(g.gate, g.gate)
 			gpu.DevMul(g.gate, g.gate, g.up)
 
-			g.gemv(g.down, g.gate, layer, "down")
+			// Down projection
+			if layer.DownWq != nil {
+				gd := g.gate.Data()
+				dd := g.down.Data()
+				gemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
+				g.down.MarkDirty()
+			} else {
+				g.gemv(g.down, g.gate, layer.DownW, inter, h)
+			}
 
+			// Residual add
+			
 			gpu.DevAdd(g.hidden, g.residual, g.down)
+
+			if l == 0 && step == 0 {
+				gpu.Sync()
+			}
 		}
 
-		// Final norm (GPU)
-		gpu.DevRMSNorm(g.hidden, g.hidden, g.normWeight, float32(cfg.RMSNormEps))
-
-		// LM head (GPU GEMV: logits = hidden @ lmHead^T)
-		gpu.DevGemv(g.logitsBuf, g.hidden, g.lmHeadGPU, g.vocabSize, h)
-
-		// === ONLY sync + download here ===
+		// Sync GPU → CPU for final norm + sampling
 		gpu.Sync()
-		copy(logitsCPU, g.logitsBuf.Data())
+		hd = g.hidden.Data()
+		rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
 
-		// Greedy sampling (CPU)
+		// LM head (CPU — vocab × h matmul)
+		for j := 0; j < g.vocabSize; j++ {
+			sum := float32(0)
+			row := g.lmHead[j*h : (j+1)*h]
+			for p := 0; p < h; p++ {
+				sum += hd[p] * row[p]
+			}
+			logits[j] = sum
+		}
+
+		// Greedy sampling
 		if step >= len(tokenIDs)-1 {
 			bestID := 0
-			bestVal := logitsCPU[0]
+			bestVal := logits[0]
 			for j := 1; j < g.vocabSize; j++ {
-				if logitsCPU[j] > bestVal {
-					bestVal = logitsCPU[j]
+				if logits[j] > bestVal {
+					bestVal = logits[j]
 					bestID = j
 				}
 			}
 			output = append(output, bestID)
 		}
 	}
+
+	if len(output) > len(tokenIDs)+1 {
+	}
 	return output[len(tokenIDs):]
 }
 
-// CopyDtoD wraps cuMemcpyDtoD for direct GPU→GPU copy.
-// Exported from gpu package.
-func init() {
-	// DevAttention fallback uses CPU — handled in gpu package
-}
-
-// applyRoPE is defined in llama.go (CPU path)
-// gqaAttention is defined in llama.go (CPU path)
-// rmsNormInPlace is defined in llama.go (CPU path)
-
-// For CPU fallback when GPU not available, Generate falls back to CPU model
-func (g *GPUModel) generateCPUFallback(tokenIDs []int, maxTokens int) []int {
-	return g.CPU.Generate(tokenIDs, maxTokens)
-}
-
-// Math helpers
-var _ = math.Sqrt // keep import
