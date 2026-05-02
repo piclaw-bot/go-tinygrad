@@ -55,7 +55,7 @@ const VecSiLUPTX = `.version 7.0
     mul.f32 %f1, %f1, 0f3FB8AA3B;
     ex2.approx.f32 %f2, %f1;
     add.f32 %f3, %f2, 0f3F800000;
-    div.approx.f32 %f4, %f0, %f3;
+    div.rn.f32 %f4, %f0, %f3;
     st.global.f32 [%rd5], %f4;
 done: ret;
 }
@@ -105,8 +105,8 @@ L3: setp.lt.u32 %p, %r3, 1; @%p bra L4;
 L3b: bar.sync 0; shr.u32 %r3, %r3, 1; bra L3;
 L4: setp.ne.u32 %p, %r0, 0; @%p bra L5;
     ld.shared.f32 %f0, [sdata]; cvt.rn.f32.u32 %f3, %r1;
-    div.approx.f32 %f0, %f0, %f3; ld.param.f32 %f4, [eps];
-    add.f32 %f0, %f0, %f4; rsqrt.approx.f32 %f0, %f0; st.shared.f32 [sdata], %f0;
+    div.rn.f32 %f0, %f0, %f3; ld.param.f32 %f4, [eps];
+    add.f32 %f0, %f0, %f4; rsqrt.approx.f32 %f1, %f0; mul.f32 %f2, %f0, %f1; mul.f32 %f2, %f2, %f1; mul.f32 %f2, %f2, 0fBF000000; add.f32 %f2, %f2, 0f3FC00000; mul.f32 %f0, %f1, %f2; st.shared.f32 [sdata], %f0;
 L5: bar.sync 0; ld.shared.f32 %f5, [sdata];
     ld.param.u64 %rd1, [W]; ld.param.u64 %rd2, [B];
     mov.u32 %r2, %r0;

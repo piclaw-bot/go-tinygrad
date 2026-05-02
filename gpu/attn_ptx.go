@@ -9,11 +9,11 @@ const RoPEPTX = `.version 7.0
 .address_size 64
 
 // rope_apply: x[nHeads * headDim] updated in-place
-// freqs[maxSeq * halfDim] precomputed
-// Args: x, freqs, pos, nHeads, headDim
+// cos_sin[maxSeq * headDim] = interleaved [cos0,sin0, cos1,sin1, ...] per position
+// Each thread handles one pair for one head
 .visible .entry rope_apply(
     .param .u64 param_x,
-    .param .u64 param_freqs,
+    .param .u64 param_cos_sin,
     .param .u32 param_pos,
     .param .u32 param_nHeads,
     .param .u32 param_headDim
@@ -23,62 +23,52 @@ const RoPEPTX = `.version 7.0
     .reg .f32 %f<12>;
     .reg .pred %p;
 
-    // tid = blockIdx.x * blockDim.x + threadIdx.x
-    // Each thread handles one pair (2 elements) in one head
     mov.u32 %r0, %ctaid.x;
     mov.u32 %r1, %ntid.x;
     mov.u32 %r2, %tid.x;
-    mad.lo.u32 %r3, %r0, %r1, %r2; // global tid
+    mad.lo.u32 %r3, %r0, %r1, %r2;
 
     ld.param.u32 %r4, [param_nHeads];
     ld.param.u32 %r5, [param_headDim];
-
-    // halfDim = headDim / 2
     shr.u32 %r6, %r5, 1;
 
-    // total pairs = nHeads * halfDim
     mul.lo.u32 %r7, %r4, %r6;
     setp.ge.u32 %p, %r3, %r7;
     @%p bra done;
 
-    // head = tid / halfDim, pair = tid % halfDim
-    div.u32 %r8, %r3, %r6;  // head
-    rem.u32 %r9, %r3, %r6;  // pair index i
+    div.u32 %r8, %r3, %r6;
+    rem.u32 %r9, %r3, %r6;
 
     // idx = head * headDim + i * 2
     mul.lo.u32 %r10, %r8, %r5;
     shl.b32 %r11, %r9, 1;
-    add.u32 %r10, %r10, %r11; // idx
+    add.u32 %r10, %r10, %r11;
 
-    // Load x[idx] and x[idx+1]
+    // Load x[idx], x[idx+1]
     ld.param.u64 %rd0, [param_x];
     mul.wide.u32 %rd1, %r10, 4;
     add.u64 %rd2, %rd0, %rd1;
-    ld.global.f32 %f0, [%rd2];      // x0
-    ld.global.f32 %f1, [%rd2+4];    // x1
+    ld.global.f32 %f0, [%rd2];
+    ld.global.f32 %f1, [%rd2+4];
 
-    // Load freq = freqs[pos * halfDim + i]
+    // Load precomputed cos, sin from cos_sin[pos * headDim + i*2], [pos * headDim + i*2 + 1]
     ld.param.u32 %r12, [param_pos];
-    ld.param.u64 %rd3, [param_freqs];
-    mul.lo.u32 %r13, %r12, %r6;
-    add.u32 %r13, %r13, %r9;
+    ld.param.u64 %rd3, [param_cos_sin];
+    mul.lo.u32 %r13, %r12, %r5;
+    add.u32 %r13, %r13, %r11;
     mul.wide.u32 %rd4, %r13, 4;
     add.u64 %rd5, %rd3, %rd4;
-    ld.global.f32 %f2, [%rd5];      // freq
+    ld.global.f32 %f3, [%rd5];      // cos
+    ld.global.f32 %f4, [%rd5+4];    // sin
 
-    // cos(freq), sin(freq)
-    // PTX: cos.approx and sin.approx
-    cos.approx.f32 %f3, %f2;        // cos
-    sin.approx.f32 %f4, %f2;        // sin
-
-    // Rotate: out0 = x0*cos - x1*sin, out1 = x0*sin + x1*cos
+    // Rotate
     mul.f32 %f5, %f0, %f3;
     mul.f32 %f6, %f1, %f4;
-    sub.f32 %f7, %f5, %f6;          // x0*cos - x1*sin
+    sub.f32 %f7, %f5, %f6;
 
     mul.f32 %f8, %f0, %f4;
     mul.f32 %f9, %f1, %f3;
-    add.f32 %f10, %f8, %f9;         // x0*sin + x1*cos
+    add.f32 %f10, %f8, %f9;
 
     st.global.f32 [%rd2], %f7;
     st.global.f32 [%rd2+4], %f10;
@@ -230,7 +220,7 @@ exp_loop:
 exp_done:
 
     // Normalize
-    rcp.approx.f32 %f7, %f7;         // 1/sum
+    rcp.rn.f32 %f7, %f7;         // 1/sum
     mov.u32 %r9, 0;
 norm_loop:
     setp.ge.u32 %p1, %r9, %r2;

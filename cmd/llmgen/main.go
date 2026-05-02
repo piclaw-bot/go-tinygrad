@@ -17,7 +17,7 @@ func main() {
 	flag.Parse()
 
 	if *useGPU {
-		model.ForceOnTheFly = true
+		// model.ForceOnTheFly = true // disabled: Q4 GPU data flow needs fix
 	}
 
 	if *dir == "" {

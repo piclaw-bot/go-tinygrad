@@ -366,16 +366,17 @@ func initRoPEAttn() {
 }
 
 // DevRoPE applies rotary position embedding on GPU (in-place).
-func DevRoPE(x *DevBuf, freqs *DevBuf, pos, nHeads, headDim int) {
+// cosSin is a precomputed [maxSeq * headDim] buffer with interleaved cos,sin pairs.
+func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 	initRoPEAttn()
-	if ropeReady && tryGPU(x, freqs) {
+	if ropeReady && tryGPU(x, cosSin) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
 		halfDim := nHeads * (headDim / 2)
 		LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
-			unsafe.Pointer(&freqs.gpu.Ptr),
+			unsafe.Pointer(&cosSin.gpu.Ptr),
 			unsafe.Pointer(&p),
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&hd))

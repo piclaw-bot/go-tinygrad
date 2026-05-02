@@ -28,8 +28,8 @@ type GPUModel struct {
 	kvK, kvV []*gpu.DevBuf // [layer] each [maxSeq * kvDim]
 	kvPos    int           // current position in cache
 
-	// RoPE frequencies on GPU
-	ropeFreqs *gpu.DevBuf
+	// RoPE cos/sin table on GPU: [maxSeq, headDim] interleaved [cos0,sin0,cos1,sin1,...]
+	ropeCosSin *gpu.DevBuf
 
 	// Final layers
 	normWeight *gpu.DevBuf
@@ -74,9 +74,22 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	g.up = gpu.NewDevBuf(inter); g.up.ToGPU()
 	g.down = gpu.NewDevBuf(h); g.down.ToGPU()
 
-	// RoPE frequencies → GPU
-	g.ropeFreqs = gpu.NewDevBufFrom(m.RopeFreqs)
-	g.ropeFreqs.ToGPU()
+	// Precompute RoPE cos/sin table (CPU precision, uploaded to GPU)
+	{
+		headDimL := h / cfg.NumHeads
+		halfDim := headDimL / 2
+		maxSeqL := 2048
+		cosSinData := make([]float32, maxSeqL*headDimL)
+		for pos := 0; pos < maxSeqL; pos++ {
+			for i := 0; i < halfDim; i++ {
+				freq := m.RopeFreqs[pos*halfDim+i]
+				cosSinData[pos*headDimL+i*2] = float32(math.Cos(float64(freq)))
+				cosSinData[pos*headDimL+i*2+1] = float32(math.Sin(float64(freq)))
+			}
+		}
+		g.ropeCosSin = gpu.NewDevBufFrom(cosSinData)
+		g.ropeCosSin.ToGPU()
+	}
 
 	// KV cache → GPU
 	g.kvK = make([]*gpu.DevBuf, len(m.Layers))
@@ -217,9 +230,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.DevAdd(g.v, g.v, layer.VB)
 			}
 
-			// RoPE on Q and K (GPU kernel)
-			gpu.DevRoPE(g.q, g.ropeFreqs, pos, numHeads, headDim)
-			gpu.DevRoPE(g.k, g.ropeFreqs, pos, numKVHeads, headDim)
+			// RoPE on Q and K (GPU kernel with CPU-precision cos/sin)
+			gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
+			gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
 
 			// Append K,V to GPU KV cache
 			// Copy k[kvDim] to kvK[l][pos*kvDim : (pos+1)*kvDim]
