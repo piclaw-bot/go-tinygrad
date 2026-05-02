@@ -61,14 +61,13 @@ const RoPEPTX = `.version 7.0
     ld.global.f32 %f3, [%rd5];      // cos
     ld.global.f32 %f4, [%rd5+4];    // sin
 
-    // Rotate
-    mul.f32 %f5, %f0, %f3;
-    mul.f32 %f6, %f1, %f4;
-    sub.f32 %f7, %f5, %f6;
+    // Rotate with FMA (single rounding per result)
+    neg.f32 %f6, %f4;                // -sin
+    mul.f32 %f5, %f1, %f6;           // -x1*sin (exact for small values)
+    fma.rn.f32 %f7, %f0, %f3, %f5;  // x0*cos + (-x1*sin)
 
-    mul.f32 %f8, %f0, %f4;
-    mul.f32 %f9, %f1, %f3;
-    add.f32 %f10, %f8, %f9;
+    mul.f32 %f9, %f1, %f3;           // x1*cos
+    fma.rn.f32 %f10, %f0, %f4, %f9; // x0*sin + x1*cos
 
     st.global.f32 [%rd2], %f7;
     st.global.f32 [%rd2+4], %f10;

@@ -260,7 +260,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// RoPE (GPU with precomputed cos/sin, or CPU fallback)
 			gpu.Sync()
-			if false {
+			if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
 				gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
 				gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
 			} else {
