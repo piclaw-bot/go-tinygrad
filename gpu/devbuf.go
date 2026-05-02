@@ -290,17 +290,17 @@ func DevSoftmax(x *DevBuf, n int) {
 
 // Copy copies src data to dst (same device).
 func DevCopy(dst, src *DevBuf) {
-	if src.OnGPU() && dst.gpu != nil {
-		// GPU-to-GPU copy via a temp download (no device copy kernel yet)
-		src.ToCPU()
-		copy(dst.Data(), src.cpu)
+	if src.gpu != nil && dst.gpu != nil && src.n >= 4096 {
+		// GPU-to-GPU copy via cuMemcpyDtoD
+		src.ToGPU()
 		dst.ToGPU()
-		src.ToGPU() // restore src to GPU
-	} else {
-		src.ToCPU()
-		dst.ToCPU()
-		copy(dst.cpu, src.cpu[:dst.n])
+		cuMemcpyDtoD(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4))
+		dst.dev = GPU_DEVICE
+		return
 	}
+	src.ToCPU()
+	dst.ToCPU()
+	copy(dst.cpu, src.cpu[:dst.n])
 }
 
 // MarkDirty marks CPU data as authoritative (will re-upload on next GPU access).

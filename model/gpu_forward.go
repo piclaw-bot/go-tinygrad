@@ -137,8 +137,8 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.lmHead = m.EmbedTokens.Data()
 	}
 
-	elapsed := time.Since(start)
 	device := "CPU"
+	elapsed := time.Since(start)
 	if useGPU { device = "GPU" }
 	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
 
@@ -223,15 +223,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.Sync()
 			}
 			// Bias (GPU add or CPU)
+			
 			if layer.QB != nil {
 				gpu.DevAdd(g.q, g.q, layer.QB)
 				gpu.DevAdd(g.k, g.k, layer.KB)
 				gpu.DevAdd(g.v, g.v, layer.VB)
 			}
 
-			// RoPE (CPU — sequential per-head rotation)
+			// Sync GPU → CPU boundary for RoPE + attention
+			
 			gpu.Sync()
-			qd := g.q.Data() // downloads from GPU if needed
+			qd := g.q.Data()
 			kd := g.k.Data()
 			applyRoPE(qd, m.RopeFreqs, pos, numHeads, headDim)
 			applyRoPE(kd, m.RopeFreqs, pos, numKVHeads, headDim)
@@ -249,6 +251,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			g.attnOut.MarkDirty() // CPU data set, will upload on next GPU op
 
 			// Output projection (GPU GEMV)
+			
 			if layer.OWq != nil {
 				oOut := g.oOut.Data()
 				gemvQ4Sym(oOut, attnCPU, layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
@@ -258,6 +261,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// Residual add (GPU)
+			
 			gpu.DevAdd(g.hidden, g.residual, g.oOut)
 
 			// Post-attention norm
@@ -292,6 +296,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// Residual add
+			
 			gpu.DevAdd(g.hidden, g.residual, g.down)
 
 			if l == 0 && step == 0 {
@@ -299,7 +304,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 		}
 
-		// Final norm (CPU)
+		// Sync GPU → CPU for final norm + sampling
 		gpu.Sync()
 		hd = g.hidden.Data()
 		rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
@@ -328,6 +333,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 	}
 
+	if len(output) > len(tokenIDs)+1 {
+	}
 	return output[len(tokenIDs):]
 }
 

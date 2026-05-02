@@ -44,6 +44,7 @@ var (
 	cuModuleGetFunction  func(*CUfunction, CUmodule, unsafe.Pointer) CUresult
 	cuLaunchKernel       func(CUfunction, uint32, uint32, uint32, uint32, uint32, uint32, uint32, uintptr, unsafe.Pointer, unsafe.Pointer) CUresult
 	cuCtxSynchronize     func() CUresult
+	cuMemcpyDtoD         func(CUdeviceptr, CUdeviceptr, uint64) CUresult
 )
 
 var (
@@ -93,6 +94,7 @@ func Init() bool {
 		regFn(&cuModuleGetFunction, lib, "cuModuleGetFunction")
 		regFn(&cuLaunchKernel, lib, "cuLaunchKernel")
 		regFn(&cuCtxSynchronize, lib, "cuCtxSynchronize")
+		regFn(&cuMemcpyDtoD, lib, "cuMemcpyDtoD_v2", "cuMemcpyDtoD")
 
 		// Initialize CUDA
 		if r := cuInit(0); r != CUDA_SUCCESS {
