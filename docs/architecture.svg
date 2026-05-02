@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 640" font-family="system-ui,-apple-system,sans-serif">
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: transparent; }
+      .box { fill: #1a1e2a; stroke: #2a3040; stroke-width: 1.5; }
+      .box-blue { fill: #0d1e38; stroke: #2b5cb0; stroke-width: 1.5; }
+      .box-green { fill: #0d2220; stroke: #207060; stroke-width: 1.5; }
+      .box-amber { fill: #221a10; stroke: #a06020; stroke-width: 1.5; }
+      .box-purple { fill: #1a0d28; stroke: #7030a0; stroke-width: 1.5; }
+      .box-red { fill: #280d0d; stroke: #a03030; stroke-width: 1.5; }
+      .box-gpu { fill: #0d2810; stroke: #30a040; stroke-width: 2; }
+      .label { fill: #d0daf0; } .sub { fill: #5070a0; } .perf { fill: #70a050; }
+      .arrow { stroke: #5070a0; } .arrow-gpu { stroke: #30a040; }
+      .title { fill: #e0e8f8; } .zone { fill: #0a0e16; stroke: #1a2030; }
+      .zone-label { fill: #3a4a6a; }
+    }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: transparent; }
+      .box { fill: #ffffff; stroke: #c8d0e0; stroke-width: 1.5; }
+      .box-blue { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1.5; }
+      .box-green { fill: #d1fae5; stroke: #059669; stroke-width: 1.5; }
+      .box-amber { fill: #fef3c7; stroke: #d97706; stroke-width: 1.5; }
+      .box-purple { fill: #ede9fe; stroke: #7c3aed; stroke-width: 1.5; }
+      .box-red { fill: #fee2e2; stroke: #dc2626; stroke-width: 1.5; }
+      .box-gpu { fill: #dcfce7; stroke: #16a34a; stroke-width: 2; }
+      .label { fill: #1a2a40; } .sub { fill: #5070a0; } .perf { fill: #15803d; }
+      .arrow { stroke: #5070a0; } .arrow-gpu { stroke: #16a34a; }
+      .title { fill: #0f172a; } .zone { fill: #f1f5f9; stroke: #cbd5e1; }
+      .zone-label { fill: #94a3b8; }
+    }
+    text { font-family: -apple-system, "Segoe UI", Helvetica, sans-serif; }
+    .label { font-size: 12px; font-weight: 600; }
+    .sub { font-size: 10px; }
+    .perf { font-size: 9px; font-family: "SF Mono", Menlo, monospace; }
+    .title { font-size: 16px; font-weight: 700; }
+    .zone-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  </style>
+  <defs>
+    <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#5070a0" stroke="none"/></marker>
+    <marker id="ahg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#16a34a" stroke="none"/></marker>
+  </defs>
+  <text x="24" y="28" class="title">go-tinygrad Architecture</text>
+  <text x="24" y="44" class="sub">Pure Go + SIMD Assembly + PTX GPU · Zero CGo · Static Binary</text>
+  <g transform="translate(24,60)">
+    <rect x="0" y="0" width="852" height="50" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">User API</text>
+    <rect x="12" y="22" width="160" height="36" rx="5" class="box-purple"/>
+    <text x="92" y="37" class="label" text-anchor="middle">cmd/llmgen</text>
+    <text x="92" y="50" class="perf" text-anchor="middle">-gpu flag</text>
+    <rect x="184" y="22" width="160" height="24" rx="5" class="box-purple"/>
+    <text x="264" y="38" class="label" text-anchor="middle">cmd/tinydemo</text>
+    <rect x="356" y="22" width="240" height="24" rx="5" class="box"/>
+    <text x="476" y="38" class="label" text-anchor="middle">LoadLlama() → Generate()</text>
+    <rect x="608" y="22" width="232" height="24" rx="5" class="box-gpu"/>
+    <text x="724" y="38" class="label" text-anchor="middle">LoadGPUModel() → Generate()</text>
+  </g>
+  <g transform="translate(24,124)">
+    <rect x="0" y="0" width="852" height="110" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">Models (model/)</text>
+    <rect x="12" y="22" width="130" height="36" rx="5" class="box-blue"/>
+    <text x="77" y="37" class="label" text-anchor="middle">BERT Encoder</text>
+    <text x="77" y="50" class="perf" text-anchor="middle">GTE-small · 10.8ms</text>
+    <rect x="154" y="22" width="150" height="36" rx="5" class="box-blue"/>
+    <text x="229" y="37" class="label" text-anchor="middle">LLaMA Decoder</text>
+    <text x="229" y="50" class="perf" text-anchor="middle">RoPE · GQA · KV Cache</text>
+    <rect x="316" y="22" width="120" height="36" rx="5" class="box"/>
+    <text x="376" y="37" class="label" text-anchor="middle">BPE Tokenizer</text>
+    <text x="376" y="50" class="perf" text-anchor="middle">GPT-2 + Qwen</text>
+    <rect x="448" y="22" width="130" height="36" rx="5" class="box"/>
+    <text x="513" y="37" class="label" text-anchor="middle">NN Modules</text>
+    <text x="513" y="50" class="perf" text-anchor="middle">Linear · LayerNorm · Emb</text>
+    <rect x="590" y="22" width="250" height="36" rx="5" class="box-gpu"/>
+    <text x="715" y="37" class="label" text-anchor="middle">GPU Forward Pass</text>
+    <text x="715" y="50" class="perf" text-anchor="middle">DevBuf dispatch · VRAM weights</text>
+    <rect x="12" y="68" width="200" height="30" rx="5" class="box-amber"/>
+    <text x="112" y="87" class="label" text-anchor="middle">GPTQ INT4 Dequant</text>
+    <rect x="224" y="68" width="200" height="30" rx="5" class="box"/>
+    <text x="324" y="87" class="label" text-anchor="middle">Persistent Workspace</text>
+  </g>
+  <g transform="translate(24,248)">
+    <rect x="0" y="0" width="420" height="90" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">Tensor Framework (tensor/)</text>
+    <rect x="12" y="22" width="120" height="30" rx="5" class="box-blue"/>
+    <text x="72" y="41" class="label" text-anchor="middle">UOp DAG</text>
+    <rect x="144" y="22" width="120" height="30" rx="5" class="box-blue"/>
+    <text x="204" y="41" class="label" text-anchor="middle">Fusion Engine</text>
+    <rect x="276" y="22" width="130" height="30" rx="5" class="box-blue"/>
+    <text x="341" y="41" class="label" text-anchor="middle">Pattern Rewrite</text>
+    <rect x="12" y="58" width="120" height="30" rx="5" class="box"/>
+    <text x="72" y="77" class="label" text-anchor="middle">Shape · DType</text>
+    <rect x="144" y="58" width="120" height="30" rx="5" class="box"/>
+    <text x="204" y="77" class="label" text-anchor="middle">Realize · Pool</text>
+    <rect x="276" y="58" width="130" height="30" rx="5" class="box"/>
+    <text x="341" y="77" class="label" text-anchor="middle">16 rewrite rules</text>
+  </g>
+  <g transform="translate(480,248)">
+    <rect x="0" y="0" width="420" height="90" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">Safetensors (safetensors/)</text>
+    <rect x="12" y="22" width="120" height="30" rx="5" class="box-amber"/>
+    <text x="72" y="41" class="label" text-anchor="middle">F16 / BF16 / F32</text>
+    <rect x="144" y="22" width="120" height="30" rx="5" class="box-amber"/>
+    <text x="204" y="41" class="label" text-anchor="middle">Sharded Models</text>
+    <rect x="276" y="22" width="130" height="30" rx="5" class="box-amber"/>
+    <text x="341" y="41" class="label" text-anchor="middle">GPTQ INT4 Meta</text>
+    <rect x="12" y="58" width="394" height="30" rx="5" class="box"/>
+    <text x="209" y="77" class="label" text-anchor="middle">HuggingFace · mmap · GetFloat32/Int32/Raw</text>
+  </g>
+  <g transform="translate(24,352)">
+    <rect x="0" y="0" width="852" height="140" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">GPU Compute (gpu/) — RTX 3060 · 28 SMs · 12GB VRAM</text>
+    <rect x="12" y="22" width="180" height="36" rx="5" class="box-gpu"/>
+    <text x="102" y="37" class="label" text-anchor="middle">DevBuf</text>
+    <text x="102" y="50" class="perf" text-anchor="middle">CPU↔GPU · Lazy · MarkDirty</text>
+    <rect x="204" y="22" width="410" height="36" rx="5" class="box-gpu"/>
+    <text x="409" y="37" class="label" text-anchor="middle">PTX Kernels (8 total)</text>
+    <text x="409" y="50" class="perf" text-anchor="middle">sgemm 348G · q4 197µs · add · mul · scale · silu · rmsnorm</text>
+    <rect x="626" y="22" width="214" height="36" rx="5" class="box-green"/>
+    <text x="733" y="37" class="label" text-anchor="middle">purego CUDA Driver</text>
+    <text x="733" y="50" class="perf" text-anchor="middle">dlopen(libcuda.so.1) · 14 funcs</text>
+    <rect x="12" y="78" width="300" height="36" rx="5" class="box-red"/>
+    <text x="162" y="93" class="label" text-anchor="middle">NV Direct ioctl</text>
+    <text x="162" y="106" class="perf" text-anchor="middle">/dev/nvidia* · RM · UUID · 84 SMs · Channel</text>
+    <rect x="324" y="78" width="290" height="36" rx="5" class="box-gpu"/>
+    <text x="469" y="93" class="label" text-anchor="middle">GPU INT4 Weight Store</text>
+    <text x="469" y="106" class="perf" text-anchor="middle">3.2GB VRAM for 7B · Fused dequant</text>
+    <rect x="626" y="78" width="214" height="36" rx="5" class="box"/>
+    <text x="733" y="93" class="label" text-anchor="middle">CPU SIMD Fallback</text>
+    <text x="733" y="106" class="perf" text-anchor="middle">AVX2+FMA (amd64) · NEON (arm64)</text>
+  </g>
+  <g transform="translate(24,506)">
+    <rect x="0" y="0" width="852" height="50" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">Hardware</text>
+    <rect x="12" y="22" width="200" height="24" rx="5" class="box-green"/>
+    <text x="112" y="38" class="label" text-anchor="middle">RTX 3060 · 12GB VRAM</text>
+    <rect x="224" y="22" width="200" height="24" rx="5" class="box"/>
+    <text x="324" y="38" class="label" text-anchor="middle">6-core CPU · 64GB RAM</text>
+    <rect x="436" y="22" width="200" height="24" rx="5" class="box"/>
+    <text x="536" y="38" class="label" text-anchor="middle">Proxmox VM (borg)</text>
+    <rect x="648" y="22" width="192" height="24" rx="5" class="box"/>
+    <text x="744" y="38" class="label" text-anchor="middle">GPU Passthrough PCIe</text>
+  </g>
+  <g transform="translate(24,570)">
+    <rect x="0" y="0" width="852" height="60" rx="8" class="zone"/>
+    <text x="12" y="14" class="zone-label">Performance</text>
+    <rect x="12" y="22" width="160" height="36" rx="5" class="box-blue"/>
+    <text x="92" y="37" class="label" text-anchor="middle">SmolLM2-135M</text>
+    <text x="92" y="50" class="perf" text-anchor="middle">28 tok/s · 35ms</text>
+    <rect x="184" y="22" width="160" height="36" rx="5" class="box-amber"/>
+    <text x="264" y="37" class="label" text-anchor="middle">Qwen2.5-7B INT4</text>
+    <text x="264" y="50" class="perf" text-anchor="middle">1.0 tok/s · 1009ms</text>
+    <rect x="356" y="22" width="160" height="36" rx="5" class="box-green"/>
+    <text x="436" y="37" class="label" text-anchor="middle">GPU SGEMM</text>
+    <text x="436" y="50" class="perf" text-anchor="middle">348 GFLOPS · 1024²</text>
+    <rect x="528" y="22" width="160" height="36" rx="5" class="box-green"/>
+    <text x="608" y="37" class="label" text-anchor="middle">GPU Q4 GEMV</text>
+    <text x="608" y="50" class="perf" text-anchor="middle">197µs · 3584² · 1.7e-6</text>
+    <rect x="700" y="22" width="140" height="36" rx="5" class="box-blue"/>
+    <text x="770" y="37" class="label" text-anchor="middle">GTE-small</text>
+    <text x="770" y="50" class="perf" text-anchor="middle">10.8ms · 0 allocs</text>
+  </g>
+  <line x1="234" y1="110" x2="234" y2="124" class="arrow" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="500" y1="110" x2="500" y2="124" class="arrow" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="234" y1="234" x2="234" y2="248" class="arrow" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="666" y1="234" x2="666" y2="248" class="arrow" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="450" y1="338" x2="450" y2="352" class="arrow-gpu" stroke-width="1.5" marker-end="url(#ahg)"/>
+</svg>
