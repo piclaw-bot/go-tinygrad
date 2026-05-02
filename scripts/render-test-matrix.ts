@@ -37,7 +37,7 @@ const sections: Section[] = [
       { name: "Tensor DAG + Realize",       cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "48", perf: "—",              note: "Lazy eval" },
       { name: "Elementwise Fusion",          cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "✓",  perf: "2× chained ops", note: "Fuse engine" },
       { name: "Pattern Rewrite (16 rules)",  cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "✓",  perf: "const fold",     note: "tinygrad-style" },
-      { name: "NumPy Reference Tests",       cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "20", perf: "<1e-5 diff",     note: "Ground truth" },
+      { name: "NumPy Reference Tests",       cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "20", perf: "&lt;1e-5 diff",     note: "Ground truth" },
     ]
   },
   {
@@ -96,6 +96,8 @@ const ROW_TINT_DARK: Record<string, string> = {
 };
 
 // --- Layout ---
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 const W = 920, ROW_H = 22, SEC_H = 20, HDR_H = 26, PAD = 8;
 const COL = { name: 24, cpu: 230, gpu: 310, nv: 440, tests: 555, perf: 610, note: 800 };
 
@@ -206,19 +208,19 @@ y += HDR_H;
 for (const sec of sections) {
   y += 4;
   svg += `  <rect x="${PAD}" y="${y}" width="${W - PAD*2}" height="${SEC_H}" rx="3" class="sec-bg"/>\n`;
-  svg += `  <text x="16" y="${y + 14}" class="sec-title">${sec.title}</text>\n`;
+  svg += `  <text x="16" y="${y + 14}" class="sec-title">${esc(sec.title)}</text>\n`;
   y += SEC_H;
 
   for (const row of sec.rows) {
     // Row background tint by target
     svg += `  <rect x="${PAD}" y="${y}" width="${W - PAD*2}" height="${ROW_H}" rx="2" class="row-${row.target}"/>\n`;
-    svg += `  <text x="${COL.name}" y="${y+15}" class="cell">${row.name}</text>`;
+    svg += `  <text x="${COL.name}" y="${y+15}" class="cell">${esc(row.name)}</text>`;
     svg += `<circle cx="${COL.cpu + 16}" cy="${y+11}" r="5" class="${row.cpu}"/>`;
     svg += `<circle cx="${COL.gpu + 40}" cy="${y+11}" r="5" class="${row.gpu}"/>`;
     svg += `<circle cx="${COL.nv + 40}" cy="${y+11}" r="5" class="${row.nv}"/>`;
-    svg += `<text x="${COL.tests}" y="${y+15}" class="perf">${row.tests}</text>`;
-    svg += `<text x="${COL.perf}" y="${y+15}" class="perf">${row.perf}</text>`;
-    svg += `<text x="${COL.note}" y="${y+15}" class="note">${row.note}</text>\n`;
+    svg += `<text x="${COL.tests}" y="${y+15}" class="perf">${esc(row.tests)}</text>`;
+    svg += `<text x="${COL.perf}" y="${y+15}" class="perf">${esc(row.perf)}</text>`;
+    svg += `<text x="${COL.note}" y="${y+15}" class="note">${esc(row.note)}</text>\n`;
     y += ROW_H;
   }
 }

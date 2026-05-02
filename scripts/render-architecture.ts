@@ -27,6 +27,7 @@ interface Zone {
   label: string; boxes: Box[];
 }
 
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const W = 900, PAD = 24;
 const ZW = W - PAD * 2; // zone width
 
@@ -72,8 +73,8 @@ const STYLE = `
 function renderBox(b: Box): string {
   const cx = b.x + b.w / 2;
   let s = `    <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="5" class="${b.cls}"/>\n`;
-  s += `    <text x="${cx}" y="${b.y + (b.sub ? 15 : b.h / 2 + 4)}" class="label" text-anchor="middle">${b.label}</text>\n`;
-  if (b.sub) s += `    <text x="${cx}" y="${b.y + 28}" class="perf" text-anchor="middle">${b.sub}</text>\n`;
+  s += `    <text x="${cx}" y="${b.y + (b.sub ? 15 : b.h / 2 + 4)}" class="label" text-anchor="middle">${esc(b.label)}</text>\n`;
+  if (b.sub) s += `    <text x="${cx}" y="${b.y + 28}" class="perf" text-anchor="middle">${esc(b.sub)}</text>\n`;
   return s;
 }
 
