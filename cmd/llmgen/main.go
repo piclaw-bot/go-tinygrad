@@ -13,6 +13,7 @@ func main() {
 	dir := flag.String("model", "", "model directory")
 	prompt := flag.String("prompt", "The meaning of life is", "input prompt")
 	tokens := flag.Int("tokens", 50, "tokens to generate")
+	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
 	flag.Parse()
 
 	if *dir == "" {
@@ -37,11 +38,26 @@ func main() {
 	}
 
 	ids := tok.Encode(*prompt)
+
+	var gpuMod *model.GPUModel
+	if *useGPU {
+		var err error
+		gpuMod, err = model.LoadGPUModel(m)
+		if err != nil {
+			fmt.Printf("GPU model failed: %v (falling back to CPU)\n", err)
+		}
+	}
+
 	fmt.Printf("Prompt: '%s' (%d tokens)\n", *prompt, len(ids))
 	fmt.Printf("Generating %d tokens...\n\n", *tokens)
 
 	start := time.Now()
-	output := m.Generate(ids, *tokens)
+	var output []int
+	if gpuMod != nil {
+		output = append(ids, gpuMod.Generate(ids, *tokens)...)
+	} else {
+		output = m.Generate(ids, *tokens)
+	}
 	elapsed := time.Since(start)
 
 	generated := output[len(ids):]

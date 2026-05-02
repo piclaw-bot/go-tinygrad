@@ -458,6 +458,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			for i := range hidden {
 				hidden[i] = residual[i] + down[i]
 			}
+			if l == 0 && step == 0 {
+			}
 		}
 
 		// Final norm

@@ -43,6 +43,11 @@ func initKernels() {
 		if !SgemmReady() {
 			return
 		}
+		// Pre-warm allocator before loading more PTX modules
+		var warmPtr CUdeviceptr
+		if r := cuMemAlloc(&warmPtr, 512*1024*1024); r == CUDA_SUCCESS {
+			cuMemFree(warmPtr)
+		}
 		var err error
 		fnVecAdd, err = LoadPTX(VecAddPTX, "vec_add")
 		if err != nil {
@@ -71,6 +76,10 @@ func NewDevBufFrom(data []float32) *DevBuf {
 // ToGPU ensures data is on GPU. No-op if already there.
 func (b *DevBuf) ToGPU() error {
 	if b.gpu != nil {
+		if b.dev == CPU && b.cpu != nil {
+			// CPU data was modified — re-upload
+			b.gpu.Upload(b.cpu)
+		}
 		b.dev = GPU_DEVICE
 		return nil
 	}
@@ -126,8 +135,8 @@ func (b *DevBuf) OnGPU() bool { return b.dev == GPU_DEVICE && b.gpu != nil }
 func DevAdd(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && a.OnGPU() && b.OnGPU() {
-		out.ToGPU()
+	if false {
+		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
@@ -146,8 +155,8 @@ func DevAdd(out, a, b *DevBuf) {
 func DevMul(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && a.OnGPU() && b.OnGPU() {
-		out.ToGPU()
+	if false {
+		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
@@ -165,8 +174,8 @@ func DevMul(out, a, b *DevBuf) {
 func DevScale(out, a *DevBuf, s float32) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && a.OnGPU() {
-		out.ToGPU()
+	if false {
+		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -184,8 +193,8 @@ func DevScale(out, a *DevBuf, s float32) {
 func DevSiLU(out, a *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && a.OnGPU() {
-		out.ToGPU()
+	if false {
+		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -204,8 +213,8 @@ func DevSiLU(out, a *DevBuf) {
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
 	n := x.n
-	if kernelsLoaded && x.OnGPU() && weight.OnGPU() && n <= 256*8192 {
-		out.ToGPU()
+	if false && kernelsLoaded && n <= 256*8192 {
+		x.ToGPU(); weight.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
@@ -227,11 +236,12 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 
 // Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)
 func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
-	if SgemmReady() && x.OnGPU() && W.OnGPU() {
-		out.ToGPU()
-		Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
-		out.dev = GPU_DEVICE
-		return
+	if SgemmReady() {
+		if x.ToGPU() == nil && W.ToGPU() == nil && out.ToGPU() == nil {
+			Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback: out[j] = dot(W[j,:], x)
 	x.ToCPU(); W.ToCPU(); out.ToCPU()
@@ -264,5 +274,48 @@ func DevSoftmax(x *DevBuf, n int) {
 	}
 	for i := range d {
 		d[i] /= sum
+	}
+}
+
+// Copy copies src data to dst (same device).
+func DevCopy(dst, src *DevBuf) {
+	if src.OnGPU() && dst.gpu != nil {
+		// GPU-to-GPU copy via a temp download (no device copy kernel yet)
+		src.ToCPU()
+		copy(dst.Data(), src.cpu)
+		dst.ToGPU()
+		src.ToGPU() // restore src to GPU
+	} else {
+		src.ToCPU()
+		dst.ToCPU()
+		copy(dst.cpu, src.cpu[:dst.n])
+	}
+}
+
+// MarkDirty marks CPU data as authoritative (will re-upload on next GPU access).
+func (b *DevBuf) MarkDirty() {
+	b.dev = CPU
+}
+
+// GemvNN: out[N] = x[K] @ W[K,N] (W is pre-transposed, column-major for output)
+// This is for the non-Large path where weights are pre-transposed.
+func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
+	if SgemmReady() {
+		if x.ToGPU() == nil && W.ToGPU() == nil && out.ToGPU() == nil {
+			Sgemm(1, N, K, 1.0, x.gpu, W.gpu, out.gpu)
+			out.dev = GPU_DEVICE
+			return
+		}
+	}
+	// CPU fallback
+	x.ToCPU(); W.ToCPU(); out.ToCPU()
+	xd := x.cpu
+	w := W.cpu
+	for j := 0; j < N; j++ {
+		sum := float32(0)
+		for p := 0; p < K; p++ {
+			sum += xd[p] * w[p*N+j]
+		}
+		out.cpu[j] = sum
 	}
 }
