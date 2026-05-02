@@ -105,6 +105,7 @@ func (b *DevBuf) ToCPU() {
 	}
 	if b.gpu != nil && b.dev == GPU_DEVICE {
 		Sync()
+		Sync()
 		b.gpu.Download(b.cpu)
 	}
 	b.dev = CPU
@@ -152,7 +153,7 @@ func tryGPU(bufs ...*DevBuf) bool {
 func DevAdd(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if false {
+	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
 		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -172,7 +173,7 @@ func DevAdd(out, a, b *DevBuf) {
 func DevMul(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if false {
+	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
 		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -191,7 +192,7 @@ func DevMul(out, a, b *DevBuf) {
 func DevScale(out, a *DevBuf, s float32) {
 	initKernels()
 	n := a.n
-	if false {
+	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
 		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -210,7 +211,7 @@ func DevScale(out, a *DevBuf, s float32) {
 func DevSiLU(out, a *DevBuf) {
 	initKernels()
 	n := a.n
-	if false {
+	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
 		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -230,7 +231,7 @@ func DevSiLU(out, a *DevBuf) {
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
 	n := x.n
-	if false && kernelsLoaded && n <= 256*8192 {
+	if kernelsLoaded && n >= 2048 && n <= 256*8192 {
 		x.ToGPU(); weight.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
@@ -301,6 +302,7 @@ func DevCopy(dst, src *DevBuf) {
 		src.ToGPU()
 		dst.ToGPU()
 		cuMemcpyDtoD(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4))
+		Sync()
 		dst.dev = GPU_DEVICE
 		return
 	}
@@ -410,5 +412,6 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 // CopyDtoD wraps cuMemcpyDtoD for direct GPU→GPU copy.
 func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
 	EnsureContext()
+	Sync() // ensure pending ops complete before copy
 	cuMemcpyDtoD(dst, src, bytes)
 }
