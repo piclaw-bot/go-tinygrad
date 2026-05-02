@@ -52,18 +52,20 @@ const sections: Section[] = [
     rows: [
       { name: "BERT Encoder (GTE-small)",    cpu: "pass", gpu: "na",   nv: "na", target: "simd", tests: "6",  perf: "10.8ms, 0 alloc", note: "AVX2 SGEMM" },
       { name: "LLaMA (SmolLM2-135M)",        cpu: "pass", gpu: "warn", nv: "na", target: "both", tests: "✓",  perf: "CPU 35 GPU 50ms", note: "h=576" },
-      { name: "LLaMA (Qwen2.5-7B INT4)",     cpu: "pass", gpu: "warn", nv: "na", target: "both", tests: "✓",  perf: "CPU 1009ms/tok",  note: "GPTQ 5GB" },
+      { name: "LLaMA (Qwen2.5-7B INT4)",     cpu: "pass", gpu: "pass", nv: "na", target: "both", tests: "✓",  perf: "CPU 1005 GPU 518ms", note: "1.9× speedup" },
       { name: "BPE Tokenizer",               cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "✓",  perf: "GPT-2 + Qwen",   note: "Str + array" },
     ]
   },
   {
-    title: "GPU Compute (gpu/) — PTX kernels + purego CUDA",
+    title: "GPU Compute (gpu/) — 10 PTX kernels + purego CUDA",
     rows: [
-      { name: "SGEMM (16×16 tiled PTX)",     cpu: "pass", gpu: "pass", nv: "na", target: "gpu",  tests: "4",  perf: "348 GFLOPS",     note: "Shared mem" },
+      { name: "SGEMM (16×16 tiled PTX)",     cpu: "pass", gpu: "pass", nv: "na", target: "gpu",  tests: "1",  perf: "348 GFLOPS",     note: "Shared mem" },
       { name: "INT4 Fused Dequant+GEMV",      cpu: "pass", gpu: "pass", nv: "na", target: "gpu",  tests: "✓",  perf: "197µs 3584²",    note: "8× unroll" },
       { name: "vec_add / vec_mul / vec_scale", cpu: "pass", gpu: "pass", nv: "na", target: "both", tests: "4",  perf: "Thresh ≥2048",   note: "Auto fallback" },
       { name: "vec_silu (SiLU activation)",    cpu: "pass", gpu: "pass", nv: "na", target: "both", tests: "✓",  perf: "exp2 approx",    note: "x·σ(x)" },
       { name: "rms_norm (shared mem reduce)",  cpu: "pass", gpu: "pass", nv: "na", target: "both", tests: "✓",  perf: "256-thread",     note: "rsqrt approx" },
+      { name: "RoPE (cos/sin approx PTX)",    cpu: "pass", gpu: "pass", nv: "na", target: "gpu",  tests: "✓",  perf: "cos.approx",     note: "In-place rotate" },
+      { name: "GQA Attention (per-head PTX)",  cpu: "pass", gpu: "pass", nv: "na", target: "gpu",  tests: "✓",  perf: "softmax+V weight", note: "Shared scores[]" },
       { name: "DevBuf (CPU↔GPU dispatch)",     cpu: "pass", gpu: "pass", nv: "na", target: "both", tests: "4",  perf: "Lazy, MarkDirty", note: "tinygrad" },
     ]
   },
@@ -169,7 +171,7 @@ svg += `  <rect width="${W}" height="${totalH}" rx="10" class="bg"/>\n`;
 
 // Title
 svg += `  <text x="24" y="28" class="title">go-tinygrad Test Matrix</text>\n`;
-svg += `  <text x="24" y="44" class="subtitle">Pure Go + PTX · RTX 3060 12GB · 7 packages · 66 tests</text>\n`;
+svg += `  <text x="24" y="44" class="subtitle">Pure Go + PTX · RTX 3060 12GB · 7 packages · 67 tests · 10 kernels</text>\n`;
 
 // Legend — execution target colours
 const legendItems = [
@@ -228,7 +230,7 @@ for (const sec of sections) {
 // Footer
 y += 8;
 svg += `  <rect x="${PAD}" y="${y}" width="${W - PAD*2}" height="28" rx="6" class="footer-bg"/>\n`;
-svg += `  <text x="24" y="${y+18}" class="footer-text">66 tests · 7.0K lines Go · 8 PTX kernels · 2 GPU paths · RTX 3060 @ 348 GFLOPS · Qwen2.5-7B @ 1 tok/s · SmolLM2-135M @ 28 tok/s</text>\n`;
+svg += `  <text x="24" y="${y+18}" class="footer-text">67 tests · 7.2K lines Go · 10 PTX kernels · tensor 72% · model 61% · gpu 23% · 7B GPU 518ms (1.9×) · 135M CPU 36ms (28 tok/s)</text>\n`;
 
 svg += `</svg>\n`;
 
