@@ -124,17 +124,6 @@ func Init() bool {
 			return
 		}
 
-		// Pre-allocate GPU memory pool (must happen before PTX load)
-		var testPtr CUdeviceptr
-		testSize := uint64(512 * 1024 * 1024) // Try 512MB
-		for testSize >= 64*1024*1024 {
-			if r := cuMemAlloc(&testPtr, testSize); r == CUDA_SUCCESS {
-				cuMemFree(testPtr)
-				break
-			}
-			testSize /= 2
-		}
-
 		gpuOK = true
 		fmt.Printf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
 	})

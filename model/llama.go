@@ -329,10 +329,6 @@ func (m *LlamaModel) mvQ(out, x []float32, qw *QuantWeight) {
 
 func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 	if m.Large {
-		// Try GPU for NT (W is [outDim, inDim])
-		if gemvGPU(out, x, w, inDim, outDim) {
-			return
-		}
 		gemvNT(out, x, w, inDim, outDim)
 	} else {
 		gemv(out, x, w, inDim, outDim)

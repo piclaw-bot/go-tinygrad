@@ -1,0 +1,268 @@
+package gpu
+
+// Device-agnostic compute buffer — tinygrad approach.
+// Data lives on either CPU or GPU. Ops dispatch to the right backend.
+// Transfers happen lazily when needed.
+
+import (
+	"fmt"
+	"math"
+	"sync"
+	"unsafe"
+)
+
+// Device represents where data lives.
+type Device int
+
+const (
+	CPU Device = iota
+	GPU_DEVICE
+)
+
+// DevBuf is a device-agnostic buffer that can live on CPU or GPU.
+type DevBuf struct {
+	cpu  []float32  // CPU data (nil if GPU-only)
+	gpu  *Buffer    // GPU data (nil if CPU-only)
+	n    int        // number of float32 elements
+	dev  Device     // current authoritative location
+}
+
+// Kernel function pointers (loaded once)
+var (
+	kernelsOnce   sync.Once
+	kernelsLoaded bool
+	fnVecAdd      CUfunction
+	fnVecMul      CUfunction
+	fnVecScale    CUfunction
+	fnVecSilu     CUfunction
+	fnRmsNorm     CUfunction
+)
+
+func initKernels() {
+	kernelsOnce.Do(func() {
+		if !SgemmReady() {
+			return
+		}
+		var err error
+		fnVecAdd, err = LoadPTX(VecAddPTX, "vec_add")
+		if err != nil {
+			fmt.Printf("[gpu] vec_add failed: %v\n", err)
+			return
+		}
+		fnVecMul, _ = LoadPTX(VecMulPTX, "vec_mul")
+		fnVecScale, _ = LoadPTX(VecScalePTX, "vec_scale")
+		fnVecSilu, _ = LoadPTX(VecSiLUPTX, "vec_silu")
+		fnRmsNorm, _ = LoadPTX(RmsNormPTX, "rms_norm")
+		kernelsLoaded = true
+		fmt.Println("[gpu] Element-wise kernels loaded (add, mul, scale, silu, rmsnorm)")
+	})
+}
+
+// NewDevBuf creates a CPU buffer.
+func NewDevBuf(n int) *DevBuf {
+	return &DevBuf{cpu: make([]float32, n), n: n, dev: CPU}
+}
+
+// NewDevBufFrom wraps existing CPU data.
+func NewDevBufFrom(data []float32) *DevBuf {
+	return &DevBuf{cpu: data, n: len(data), dev: CPU}
+}
+
+// ToGPU ensures data is on GPU. No-op if already there.
+func (b *DevBuf) ToGPU() error {
+	if b.gpu != nil {
+		b.dev = GPU_DEVICE
+		return nil
+	}
+	if !SgemmReady() {
+		return fmt.Errorf("GPU not available")
+	}
+	var err error
+	b.gpu, err = Malloc(b.n)
+	if err != nil {
+		return err
+	}
+	if b.cpu != nil {
+		b.gpu.Upload(b.cpu)
+	}
+	b.dev = GPU_DEVICE
+	return nil
+}
+
+// ToCPU ensures data is on CPU. No-op if already there.
+func (b *DevBuf) ToCPU() {
+	if b.cpu == nil {
+		b.cpu = make([]float32, b.n)
+	}
+	if b.gpu != nil && b.dev == GPU_DEVICE {
+		b.gpu.Download(b.cpu)
+	}
+	b.dev = CPU
+}
+
+// Data returns CPU-side data (downloading from GPU if needed).
+func (b *DevBuf) Data() []float32 {
+	b.ToCPU()
+	return b.cpu
+}
+
+// GPUPtr returns the GPU buffer, uploading if needed.
+func (b *DevBuf) GPUPtr() *Buffer {
+	if b.gpu == nil {
+		b.ToGPU()
+	}
+	return b.gpu
+}
+
+// Len returns element count.
+func (b *DevBuf) Len() int { return b.n }
+
+// OnGPU returns true if data is authoritatively on GPU.
+func (b *DevBuf) OnGPU() bool { return b.dev == GPU_DEVICE && b.gpu != nil }
+
+// --- Ops: dispatch to GPU if possible, CPU fallback ---
+
+// Add: out = a + b (element-wise)
+func DevAdd(out, a, b *DevBuf) {
+	initKernels()
+	n := a.n
+	if kernelsLoaded && a.OnGPU() && b.OnGPU() {
+		out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback
+	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	for i := 0; i < n; i++ {
+		out.cpu[i] = a.cpu[i] + b.cpu[i]
+	}
+}
+
+// Mul: out = a * b (element-wise)
+func DevMul(out, a, b *DevBuf) {
+	initKernels()
+	n := a.n
+	if kernelsLoaded && a.OnGPU() && b.OnGPU() {
+		out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	for i := 0; i < n; i++ {
+		out.cpu[i] = a.cpu[i] * b.cpu[i]
+	}
+}
+
+// Scale: out = a * scalar
+func DevScale(out, a *DevBuf, s float32) {
+	initKernels()
+	n := a.n
+	if kernelsLoaded && a.OnGPU() {
+		out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&s), unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	a.ToCPU(); out.ToCPU()
+	for i := 0; i < n; i++ {
+		out.cpu[i] = a.cpu[i] * s
+	}
+}
+
+// SiLU: out = a * sigmoid(a)
+func DevSiLU(out, a *DevBuf) {
+	initKernels()
+	n := a.n
+	if kernelsLoaded && a.OnGPU() {
+		out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	a.ToCPU(); out.ToCPU()
+	for i := 0; i < n; i++ {
+		x := a.cpu[i]
+		out.cpu[i] = x / (1.0 + float32(math.Exp(float64(-x))))
+	}
+}
+
+// RMSNorm: out = x * weight * rsqrt(mean(x^2) + eps)
+func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
+	initKernels()
+	n := x.n
+	if kernelsLoaded && x.OnGPU() && weight.OnGPU() && n <= 256*8192 {
+		out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
+			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn), unsafe.Pointer(&eps))
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback
+	x.ToCPU(); weight.ToCPU(); out.ToCPU()
+	var ss float32
+	for _, v := range x.cpu[:n] {
+		ss += v * v
+	}
+	ss = 1.0 / float32(math.Sqrt(float64(ss/float32(n)+eps)))
+	for i := 0; i < n; i++ {
+		out.cpu[i] = x.cpu[i] * ss * weight.cpu[i]
+	}
+}
+
+// Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)
+func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
+	if SgemmReady() && x.OnGPU() && W.OnGPU() {
+		out.ToGPU()
+		Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback: out[j] = dot(W[j,:], x)
+	x.ToCPU(); W.ToCPU(); out.ToCPU()
+	w := W.cpu
+	xd := x.cpu
+	for j := 0; j < M; j++ {
+		sum := float32(0)
+		row := w[j*K : (j+1)*K]
+		for p := 0; p < K; p++ {
+			sum += xd[p] * row[p]
+		}
+		out.cpu[j] = sum
+	}
+}
+
+// Softmax in-place (CPU only for now — sequential reduction)
+func DevSoftmax(x *DevBuf, n int) {
+	x.ToCPU()
+	d := x.cpu[:n]
+	max := d[0]
+	for _, v := range d[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	var sum float32
+	for i, v := range d {
+		d[i] = float32(math.Exp(float64(v - max)))
+		sum += d[i]
+	}
+	for i := range d {
+		d[i] /= sum
+	}
+}
