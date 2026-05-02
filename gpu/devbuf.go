@@ -416,3 +416,10 @@ func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
 	Sync() // ensure pending ops complete before copy
 	cuMemcpyDtoD(dst, src, bytes)
 }
+
+// InitAllKernels pre-loads all GPU kernels. Call from the CUDA-owning thread.
+func InitAllKernels() {
+	initKernels()
+	initRoPEAttn()
+	initQ4()
+}
