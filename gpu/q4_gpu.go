@@ -57,9 +57,9 @@ func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim in
 
 	groups := len(scales) / outDim
 
-	qwBuf, err := Malloc(len(qweight)) // int32 same size as float32
+	qwBuf, err := Malloc(len(qweight))
 	if err != nil {
-		return nil, fmt.Errorf("alloc qweight: %w", err)
+		return nil, fmt.Errorf("alloc qweight (%d): %w", len(qweight)*4, err)
 	}
 	// Upload int32 as raw bytes
 	qwBuf.Upload(int32ToFloat32(qweight))
@@ -89,21 +89,12 @@ func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim in
 // GemvQ4 computes out[outDim] = x[inDim] @ dequant(W) on GPU.
 func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 	if !q4Ready {
-		// CPU fallback
 		gemvQ4CPU(out, x, w)
 		return
 	}
 
-	Sync() // ensure GPU ops complete before reading x
-	x.ToCPU() // ensure current
-	if x.gpu == nil {
-		x.ToGPU()
-	} else if x.dev == CPU {
-		x.gpu.Upload(x.cpu)
-	}
-	if out.gpu == nil {
-		out.ToGPU()
-	}
+	x.ToGPU()
+	out.EnsureGPU()
 
 	if x.gpu == nil || out.gpu == nil {
 		gemvQ4CPU(out, x, w)
@@ -124,7 +115,8 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups))
 
-	out.dev = GPU_DEVICE // keep on GPU — downstream ops will download if needed
+	
+	out.dev = GPU_DEVICE
 }
 
 // CPU fallback for INT4 GEMV

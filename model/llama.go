@@ -72,6 +72,10 @@ type LlamaLayer struct {
 }
 
 // LoadLlama loads a LLaMA-style model from safetensors + config.json.
+// ForceOnTheFly controls whether quantized models keep INT4 packed weights.
+// Set to true before LoadLlama when using GPU forward pass (GPU Q4 GEMV needs packed weights).
+var ForceOnTheFly bool
+
 func LoadLlama(dir string) (*LlamaModel, error) {
 	// Load config
 	cfgData, err := os.ReadFile(dir + "/config.json")
@@ -132,14 +136,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	// F32 dequant needs ~4× model_params bytes. For 7B = ~28GB.
 	// On-the-fly keeps INT4 packed (~4GB for 7B) but inference is 20× slower.
 	// If GPU is available and model is quantized, keep INT4 packed for GPU upload
-	onTheFly := false
-	if cfg.QuantBits > 0 {
-		// Check if GPU INT4 kernel is available
-		// Import would create circular dep, so check via env or flag
-		// For now: always keep packed if quantized (GPU or not, on-the-fly CPU is slower
-		// but GPU path needs packed weights)
-		onTheFly = false // keep packed INT4 for GPU upload
-	}
+	// OnTheFlyQuant: keep INT4 packed (for GPU upload) vs dequant-at-load (fast CPU).
+	// Set ForceOnTheFly=true before LoadLlama when using GPU forward pass.
+	onTheFly := ForceOnTheFly && cfg.QuantBits > 0
 	m.OnTheFlyQuant = onTheFly
 
 	load := func(name string, shape []int) *tensor.Tensor {

@@ -233,6 +233,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if l == 0 && step == 0 {
 				gpu.Sync()
 			}
+			if l == 0 && step == 0 {
+				gpu.Sync()
+			}
 			// Bias (GPU add or CPU)
 			
 			if layer.QB != nil {

@@ -16,6 +16,10 @@ func main() {
 	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
 	flag.Parse()
 
+	if *useGPU {
+		model.ForceOnTheFly = true
+	}
+
 	if *dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: llmgen -model <dir> [-prompt text] [-tokens N]")
 		os.Exit(1)

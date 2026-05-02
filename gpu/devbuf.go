@@ -116,6 +116,12 @@ func (b *DevBuf) Data() []float32 {
 	return b.cpu
 }
 
+// EnsureGPU ensures GPU buffer exists without uploading CPU data.
+func (b *DevBuf) EnsureGPU() error {
+	if b.gpu != nil { return nil }
+	return b.ToGPU()
+}
+
 // GPUPtr returns the GPU buffer, uploading if needed.
 func (b *DevBuf) GPUPtr() *Buffer {
 	if b.gpu == nil {
@@ -290,7 +296,7 @@ func DevSoftmax(x *DevBuf, n int) {
 
 // Copy copies src data to dst (same device).
 func DevCopy(dst, src *DevBuf) {
-	if src.gpu != nil && dst.gpu != nil && src.n >= 4096 {
+	if src.gpu != nil && dst.gpu != nil && src.n >= 2048 {
 		// GPU-to-GPU copy via cuMemcpyDtoD
 		src.ToGPU()
 		dst.ToGPU()

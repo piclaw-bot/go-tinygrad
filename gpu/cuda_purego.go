@@ -44,6 +44,7 @@ var (
 	cuModuleGetFunction  func(*CUfunction, CUmodule, unsafe.Pointer) CUresult
 	cuLaunchKernel       func(CUfunction, uint32, uint32, uint32, uint32, uint32, uint32, uint32, uintptr, unsafe.Pointer, unsafe.Pointer) CUresult
 	cuCtxSynchronize     func() CUresult
+	cuCtxSetCurrent      func(CUcontext) CUresult
 	cuMemcpyDtoD         func(CUdeviceptr, CUdeviceptr, uint64) CUresult
 )
 
@@ -94,6 +95,7 @@ func Init() bool {
 		regFn(&cuModuleGetFunction, lib, "cuModuleGetFunction")
 		regFn(&cuLaunchKernel, lib, "cuLaunchKernel")
 		regFn(&cuCtxSynchronize, lib, "cuCtxSynchronize")
+		regFn(&cuCtxSetCurrent, lib, "cuCtxSetCurrent")
 		regFn(&cuMemcpyDtoD, lib, "cuMemcpyDtoD_v2", "cuMemcpyDtoD")
 
 		// Initialize CUDA
@@ -134,6 +136,13 @@ func Init() bool {
 	return gpuOK
 }
 
+// EnsureContext sets the CUDA context on the calling thread.
+func EnsureContext() {
+	if gpuOK && gpuCtx != 0 && cuCtxSetCurrent != nil {
+		cuCtxSetCurrent(gpuCtx)
+	}
+}
+
 // Available returns true if CUDA GPU is accessible.
 func Available() bool {
 	return Init()
@@ -153,6 +162,7 @@ type Buffer struct {
 
 // Malloc allocates GPU memory for n float32s.
 func Malloc(n int) (*Buffer, error) {
+	EnsureContext()
 	var ptr CUdeviceptr
 	size := uint64(n * 4)
 	if r := cuMemAlloc(&ptr, size); r != CUDA_SUCCESS {
@@ -171,6 +181,7 @@ func (b *Buffer) Free() {
 
 // Upload copies host data to GPU.
 func (b *Buffer) Upload(data []float32) error {
+	EnsureContext()
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
 	if r != CUDA_SUCCESS {
@@ -181,6 +192,7 @@ func (b *Buffer) Upload(data []float32) error {
 
 // Download copies GPU data to host.
 func (b *Buffer) Download(data []float32) error {
+	EnsureContext()
 	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
@@ -191,6 +203,7 @@ func (b *Buffer) Download(data []float32) error {
 
 // Sync waits for all GPU operations to complete.
 func Sync() {
+	EnsureContext()
 	cuCtxSynchronize()
 }
 
