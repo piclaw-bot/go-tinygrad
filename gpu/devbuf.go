@@ -336,3 +336,79 @@ func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
 		out.cpu[j] = sum
 	}
 }
+
+// --- GPU RoPE + Attention ---
+
+var (
+	ropeOnce   sync.Once
+	ropeFn     CUfunction
+	attnFn     CUfunction
+	ropeReady  bool
+	attnReady  bool
+)
+
+func initRoPEAttn() {
+	ropeOnce.Do(func() {
+		if !SgemmReady() { return }
+		var warmPtr CUdeviceptr
+		if r := cuMemAlloc(&warmPtr, 256*1024*1024); r == CUDA_SUCCESS { cuMemFree(warmPtr) }
+		var err error
+		ropeFn, err = LoadPTX(RoPEPTX, "rope_apply")
+		if err != nil { fmt.Printf("[gpu] RoPE kernel failed: %v\n", err); return }
+		ropeReady = true
+		attnFn, err = LoadPTX(AttentionPTX, "gqa_attention")
+		if err != nil { fmt.Printf("[gpu] Attention kernel failed: %v\n", err); return }
+		attnReady = true
+		fmt.Println("[gpu] RoPE + Attention kernels loaded")
+	})
+}
+
+// DevRoPE applies rotary position embedding on GPU (in-place).
+func DevRoPE(x *DevBuf, freqs *DevBuf, pos, nHeads, headDim int) {
+	initRoPEAttn()
+	if ropeReady && tryGPU(x, freqs) {
+		p := uint32(pos)
+		nh := uint32(nHeads)
+		hd := uint32(headDim)
+		halfDim := nHeads * (headDim / 2)
+		LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&x.gpu.Ptr),
+			unsafe.Pointer(&freqs.gpu.Ptr),
+			unsafe.Pointer(&p),
+			unsafe.Pointer(&nh),
+			unsafe.Pointer(&hd))
+		return
+	}
+	// CPU fallback in model code
+}
+
+// DevAttention runs GQA attention on GPU.
+// q[nHeads*headDim], kCache/vCache[seqLen*kvDim], out[nHeads*headDim]
+func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int) {
+	initRoPEAttn()
+	if attnReady && seqLen <= 2048 && tryGPU(out, q, kCache, vCache) {
+		sl := uint32(seqLen)
+		nh := uint32(nHeads)
+		nkv := uint32(nKVHeads)
+		hd := uint32(headDim)
+		// One block per query head, 256 threads per block
+		LaunchKernel(attnFn, uint32(nHeads), 1, 1, 256, 1, 1, 2048*4,
+			unsafe.Pointer(&q.gpu.Ptr),
+			unsafe.Pointer(&kCache.gpu.Ptr),
+			unsafe.Pointer(&vCache.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&sl),
+			unsafe.Pointer(&nh),
+			unsafe.Pointer(&nkv),
+			unsafe.Pointer(&hd))
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback in model code
+}
+
+// CopyDtoD wraps cuMemcpyDtoD for direct GPU→GPU copy.
+func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
+	EnsureContext()
+	cuMemcpyDtoD(dst, src, bytes)
+}
