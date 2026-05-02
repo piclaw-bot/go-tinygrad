@@ -104,6 +104,7 @@ func (b *DevBuf) ToCPU() {
 		b.cpu = make([]float32, b.n)
 	}
 	if b.gpu != nil && b.dev == GPU_DEVICE {
+		Sync()
 		b.gpu.Download(b.cpu)
 	}
 	b.dev = CPU
@@ -128,6 +129,16 @@ func (b *DevBuf) Len() int { return b.n }
 
 // OnGPU returns true if data is authoritatively on GPU.
 func (b *DevBuf) OnGPU() bool { return b.dev == GPU_DEVICE && b.gpu != nil }
+
+// tryGPU attempts to move buffers to GPU. Returns true if all succeeded.
+func tryGPU(bufs ...*DevBuf) bool {
+	for _, b := range bufs {
+		if b.ToGPU() != nil || b.gpu == nil {
+			return false
+		}
+	}
+	return true
+}
 
 // --- Ops: dispatch to GPU if possible, CPU fallback ---
 

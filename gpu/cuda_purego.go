@@ -11,6 +11,7 @@ package gpu
 import (
 	"fmt"
 	"sync"
+	"runtime"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -57,6 +58,7 @@ var (
 // Init attempts to load CUDA and initialize the GPU.
 func Init() bool {
 	gpuOnce.Do(func() {
+		runtime.LockOSThread() // CUDA context is thread-local
 		lib, err := purego.Dlopen("libcuda.so.1", purego.RTLD_LAZY)
 		if err != nil {
 			// Try versioned names
@@ -167,7 +169,9 @@ func (b *Buffer) Free() {
 
 // Upload copies host data to GPU.
 func (b *Buffer) Upload(data []float32) error {
-	if r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4)); r != CUDA_SUCCESS {
+	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
+	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
+	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
 	}
 	return nil
@@ -175,7 +179,9 @@ func (b *Buffer) Upload(data []float32) error {
 
 // Download copies GPU data to host.
 func (b *Buffer) Download(data []float32) error {
-	if r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4)); r != CUDA_SUCCESS {
+	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
+	runtime.KeepAlive(data)
+	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyDtoH: error %d", r)
 	}
 	return nil
