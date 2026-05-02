@@ -24,9 +24,8 @@ func initQ4() {
 			cuMemFree(warmPtr)
 		}
 		var err error
-		q4Fn, err = LoadPTX(GemvQ4PTX, "gemv_q4sym")
+		q4Fn, err = LoadPTX(GemvQ4OptPTX, "gemv_q4sym")
 		if err != nil {
-			fmt.Printf("[gpu] gemv_q4sym failed: %v\n", err)
 			return
 		}
 		q4Ready = true
@@ -95,6 +94,7 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 		return
 	}
 
+	Sync() // ensure GPU ops complete before reading x
 	x.ToCPU() // ensure current
 	if x.gpu == nil {
 		x.ToGPU()
@@ -124,8 +124,7 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups))
 
-	out.gpu.Download(out.Data())
-	out.dev = CPU
+	out.dev = GPU_DEVICE // keep on GPU — downstream ops will download if needed
 }
 
 // CPU fallback for INT4 GEMV
