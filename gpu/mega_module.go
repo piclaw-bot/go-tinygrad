@@ -72,6 +72,7 @@ func loadMegaModule() {
 			{"lm_head_gemv", LMHeadPTX},
 			{"mlx_gemv", MLXGemvPTX},
 			{"mlx_gemm", MLXGemmPTX},
+			{"mlx_correct", MLXCorrectPTX},
 		}
 
 		for _, e := range entries {
@@ -116,6 +117,7 @@ func loadMegaModule() {
 		fnLMHead = extractFn("lm_head_gemv")
 		fnMLXGemv = extractFn("mlx_gemv")
 		fnMLXGemm = extractFn("mlx_gemm")
+		fnMLXCorrect = extractFn("mlx_correct")
 
 		if allOK {
 			megaModuleOK = true

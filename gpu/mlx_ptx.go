@@ -23,8 +23,9 @@ type GPUMLXWeight struct {
 	OutDim  int
 	Groups  int
 	GroupSz int
-	// If transposed, we use the GPTQ kernel path instead
-	AsGPTQ  *GPUQuantWeight // non-nil if transposed to GPTQ format
+	// Transposed for GPTQ kernel + correction buffer
+	AsGPTQ     *GPUQuantWeight // transposed weights for fast GPTQ kernel
+	Correction *Buffer         // [outDim * numGroups] f32: 8*scale+bias per group
 }
 
 // UploadMLXWeight uploads MLX quantized weight to GPU VRAM.
@@ -96,7 +97,18 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	}
 	if gptqW, err := UploadQuantWeight(transposed, gIdx, transScales, inDim, outDim); err == nil {
 		w.AsGPTQ = gptqW
-		return w, nil // fast path, skip native buffers
+		// Precompute bias correction: (8*scale + bias) per [outDim, numGroups]
+		correction := make([]float32, outDim*numGroups)
+		for row := 0; row < outDim; row++ {
+			for g := 0; g < numGroups; g++ {
+				correction[row*numGroups+g] = 8*scales[row*numGroups+g] + biases[row*numGroups+g]
+			}
+		}
+		if corrBuf, err := Malloc(len(correction)); err == nil {
+			corrBuf.Upload(correction)
+			w.Correction = corrBuf
+		}
+		return w, nil
 	}
 
 	// Fallback: upload for native MLX kernel
@@ -142,7 +154,26 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 	// Note: this gives (val-8)*scale instead of val*scale+bias
 	// The 8*scale+bias correction is small and applied separately
 	if w.AsGPTQ != nil && q4Ready {
-		GemvQ4(out, x, w.AsGPTQ)
+		GemvQ4(out, x, w.AsGPTQ); // GPTQ path
+		// Apply bias correction: out += sum_g(group_sum_x * (8*scale+bias))
+		if w.Correction != nil && fnMLXCorrect != 0 {
+			x.ToGPU()
+			out.ToGPU()
+			EnsureContext()
+			outDim := uint32(w.OutDim)
+			inDim := uint32(w.InDim)
+			groups := uint32(w.Groups)
+			groupSz := uint32(w.GroupSz)
+			LaunchKernel(fnMLXCorrect, outDim, 1, 1, 256, 1, 1, 256*4,
+				unsafe.Pointer(&x.gpu.Ptr),
+				unsafe.Pointer(&w.Correction.Ptr),
+				unsafe.Pointer(&out.gpu.Ptr),
+				unsafe.Pointer(&inDim),
+				unsafe.Pointer(&outDim),
+				unsafe.Pointer(&groups),
+				unsafe.Pointer(&groupSz))
+			out.dev = GPU_DEVICE
+		}
 		return
 	}
 	if fnMLXGemv == 0 {
@@ -211,6 +242,7 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 }
 
 var fnMLXGemv CUfunction
+var fnMLXCorrect CUfunction
 var fnMLXGemm CUfunction
 
 
@@ -516,6 +548,118 @@ red_done:
     add.u64 %rd8, %rd4, %rd7;
     st.global.f32 [%rd8], %f8;
 
+done:
+    ret;
+}
+`
+
+// MLXCorrectPTX: bias correction after GPTQ GEMV for MLX weights.
+// out[row] += sum_g( sum(x[g*gs:(g+1)*gs]) * correction[row*numGroups+g] )
+var MLXCorrectPTX = `
+.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry mlx_correct(
+    .param .u64 x,
+    .param .u64 correction,
+    .param .u64 output,
+    .param .u32 inDim,
+    .param .u32 outDim,
+    .param .u32 numGroups,
+    .param .u32 groupSize
+) {
+    .reg .u32 %r<16>;
+    .reg .u64 %rd<12>;
+    .reg .f32 %f<8>;
+    .reg .pred %p;
+    .shared .align 4 .f32 sdata[256];
+
+    mov.u32 %r0, %ctaid.x;
+    mov.u32 %r1, %tid.x;
+    ld.param.u32 %r2, [outDim];
+    ld.param.u32 %r4, [numGroups];
+    ld.param.u32 %r5, [groupSize];
+
+    setp.ge.u32 %p, %r0, %r2;
+    @%p bra done;
+
+    ld.param.u64 %rd0, [x];
+    ld.param.u64 %rd1, [correction];
+    ld.param.u64 %rd2, [output];
+
+    // correction row: correction + row * numGroups
+    mul.lo.u32 %r6, %r0, %r4;
+    mul.wide.u32 %rd3, %r6, 4;
+    add.u64 %rd1, %rd1, %rd3;
+
+    // Each thread handles groups tid, tid+256, ...
+    mov.f32 %f0, 0f00000000;
+    mov.u32 %r7, %r1;
+
+group_loop:
+    setp.ge.u32 %p, %r7, %r4;
+    @%p bra reduce;
+
+    // Load correction[g]
+    mul.wide.u32 %rd4, %r7, 4;
+    add.u64 %rd5, %rd1, %rd4;
+    ld.global.f32 %f1, [%rd5];
+
+    // Sum x in this group: x[g*gs .. (g+1)*gs-1]
+    mul.lo.u32 %r8, %r7, %r5;
+    mov.f32 %f2, 0f00000000;
+    mov.u32 %r9, 0;
+xsum:
+    setp.ge.u32 %p, %r9, %r5;
+    @%p bra xsum_done;
+    add.u32 %r10, %r8, %r9;
+    mul.wide.u32 %rd6, %r10, 4;
+    add.u64 %rd7, %rd0, %rd6;
+    ld.global.f32 %f3, [%rd7];
+    add.f32 %f2, %f2, %f3;
+    add.u32 %r9, %r9, 1;
+    bra xsum;
+xsum_done:
+    fma.rn.f32 %f0, %f2, %f1, %f0;
+    add.u32 %r7, %r7, 256;
+    bra group_loop;
+
+reduce:
+    mov.u64 %rd8, sdata;
+    mul.wide.u32 %rd9, %r1, 4;
+    add.u64 %rd8, %rd8, %rd9;
+    st.shared.f32 [%rd8], %f0;
+    bar.sync 0;
+
+    mov.u32 %r11, 128;
+red_loop:
+    setp.lt.u32 %p, %r11, 1;
+    @%p bra red_done;
+    setp.ge.u32 %p, %r1, %r11;
+    @%p bra red_skip;
+    add.u32 %r12, %r1, %r11;
+    mul.wide.u32 %rd10, %r12, 4;
+    mov.u64 %rd11, sdata;
+    add.u64 %rd11, %rd11, %rd10;
+    ld.shared.f32 %f4, [%rd11];
+    ld.shared.f32 %f5, [%rd8];
+    add.f32 %f5, %f5, %f4;
+    st.shared.f32 [%rd8], %f5;
+red_skip:
+    bar.sync 0;
+    shr.u32 %r11, %r11, 1;
+    bra red_loop;
+
+red_done:
+    setp.ne.u32 %p, %r1, 0;
+    @%p bra done;
+    ld.shared.f32 %f6, [sdata];
+    mul.wide.u32 %rd4, %r0, 4;
+    add.u64 %rd5, %rd2, %rd4;
+    ld.global.f32 %f7, [%rd5];
+    add.f32 %f7, %f7, %f6;
+    st.global.f32 [%rd5], %f7;
 done:
     ret;
 }
