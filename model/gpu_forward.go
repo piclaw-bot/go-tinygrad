@@ -168,10 +168,16 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.ropeCosSin.ToGPU()
 	}
 
-	// GPU KV cache mirrors
+	// GPU KV cache: pre-allocate for all layers
+	maxSeq := 2048
 	g.kvGPU_K = make([]*gpu.DevBuf, len(m.Layers))
-
 	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
+	for i := range g.kvGPU_K {
+		g.kvGPU_K[i] = gpu.NewDevBuf(maxSeq * kvDim)
+		g.kvGPU_V[i] = gpu.NewDevBuf(maxSeq * kvDim)
+		g.kvGPU_K[i].ToGPU()
+		g.kvGPU_V[i].ToGPU()
+	}
 
 	elapsed := time.Since(start)
 	if useGPU { device = "GPU" }
@@ -210,7 +216,19 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	vCPU := make([]float32, kvDim)
 	logits := make([]float32, g.vocabSize)
 
-	for step := 0; step < len(tokenIDs)+maxTokens-1; step++ {
+	// Batched prefill: process all prompt tokens at once
+	prefillStart := 0
+	if len(tokenIDs) > 1 && gpu.BatchGEMMReady() {
+		if lastHidden := g.prefillGPU(tokenIDs); lastHidden != nil {
+			// Prefill succeeded — skip to decode phase
+			prefillStart = len(tokenIDs) - 1 // skip all but last prompt token
+			// Set up hidden state from prefill result
+			copy(g.hidden.Data(), lastHidden)
+			g.hidden.MarkDirty()
+		}
+	}
+
+	for step := prefillStart; step < len(tokenIDs)+maxTokens-1; step++ {
 		var tokID int
 		if step < len(tokenIDs) {
 			tokID = tokenIDs[step]
@@ -219,9 +237,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 		pos := step
 
+		skipLayers := (step == prefillStart && prefillStart > 0)
+		var hd []float32
+
+		if !skipLayers {
 		// Embedding (CPU — vocab too large for VRAM on small GPUs)
 		embData := m.EmbedTokens.Data()
-		hd := g.hidden.Data()
+		hd = g.hidden.Data()
 		copy(hd, embData[tokID*h:(tokID+1)*h])
 		g.hidden.MarkDirty() // CPU data set
 		if step == 0 {
@@ -289,7 +311,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// KV cache append (GPU-resident, no host download)
 			seqLen := pos + 1
-			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil && g.k.GPUPtr() != nil {
+			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
+				g.k.ToGPU()
+				g.v.ToGPU()
 				// GPU path: CopyDtoD K/V into cache at position offset
 				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
 				gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(kvDim*4))
@@ -374,6 +398,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// gpu.Sync() — removed, all on GPU
 			}
 		}
+
+		} // end !skipLayers
 
 		// Sync GPU → CPU for final norm + sampling
 		gpu.Sync() // drain all queued GPU work before readback

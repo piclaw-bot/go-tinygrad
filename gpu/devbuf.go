@@ -416,3 +416,20 @@ var (
 	jitAdd     *CompiledKernel
 )
 
+
+// Slice returns a DevBuf view into a sub-range [offset:offset+n] of this buffer.
+// The slice shares CPU memory with the parent. GPU pointer is offset accordingly.
+// The caller must not outlive the parent buffer.
+func (b *DevBuf) Slice(offset, n int) *DevBuf {
+	s := &DevBuf{n: n, dev: b.dev}
+	if b.cpu != nil && offset+n <= len(b.cpu) {
+		s.cpu = b.cpu[offset : offset+n]
+	}
+	if b.gpu != nil {
+		s.gpu = &Buffer{
+			Ptr:  b.gpu.Ptr + CUdeviceptr(uint64(offset)*4),
+			Size: n * 4,
+		}
+	}
+	return s
+}

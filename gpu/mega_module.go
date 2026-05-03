@@ -68,6 +68,7 @@ func loadMegaModule() {
 			{"gemv_q4sym", GemvQ4OptPTX},
 			{"fused_silu_mul", FusedSiLUMulPTX},
 			{"prefetch_l2", PrefetchPTX},
+			{"gemm_q4sym", GemmQ4PTX},
 		}
 
 		for _, e := range entries {
@@ -108,6 +109,7 @@ func loadMegaModule() {
 		q4Fn = extractFn("gemv_q4sym")
 		fnFusedSiLUMul = extractFn("fused_silu_mul")
 		fnPrefetch = extractFn("prefetch_l2")
+		fnGemmQ4 = extractFn("gemm_q4sym")
 
 		if allOK {
 			megaModuleOK = true
