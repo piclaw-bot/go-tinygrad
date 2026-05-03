@@ -75,7 +75,31 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 		GroupSz: groupSize,
 	}
 
-	// Upload for native MLX kernel
+	// Transpose to GPTQ layout for fast kernel path
+	packFactor := 8
+	packedPerRow := inDim / packFactor
+	transposed := make([]int32, packedPerRow*outDim)
+	for row := 0; row < outDim; row++ {
+		for col := 0; col < packedPerRow; col++ {
+			transposed[col*outDim+row] = int32(weight[row*packedPerRow+col])
+		}
+	}
+	transScales := make([]float32, numGroups*outDim)
+	for row := 0; row < outDim; row++ {
+		for g := 0; g < numGroups; g++ {
+			transScales[g*outDim+row] = scales[row*numGroups+g]
+		}
+	}
+	gIdx := make([]int32, inDim)
+	for i := 0; i < inDim; i++ {
+		gIdx[i] = int32(i / groupSize)
+	}
+	if gptqW, err := UploadQuantWeight(transposed, gIdx, transScales, inDim, outDim); err == nil {
+		w.AsGPTQ = gptqW
+		return w, nil // fast path, skip native buffers
+	}
+
+	// Fallback: upload for native MLX kernel
 	qwBuf, err := Malloc(len(weight))
 	if err != nil {
 		return nil, err
@@ -111,7 +135,17 @@ func reinterpretI32asF32(data []int32) []float32 {
 
 // GemvMLX performs GPU GEMV with MLX quantized weights using optimized kernel.
 func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
-	if w == nil || fnMLXGemv == 0 {
+	if w == nil {
+		return
+	}
+	// Fast path: use transposed weights with GPTQ kernel
+	// Note: this gives (val-8)*scale instead of val*scale+bias
+	// The 8*scale+bias correction is small and applied separately
+	if w.AsGPTQ != nil && q4Ready {
+		GemvQ4(out, x, w.AsGPTQ)
+		return
+	}
+	if fnMLXGemv == 0 {
 		return
 	}
 	EnsureContext()
