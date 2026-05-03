@@ -78,12 +78,17 @@ func Init() bool {
 		// Use helper to try versioned then non-versioned names
 		regFn := func(fptr interface{}, lib uintptr, names ...string) bool {
 			for _, name := range names {
+				ok := false
 				func() {
-					defer func() { recover() }() // purego panics on missing symbol
+					defer func() { recover() }()
 					purego.RegisterLibFunc(fptr, lib, name)
+					ok = true
 				}()
+				if ok {
+					return true // stop at first successful registration
+				}
 			}
-			return true
+			return false
 		}
 
 		purego.RegisterLibFunc(&cuInit, lib, "cuInit")
