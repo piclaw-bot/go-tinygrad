@@ -413,7 +413,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		m.Layers[l] = layer
 	}
 
-	// Gemma: norm weights are stored as (w-1), add 1 back
+	// Gemma3: norm weights stored as w, applied as (1+w). Add 1 at load time.
 	if cfg.ModelType == "gemma3_text" {
 		for l := range m.Layers {
 			for _, norm := range []*tensor.Tensor{
@@ -426,7 +426,6 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				}
 			}
 		}
-		// Also fix the final norm
 		nd := m.Norm.Data()
 		for i := range nd { nd[i] += 1.0 }
 	}
