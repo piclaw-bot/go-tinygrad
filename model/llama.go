@@ -37,6 +37,7 @@ type LlamaConfig struct {
 	RMSNormEps     float64 `json:"rms_norm_eps"`
 	ModelType      string  `json:"model_type"`
 	TieEmbeddings  bool    `json:"tie_word_embeddings"`
+	HeadDim        int     `json:"head_dim"`
 
 	// Quantization (populated from quantize_config.json or config.json)
 	QuantBits     int    `json:"-"`
@@ -99,6 +100,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	}
 	if cfg.RMSNormEps == 0 {
 		cfg.RMSNormEps = 1e-5
+	}
+	if cfg.HeadDim == 0 {
+		cfg.HeadDim = cfg.HiddenSize / cfg.NumHeads
 	}
 
 	// Try sharded first, then single file
@@ -302,7 +306,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		m.LMHead = m.EmbedTokens // tied weights
 	}
 
-	kvDim := h / cfg.NumHeads * cfg.NumKVHeads
+	kvDim := cfg.HeadDim * cfg.NumKVHeads
 
 	// tryLoad checks if a tensor exists
 	tryLoad := func(name string) bool {
@@ -393,7 +397,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer.VB = load(p+".self_attn.v_proj.bias", []int{kvDim})
 		}
 		// Optional QK-Norm (Qwen3 has these)
-		headDim := h / cfg.NumHeads
+		headDim := cfg.HeadDim
 		if tryLoad(p+".self_attn.q_norm.weight") {
 			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{headDim})
 			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{headDim})
@@ -450,7 +454,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
-	headDim := h / numHeads
+	headDim := cfg.HeadDim
 	kvDim := headDim * numKVHeads
 	inter := cfg.Intermediate
 
@@ -490,7 +494,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 
 			// Q, K, V projections (single token: [1, h] @ [h, dim])
-			q := make([]float32, h)
+			qDim := numHeads * headDim
+			q := make([]float32, qDim)
 			k := make([]float32, kvDim)
 			v := make([]float32, kvDim)
 			if layer.QWq != nil {
@@ -502,7 +507,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				GemvMLQ(k, hidden, layer.KWm)
 				GemvMLQ(v, hidden, layer.VWm)
 			} else {
-				m.mv(q, hidden, layer.QW.Data(), h, h)
+				m.mv(q, hidden, layer.QW.Data(), h, numHeads*headDim)
 				m.mv(k, hidden, layer.KW.Data(), h, kvDim)
 				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
 			}
@@ -537,6 +542,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Attention: Q against all cached K, V
 			seqLen := pos + 1
+			qDim2 := numHeads * headDim
+			_ = qDim2
 			attnOut := gqaAttention(q, kvCacheK[l], kvCacheV[l], seqLen, numHeads, numKVHeads, headDim)
 
 			// Output projection
@@ -546,7 +553,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else if layer.OWm != nil {
 				GemvMLQ(oOut, attnOut, layer.OWm)
 			} else {
-				m.mv(oOut, attnOut, layer.OW.Data(), h, h)
+				m.mv(oOut, attnOut, layer.OW.Data(), numHeads*headDim, h)
 			}
 
 			// Residual

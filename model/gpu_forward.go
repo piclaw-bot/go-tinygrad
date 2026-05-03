@@ -71,7 +71,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 
 	cfg := m.Config
 	h := cfg.HiddenSize
-	kvDim := h * cfg.NumKVHeads / cfg.NumHeads
+	kvDim := cfg.HeadDim * cfg.NumKVHeads
 	inter := cfg.Intermediate
 
 	g := &GPUModel{
@@ -84,11 +84,11 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	g.hidden = gpu.NewDevBuf(h)
 	g.residual = gpu.NewDevBuf(h)
 	g.normed = gpu.NewDevBuf(h)
-	g.q = gpu.NewDevBuf(h)
+	g.q = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
 	g.k = gpu.NewDevBuf(kvDim)
 	g.v = gpu.NewDevBuf(kvDim)
-	g.attnOut = gpu.NewDevBuf(h)
-	g.oOut = gpu.NewDevBuf(h)
+	g.attnOut = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
+	g.oOut = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
 	g.gate = gpu.NewDevBuf(inter)
 	g.up = gpu.NewDevBuf(inter)
 	g.down = gpu.NewDevBuf(h)
@@ -197,7 +197,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	device := "CPU"
 	// Precompute RoPE cos/sin table
 	{
-		headDimL := h / cfg.NumHeads
+		headDimL := cfg.HeadDim
 		halfDim := headDimL / 2
 		maxSeqL := 2048
 		csData := make([]float32, maxSeqL*headDimL)
@@ -263,7 +263,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
-	headDim := h / numHeads
+	headDim := cfg.HeadDim
 	kvDim := headDim * numKVHeads
 	inter := cfg.Intermediate
 	m := g.CPU
