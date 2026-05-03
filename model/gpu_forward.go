@@ -47,6 +47,7 @@ type GPUModel struct {
 type gpuLayerBufs struct {
 	QW, KW, VW, OW         *gpu.DevBuf
 	QB, KB, VB             *gpu.DevBuf
+	QNorm, KNorm           *gpu.DevBuf // QK-Norm (Qwen3)
 	GateW, UpW, DownW      *gpu.DevBuf
 	InputNorm, PostNorm    *gpu.DevBuf
 	// GPTQ quantized (CPU fallback)
@@ -160,6 +161,8 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		gl.QB = wrapTensor(layer.QB)
 		gl.KB = wrapTensor(layer.KB)
 		gl.VB = wrapTensor(layer.VB)
+		gl.QNorm = wrapTensor(layer.QNorm)
+		gl.KNorm = wrapTensor(layer.KNorm)
 
 		g.Layers[i] = gl
 	}
@@ -357,6 +360,19 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.DevAdd(g.q, g.q, layer.QB)
 				gpu.DevAdd(g.k, g.k, layer.KB)
 				gpu.DevAdd(g.v, g.v, layer.VB)
+			}
+
+			// QK-Norm (Qwen3): RMSNorm each head independently
+			if layer.QNorm != nil {
+				// Per-head RMSNorm on Q and K
+				for head := 0; head < numHeads; head++ {
+					qSlice := g.q.Slice(head*headDim, headDim)
+					gpu.DevRMSNorm(qSlice, qSlice, layer.QNorm, float32(cfg.RMSNormEps))
+				}
+				for head := 0; head < numKVHeads; head++ {
+					kSlice := g.k.Slice(head*headDim, headDim)
+					gpu.DevRMSNorm(kSlice, kSlice, layer.KNorm, float32(cfg.RMSNormEps))
+				}
 			}
 
 			// RoPE (GPU with precomputed cos/sin, or CPU fallback)

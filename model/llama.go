@@ -35,6 +35,8 @@ type LlamaConfig struct {
 	MaxSeqLen      int     `json:"max_position_embeddings"`
 	RopeTheta      float64 `json:"rope_theta"`
 	RMSNormEps     float64 `json:"rms_norm_eps"`
+	ModelType      string  `json:"model_type"`
+	TieEmbeddings  bool    `json:"tie_word_embeddings"`
 
 	// Quantization (populated from quantize_config.json or config.json)
 	QuantBits     int    `json:"-"`
@@ -67,6 +69,7 @@ type LlamaLayer struct {
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
 	QB, KB, VB     *tensor.Tensor // optional biases (Qwen2 has these)
+	QNorm, KNorm   *tensor.Tensor // optional QK-Norm (Qwen3 has these)
 
 	// GPTQ INT4 quantized weights (nil if not quantized)
 	QWq, KWq, VWq, OWq         *QuantWeight
@@ -168,9 +171,15 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	m.OnTheFlyQuant = onTheFly
 
 	load := func(name string, shape []int) *tensor.Tensor {
-		data, _, err := f.GetFloat32(name)
+		data, actualShape, err := f.GetFloat32(name)
 		if err != nil {
 			panic(fmt.Sprintf("load %s: %v", name, err))
+		}
+		// Use actual shape from safetensors if it matches element count
+		if len(actualShape) > 0 {
+			n := 1
+			for _, d := range actualShape { n *= d }
+			if n == len(data) { shape = actualShape }
 		}
 		return tensor.FromFloat32(data, shape)
 	}
@@ -323,10 +332,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			loadMLXDeq := func(name string, outDim, inDim int) *tensor.Tensor {
 				qw := loadMLXW(name, outDim, inDim)
 				data := DequantMLX(qw)
+				// Use actual dims from loaded weight (may differ from caller's hint)
 				if large {
-					return tensor.FromFloat32(data, []int{outDim, inDim})
+					return tensor.FromFloat32(data, []int{qw.OutDim, qw.InDim})
 				}
-				return tensor.FromFloat32(data, []int{outDim, inDim}).Transpose2D()
+				return tensor.FromFloat32(data, []int{qw.OutDim, qw.InDim}).Transpose2D()
 			}
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
@@ -381,6 +391,12 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer.QB = load(p+".self_attn.q_proj.bias", []int{h})
 			layer.KB = load(p+".self_attn.k_proj.bias", []int{kvDim})
 			layer.VB = load(p+".self_attn.v_proj.bias", []int{kvDim})
+		}
+		// Optional QK-Norm (Qwen3 has these)
+		headDim := h / cfg.NumHeads
+		if tryLoad(p+".self_attn.q_norm.weight") {
+			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{headDim})
+			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{headDim})
 		}
 		m.Layers[l] = layer
 	}
@@ -497,6 +513,18 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				for i := range q { q[i] += qb[i] }
 				for i := range k { k[i] += kb[i] }
 				for i := range v { v[i] += vb[i] }
+			}
+
+			// QK-Norm (Qwen3): RMSNorm each head of Q and K separately
+			if layer.QNorm != nil {
+				qNorm := layer.QNorm.Data()
+				kNorm := layer.KNorm.Data()
+				for head := 0; head < numHeads; head++ {
+					rmsNormInPlace(q[head*headDim:(head+1)*headDim], qNorm, float32(cfg.RMSNormEps))
+				}
+				for head := 0; head < numKVHeads; head++ {
+					rmsNormInPlace(k[head*headDim:(head+1)*headDim], kNorm, float32(cfg.RMSNormEps))
+				}
 			}
 
 			// RoPE on Q and K
