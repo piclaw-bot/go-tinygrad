@@ -67,6 +67,7 @@ func loadMegaModule() {
 			{"gqa_attention", AttentionPTX},
 			{"gemv_q4sym", GemvQ4OptPTX},
 			{"fused_silu_mul", FusedSiLUMulPTX},
+			{"prefetch_l2", PrefetchPTX},
 		}
 
 		for _, e := range entries {
@@ -106,6 +107,7 @@ func loadMegaModule() {
 		attnFn = extractFn("gqa_attention")
 		q4Fn = extractFn("gemv_q4sym")
 		fnFusedSiLUMul = extractFn("fused_silu_mul")
+		fnPrefetch = extractFn("prefetch_l2")
 
 		if allOK {
 			megaModuleOK = true
@@ -117,6 +119,10 @@ func loadMegaModule() {
 			q4Ready = true
 			fusedSiLUMulOK = true
 			fmt.Printf("[gpu] All %d kernels loaded in 1 module\n", len(entries))
+			// Initialize streams for prefetch overlap
+			if err := initStreams(); err != nil {
+				fmt.Printf("[gpu] streams: %v\n", err)
+			}
 		}
 	})
 }

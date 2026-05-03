@@ -241,9 +241,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			// Q/K/V projections
 			if layer.QWg != nil {
+				// Prefetch MLP weights while Q/K/V computes
+				gpu.PrefetchWeights(layer.OWg, layer.GateWg, layer.UpWg, layer.DownWg)
 				gpu.GemvQ4(g.q, g.normed, layer.QWg)
 				gpu.GemvQ4(g.k, g.normed, layer.KWg)
 				gpu.GemvQ4(g.v, g.normed, layer.VWg)
+				gpu.WaitPrefetch()
 			} else if layer.QWq != nil {
 				nd := g.normed.Data()
 				gemvQ4Sym(qCPU, nd, layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
@@ -320,22 +323,30 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// Residual add (GPU)
-			
 			gpu.DevAdd(g.hidden, g.residual, g.oOut)
+			// Prefetch next layer's attention weights
+			if l+1 < len(g.Layers) {
+				next := &g.Layers[l+1]
+				gpu.PrefetchWeights(next.QWg, next.KWg, next.VWg)
+			}
 
 			// Post-attention norm
 			gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
 
 			// MLP: gate + up projections
+			if layer.GateWg != nil {
+				g.normed.ToGPU()
+				gpu.GemvQ4(g.gate, g.normed, layer.GateWg)
+				gpu.GemvQ4(g.up, g.normed, layer.UpWg)
+			} else if layer.GateWq != nil {
 				nd := g.normed.Data()
-			if layer.GateWq != nil {
 				gd := g.gate.Data()
 				ud := g.up.Data()
 				gemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
 				gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
 				g.gate.MarkDirty(); g.up.MarkDirty()
 			} else {
-			g.gemv(g.gate, g.normed, layer.GateW, h, inter)
+				g.gemv(g.gate, g.normed, layer.GateW, h, inter)
 				g.gemv(g.up, g.normed, layer.UpW, h, inter)
 			}
 

@@ -104,6 +104,22 @@ func Init() bool {
 		regFn(&cuMemcpyDtoD, lib, "cuMemcpyDtoD_v2", "cuMemcpyDtoD")
 		regFn(&cuMemcpyDtoDAsync, lib, "cuMemcpyDtoDAsync_v2", "cuMemcpyDtoDAsync")
 
+		// Streams, events, graphs
+		regFn(&cuStreamCreate, lib, "cuStreamCreate")
+		regFn(&cuStreamDestroy, lib, "cuStreamDestroy_v2", "cuStreamDestroy")
+		regFn(&cuStreamSynchronize, lib, "cuStreamSynchronize")
+		regFn(&cuEventCreate, lib, "cuEventCreate")
+		regFn(&cuEventRecord, lib, "cuEventRecord")
+		regFn(&cuEventSynchronize, lib, "cuEventSynchronize")
+		regFn(&cuStreamWaitEvent, lib, "cuStreamWaitEvent")
+		regFn(&cuEventDestroy, lib, "cuEventDestroy_v2", "cuEventDestroy")
+		regFn(&cuStreamBeginCapture, lib, "cuStreamBeginCapture")
+		regFn(&cuStreamEndCapture, lib, "cuStreamEndCapture")
+		regFn(&cuGraphInstantiate, lib, "cuGraphInstantiate_v2", "cuGraphInstantiate")
+		regFn(&cuGraphLaunch, lib, "cuGraphLaunch")
+		regFn(&cuGraphDestroy, lib, "cuGraphDestroy")
+		regFn(&cuGraphExecDestroy, lib, "cuGraphExecDestroy")
+
 		// Initialize CUDA
 		if r := cuInit(0); r != CUDA_SUCCESS {
 			fmt.Printf("[gpu] cuInit failed: %d\n", r)
