@@ -48,6 +48,7 @@ var (
 	cuCtxSynchronize     func() CUresult
 	cuCtxSetCurrent      func(CUcontext) CUresult
 	cuMemcpyDtoD         func(CUdeviceptr, CUdeviceptr, uint64) CUresult
+	cuMemcpyDtoDAsync    func(CUdeviceptr, CUdeviceptr, uint64, uintptr) CUresult
 )
 
 var (
@@ -101,6 +102,7 @@ func Init() bool {
 		regFn(&cuCtxSynchronize, lib, "cuCtxSynchronize")
 		regFn(&cuCtxSetCurrent, lib, "cuCtxSetCurrent")
 		regFn(&cuMemcpyDtoD, lib, "cuMemcpyDtoD_v2", "cuMemcpyDtoD")
+		regFn(&cuMemcpyDtoDAsync, lib, "cuMemcpyDtoDAsync_v2", "cuMemcpyDtoDAsync")
 
 		// Initialize CUDA
 		if r := cuInit(0); r != CUDA_SUCCESS {

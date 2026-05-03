@@ -229,8 +229,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		
 		for l := 0; l < len(g.Layers); l++ {
-			if l > 0 && true { gpu.Sync() }
-			layer := &g.Layers[l]
+			// Debug: trace each GPU op
+						layer := &g.Layers[l]
 
 			// Save residual
 
@@ -365,6 +365,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 
 		// Sync GPU → CPU for final norm + sampling
+		gpu.Sync() // drain all queued GPU work before readback
 		hd = g.hidden.Data()
 		rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
 

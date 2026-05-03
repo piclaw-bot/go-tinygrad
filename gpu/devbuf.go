@@ -275,7 +275,7 @@ func DevCopy(dst, src *DevBuf) {
 	if src.gpu != nil && dst.gpu != nil && src.n >= 2048 {
 		src.ToGPU()
 		dst.ToGPU()
-		cuMemcpyDtoD(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4))
+		cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4), 0) // stream 0 = default
 		dst.dev = GPU_DEVICE
 		return
 	}
