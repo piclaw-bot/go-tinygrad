@@ -105,6 +105,7 @@ func Init() bool {
 		regFn(&cuMemcpyDtoDAsync, lib, "cuMemcpyDtoDAsync_v2", "cuMemcpyDtoDAsync")
 
 		// Streams, events, graphs
+		regFn(&cuMemGetInfo, lib, "cuMemGetInfo_v2", "cuMemGetInfo")
 		regFn(&cuStreamCreate, lib, "cuStreamCreate")
 		regFn(&cuStreamDestroy, lib, "cuStreamDestroy_v2", "cuStreamDestroy")
 		regFn(&cuStreamSynchronize, lib, "cuStreamSynchronize")
@@ -254,4 +255,21 @@ func LaunchKernel(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, blockZ uin
 		return fmt.Errorf("cuLaunchKernel: error %d", r)
 	}
 	return nil
+}
+
+var cuMemGetInfo func(*uint64, *uint64) CUresult
+
+func init() {
+	// Will be registered in Init()
+}
+
+// MemInfo returns (free, total) GPU memory in bytes.
+func MemInfo() (uint64, uint64) {
+	EnsureContext()
+	var free, total uint64
+	if cuMemGetInfo == nil {
+		return 0, 0
+	}
+	cuMemGetInfo(&free, &total)
+	return free, total
 }

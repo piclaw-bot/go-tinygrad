@@ -35,6 +35,11 @@ type GPUModel struct {
 
 	// Final norm + lm_head stay on CPU (vocab is huge)
 	normWeight []float32
+
+	// GPU LM head
+	lmHeadGPU *gpu.DevBuf // [vocab × h] F32 on GPU
+	normGPU   *gpu.DevBuf // final norm weights on GPU
+	logitsGPU *gpu.DevBuf // [vocab] logits output on GPU
 	lmHead     []float32 // [vocab, h]
 	vocabSize  int
 }
@@ -150,6 +155,17 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.lmHead = m.EmbedTokens.Data()
 	}
 
+	// Upload final norm + logits buffer to GPU (small, before weights)
+	if useGPU && gpu.SgemmReady() {
+		g.normGPU = gpu.NewDevBuf(len(g.normWeight))
+		copy(g.normGPU.Data(), g.normWeight)
+		g.normGPU.MarkDirty()
+		g.normGPU.ToGPU()
+
+		g.logitsGPU = gpu.NewDevBuf(cfg.VocabSize)
+		g.logitsGPU.ToGPU()
+	}
+
 	device := "CPU"
 	// Precompute RoPE cos/sin table
 	{
@@ -177,6 +193,24 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.kvGPU_V[i] = gpu.NewDevBuf(maxSeq * kvDim)
 		g.kvGPU_K[i].ToGPU()
 		g.kvGPU_V[i].ToGPU()
+	}
+
+	// Upload LM head to GPU — may need to split if VRAM is limited
+	if useGPU && gpu.SgemmReady() {
+		free, _ := gpu.MemInfo()
+		lmBytes := uint64(len(g.lmHead) * 4)
+		if free > lmBytes+64*1024*1024 { // need LM head + 64MB headroom
+			g.lmHeadGPU = gpu.NewDevBuf(len(g.lmHead))
+			copy(g.lmHeadGPU.Data(), g.lmHead)
+			g.lmHeadGPU.MarkDirty()
+			if err := g.lmHeadGPU.ToGPU(); err == nil {
+				fmt.Printf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
+			} else {
+				g.lmHeadGPU = nil
+			}
+		} else {
+			fmt.Printf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
+		}
 	}
 
 	elapsed := time.Since(start)
@@ -403,17 +437,19 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		// Sync GPU → CPU for final norm + sampling
 		gpu.Sync() // drain all queued GPU work before readback
-		hd = g.hidden.Data()
-		rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
 
-		// LM head (CPU — vocab × h matmul)
-		for j := 0; j < g.vocabSize; j++ {
-			sum := float32(0)
-			row := g.lmHead[j*h : (j+1)*h]
-			for p := 0; p < h; p++ {
-				sum += hd[p] * row[p]
-			}
-			logits[j] = sum
+		if g.lmHeadGPU != nil {
+			// GPU path: RMSNorm + GEMV on GPU, download logits
+			gpu.DevRMSNorm(g.hidden, g.hidden, g.normGPU, float32(cfg.RMSNormEps))
+			// logits = lmHead[vocab,h] × hidden[h] → [vocab]
+			gpu.DevLMHead(g.logitsGPU, g.hidden, g.lmHeadGPU, g.vocabSize, h)
+			gpu.Sync()
+			copy(logits, g.logitsGPU.Data())
+		} else {
+			hd = g.hidden.Data()
+			rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
+			// LM head with SIMD dot product
+			gemvNT(logits, hd, g.lmHead, h, g.vocabSize)
 		}
 
 		// Greedy sampling

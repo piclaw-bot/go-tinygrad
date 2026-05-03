@@ -45,7 +45,7 @@ func loadMegaModule() {
 
 		// Pre-warm allocator
 		var warmPtr CUdeviceptr
-		if r := cuMemAlloc(&warmPtr, 1024*1024*1024); r == CUDA_SUCCESS {
+		if r := cuMemAlloc(&warmPtr, 64*1024*1024); r == CUDA_SUCCESS {
 			cuMemFree(warmPtr)
 		}
 
@@ -69,6 +69,7 @@ func loadMegaModule() {
 			{"fused_silu_mul", FusedSiLUMulPTX},
 			{"prefetch_l2", PrefetchPTX},
 			{"gemm_q4sym", GemmQ4PTX},
+			{"lm_head_gemv", LMHeadPTX},
 		}
 
 		for _, e := range entries {
@@ -110,6 +111,7 @@ func loadMegaModule() {
 		fnFusedSiLUMul = extractFn("fused_silu_mul")
 		fnPrefetch = extractFn("prefetch_l2")
 		fnGemmQ4 = extractFn("gemm_q4sym")
+		fnLMHead = extractFn("lm_head_gemv")
 
 		if allOK {
 			megaModuleOK = true
