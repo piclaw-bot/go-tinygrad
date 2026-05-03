@@ -448,8 +448,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		} else {
 			hd = g.hidden.Data()
 			rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
-			// LM head with SIMD dot product
-			gemvNTParallel(logits, hd, g.lmHead, h, g.vocabSize)
+			// Try chunked GPU LM head, fall back to parallel SIMD
+			if !g.chunkedGPULMHead(logits, hd, g.vocabSize, h) {
+				gemvNTParallel(logits, hd, g.lmHead, h, g.vocabSize)
+			}
 		}
 
 		// Greedy sampling
