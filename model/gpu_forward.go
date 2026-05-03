@@ -173,7 +173,6 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 
 	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
 
-	gpu.Sync()
 	elapsed := time.Since(start)
 	if useGPU { device = "GPU" }
 	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
@@ -233,17 +232,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			layer := &g.Layers[l]
 
 			// Save residual
-			gpu.DevCopy(g.residual, g.hidden)
 
 			// RMSNorm (GPU kernel with CPU fallback)
-			gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
 
 			if l == 0 && step == 0 {
 			// gpu.Sync() — removed, all on GPU
 			}
 			// Q/K/V projections
 			if layer.QWg != nil {
-				g.normed.ToGPU() // upload once, reused by all 3 GemvQ4
 				gpu.GemvQ4(g.q, g.normed, layer.QWg)
 				gpu.GemvQ4(g.k, g.normed, layer.KWg)
 				gpu.GemvQ4(g.v, g.normed, layer.VWg)
@@ -327,7 +323,6 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			gpu.DevAdd(g.hidden, g.residual, g.oOut)
 
 			// Post-attention norm
-			gpu.DevCopy(g.residual, g.hidden)
 			gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
 
 			// MLP: gate + up projections
@@ -369,7 +364,6 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 
 		// Sync GPU → CPU for final norm + sampling
-		gpu.Sync()
 		hd = g.hidden.Data()
 		rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
 

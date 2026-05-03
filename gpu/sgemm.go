@@ -12,35 +12,9 @@ var (
 	sgemmOK   bool
 )
 
-func initSgemm() {
-	if !Available() {
-		return
-	}
-	// Pre-warm GPU memory allocator before PTX load
-	// (driver may fragment VA space during module load)
-	var warmPtr CUdeviceptr
-	if r := cuMemAlloc(&warmPtr, 1024*1024*1024); r == CUDA_SUCCESS {
-		cuMemFree(warmPtr)
-	}
-	fn, err := LoadPTX(SgemmPTX, "sgemm_nn")
-	if err != nil {
-		fmt.Printf("[gpu] failed to load SGEMM PTX: %v\n", err)
-		return
-	}
-	sgemmFn = fn
-	sgemmOK = true
-	fmt.Println("[gpu] SGEMM kernel loaded from PTX")
-}
 
 // SgemmReady returns true if GPU SGEMM is available.
-func SgemmReady() bool {
-	sgemmOnce.Do(initSgemm)
-	return sgemmOK
-}
 
-// Sgemm computes C = alpha * A * B on GPU (row-major).
-// A is [M,K], B is [K,N], C is [M,N].
-// All buffers must already be on GPU.
 func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
 	if !SgemmReady() {
 		return fmt.Errorf("GPU SGEMM not available")

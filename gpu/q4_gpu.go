@@ -14,30 +14,8 @@ var (
 	q4Ready  bool
 )
 
-func initQ4() {
-	q4Once.Do(func() {
-		if !SgemmReady() {
-			return
-		}
-		var warmPtr CUdeviceptr
-		if r := cuMemAlloc(&warmPtr, 512*1024*1024); r == CUDA_SUCCESS {
-			cuMemFree(warmPtr)
-		}
-		var err error
-		q4Fn, err = LoadPTX(GemvQ4OptPTX, "gemv_q4sym")
-		if err != nil {
-			return
-		}
-		q4Ready = true
-		fmt.Println("[gpu] INT4 fused dequant+GEMV kernel loaded")
-	})
-}
+func initQ4() { loadMegaModule() }
 
-// Q4Ready returns true if the INT4 GPU kernel is available.
-func Q4Ready() bool {
-	initQ4()
-	return q4Ready
-}
 
 // GPUQuantWeight holds INT4 weights in GPU VRAM.
 type GPUQuantWeight struct {
