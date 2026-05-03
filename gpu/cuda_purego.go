@@ -35,7 +35,8 @@ var (
 	cuDeviceGet          func(*CUdevice, int32) CUresult
 	cuDeviceGetName      func(unsafe.Pointer, int32, CUdevice) CUresult
 	cuDeviceGetAttribute func(*int32, int32, CUdevice) CUresult
-	cuCtxCreate          func(*CUcontext, uint32, CUdevice) CUresult
+	cuCtxCreate              func(*CUcontext, uint32, CUdevice) CUresult
+	cuDevicePrimaryCtxRetain func(*CUcontext, CUdevice) CUresult
 	cuMemAlloc           func(*CUdeviceptr, uint64) CUresult
 	cuMemFree            func(CUdeviceptr) CUresult
 	cuMemcpyHtoD         func(CUdeviceptr, unsafe.Pointer, uint64) CUresult
@@ -90,6 +91,7 @@ func Init() bool {
 		regFn(&cuDeviceGetName, lib, "cuDeviceGetName_v2", "cuDeviceGetName")
 		regFn(&cuDeviceGetAttribute, lib, "cuDeviceGetAttribute")
 		regFn(&cuCtxCreate, lib, "cuCtxCreate_v2", "cuCtxCreate")
+		regFn(&cuDevicePrimaryCtxRetain, lib, "cuDevicePrimaryCtxRetain")
 		regFn(&cuMemAlloc, lib, "cuMemAlloc_v2", "cuMemAlloc")
 		regFn(&cuMemFree, lib, "cuMemFree_v2", "cuMemFree")
 		regFn(&cuMemcpyHtoD, lib, "cuMemcpyHtoD_v2", "cuMemcpyHtoD")
@@ -152,6 +154,8 @@ func Init() bool {
 			fmt.Printf("[gpu] cuCtxCreate failed: %d\n", r)
 			return
 		}
+
+
 
 		gpuOK = true
 		fmt.Printf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
