@@ -49,11 +49,18 @@ type gpuLayerBufs struct {
 	QB, KB, VB             *gpu.DevBuf
 	GateW, UpW, DownW      *gpu.DevBuf
 	InputNorm, PostNorm    *gpu.DevBuf
-	// Quantized path (stays CPU)
+	// GPTQ quantized (CPU fallback)
 	QWq, KWq, VWq, OWq       *QuantWeight
 	GateWq, UpWq, DownWq     *QuantWeight
+	// GPTQ on GPU
 	QWg, KWg, VWg, OWg       *gpu.GPUQuantWeight
 	GateWg, UpWg, DownWg     *gpu.GPUQuantWeight
+	// MLX on GPU
+	QWmg, KWmg, VWmg, OWmg       *gpu.GPUMLXWeight
+	GateWmg, UpWmg, DownWmg     *gpu.GPUMLXWeight
+	// MLX on CPU
+	QWm, KWm, VWm, OWm           *MLXQuantWeight
+	GateWm, UpWm, DownWm         *MLXQuantWeight
 }
 
 // LoadGPUModel uploads model weights to GPU using DevBuf.
@@ -121,6 +128,24 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 				gl.GateWg, _ = gpu.UploadQuantWeight(layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
 				gl.UpWg, _ = gpu.UploadQuantWeight(layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
 				gl.DownWg, _ = gpu.UploadQuantWeight(layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
+			}
+		} else if layer.QWm != nil {
+			// MLX quantized: upload to GPU
+			gl.QWm = layer.QWm; gl.KWm = layer.KWm; gl.VWm = layer.VWm; gl.OWm = layer.OWm
+			gl.GateWm = layer.GateWm; gl.UpWm = layer.UpWm; gl.DownWm = layer.DownWm
+			if gpu.SgemmReady() {
+				um := func(qw *MLXQuantWeight) *gpu.GPUMLXWeight {
+					w, err := gpu.UploadMLXWeight(qw.Weight, qw.Scales, qw.Biases, qw.InDim, qw.OutDim, qw.GroupSize)
+					if err != nil && i == 0 { fmt.Printf("[gpu] MLX upload %dx%d: %v\n", qw.OutDim, qw.InDim, err) }
+					return w
+				}
+				gl.QWmg = um(layer.QWm)
+				gl.KWmg = um(layer.KWm)
+				gl.VWmg = um(layer.VWm)
+				gl.OWmg = um(layer.OWm)
+				gl.GateWmg = um(layer.GateWm)
+				gl.UpWmg = um(layer.UpWm)
+				gl.DownWmg = um(layer.DownWm)
 			}
 		} else {
 			gl.QW = wrapTensor(layer.QW)
@@ -297,12 +322,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			// Q/K/V projections
 			if layer.QWg != nil {
-				// Prefetch MLP weights while Q/K/V computes
+				// GPTQ GPU path
 				gpu.PrefetchWeights(layer.OWg, layer.GateWg, layer.UpWg, layer.DownWg)
 				gpu.GemvQ4(g.q, g.normed, layer.QWg)
 				gpu.GemvQ4(g.k, g.normed, layer.KWg)
 				gpu.GemvQ4(g.v, g.normed, layer.VWg)
 				gpu.WaitPrefetch()
+			} else if layer.QWmg != nil {
+				// MLX GPU path
+				gpu.GemvMLX(g.q, g.normed, layer.QWmg)
+				gpu.GemvMLX(g.k, g.normed, layer.KWmg)
+				gpu.GemvMLX(g.v, g.normed, layer.VWmg)
 			} else if layer.QWq != nil {
 				nd := g.normed.Data()
 				gemvQ4Sym(qCPU, nd, layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
@@ -372,6 +402,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.OWg != nil {
 				g.attnOut.ToGPU()
 				gpu.GemvQ4(g.oOut, g.attnOut, layer.OWg)
+			} else if layer.OWmg != nil {
+				gpu.GemvMLX(g.oOut, g.attnOut, layer.OWmg)
 			} else if layer.OWq != nil {
 				oOut := g.oOut.Data()
 				gemvQ4Sym(oOut, g.attnOut.Data(), layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
@@ -396,6 +428,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				g.normed.ToGPU()
 				gpu.GemvQ4(g.gate, g.normed, layer.GateWg)
 				gpu.GemvQ4(g.up, g.normed, layer.UpWg)
+			} else if layer.GateWmg != nil {
+				gpu.GemvMLX(g.gate, g.normed, layer.GateWmg)
+				gpu.GemvMLX(g.up, g.normed, layer.UpWmg)
 			} else if layer.GateWq != nil {
 				nd := g.normed.Data()
 				gd := g.gate.Data()
@@ -415,6 +450,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.DownWg != nil {
 				g.gate.ToGPU()
 				gpu.GemvQ4(g.down, g.gate, layer.DownWg)
+			} else if layer.DownWmg != nil {
+				gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
 			} else if layer.DownWq != nil {
 				gd := g.gate.Data()
 				dd := g.down.Data()

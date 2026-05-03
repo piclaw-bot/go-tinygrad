@@ -70,6 +70,8 @@ func loadMegaModule() {
 			{"prefetch_l2", PrefetchPTX},
 			{"gemm_q4sym", GemmQ4PTX},
 			{"lm_head_gemv", LMHeadPTX},
+			{"mlx_gemv", MLXGemvPTX},
+			{"mlx_gemm", MLXGemmPTX},
 		}
 
 		for _, e := range entries {
@@ -112,6 +114,8 @@ func loadMegaModule() {
 		fnPrefetch = extractFn("prefetch_l2")
 		fnGemmQ4 = extractFn("gemm_q4sym")
 		fnLMHead = extractFn("lm_head_gemv")
+		fnMLXGemv = extractFn("mlx_gemv")
+		fnMLXGemm = extractFn("mlx_gemm")
 
 		if allOK {
 			megaModuleOK = true
