@@ -417,6 +417,7 @@ func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
 
 // InitAllKernels pre-loads all GPU kernels. Call from the CUDA-owning thread.
 func InitAllKernels() {
+	initJITKernels()
 	initKernels()
 	initRoPEAttn()
 	initQ4()
@@ -452,5 +453,43 @@ func DevSiLUMul(out, a, b *DevBuf) {
 	for i := 0; i < n; i++ {
 		x := a.cpu[i]
 		out.cpu[i] = x / (1.0 + float32(math.Exp(float64(-x)))) * b.cpu[i]
+	}
+}
+
+// Pre-compiled JIT kernels
+var (
+	jitSiLUMul *CompiledKernel
+	jitAdd     *CompiledKernel
+)
+
+func initJITKernels() {
+	if !SgemmReady() { return }
+	// Generate combined PTX module
+	s1 := FusedSiLUMulSpec()
+	s2 := FusedResidualAddSpec()
+	body1, bs1, sm1 := genPTXBody(s1)
+	body2, bs2, sm2 := genPTXBody(s2)
+	combined := ".version 7.0\n.target sm_80\n.address_size 64\n" + body1 + "\n" + body2
+	combinedBytes := append([]byte(combined), 0)
+	var mod CUmodule
+	if r := cuModuleLoadData(&mod, unsafe.Pointer(&combinedBytes[0])); r != CUDA_SUCCESS {
+		fmt.Printf("[jit] batch compile failed: %d\n", r)
+		return
+	}
+	// Extract functions
+	for _, item := range []struct{ spec *KernelSpec; dst **CompiledKernel; bs, sm int }{
+		{s1, &jitSiLUMul, bs1, sm1},
+		{s2, &jitAdd, bs2, sm2},
+	} {
+		nameBytes := append([]byte(item.spec.Name), 0)
+		var fn CUfunction
+		if r := cuModuleGetFunction(&fn, mod, unsafe.Pointer(&nameBytes[0])); r != CUDA_SUCCESS {
+			fmt.Printf("[jit] get %s: error %d\n", item.spec.Name, r)
+			continue
+		}
+		*item.dst = &CompiledKernel{Fn: fn, Name: item.spec.Name, NumBufs: item.spec.NumBufs, GridDiv: item.bs, BlockSz: item.bs, SharedMem: item.sm}
+	}
+	if jitSiLUMul != nil && jitAdd != nil {
+		fmt.Println("[gpu] JIT kernels compiled (SiLU*Mul, Add)")
 	}
 }
