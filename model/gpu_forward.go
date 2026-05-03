@@ -26,9 +26,9 @@ type GPUModel struct {
 	q, k, v, attnOut, oOut   *gpu.DevBuf
 	gate, up, down           *gpu.DevBuf
 
-	// KV cache
-	kvCacheK, kvCacheV [][]float32 // CPU slices (appended per token)
-	kvGPU_K, kvGPU_V   []*gpu.DevBuf // GPU mirrors (uploaded before attention)
+	// KV cache (GPU-resident for fast path, CPU for fallback)
+	kvCacheK, kvCacheV [][]float32 // CPU slices
+	kvGPU_K, kvGPU_V   []*gpu.DevBuf // GPU buffers [maxSeq * kvDim] per layer
 
 	// RoPE precomputed cos/sin
 	ropeCosSin *gpu.DevBuf
@@ -170,7 +170,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 
 	// GPU KV cache mirrors
 	g.kvGPU_K = make([]*gpu.DevBuf, len(m.Layers))
-	for i := range g.kvGPU_K { g.kvGPU_K[i] = gpu.NewDevBuf(1) }
+
 	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
 
 	elapsed := time.Since(start)
@@ -228,6 +228,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 
 		for l := 0; l < len(g.Layers); l++ {
+			if l > 0 && true { gpu.Sync() } // flush GPU queue periodically
 			layer := &g.Layers[l]
 
 			// Save residual
@@ -284,27 +285,22 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				g.k.MarkDirty()
 			}
 
-			// KV cache append (CPU side — always maintain for correctness)
-			gpu.Sync()
-			kd = g.k.Data()
-			vd = g.v.Data()
-			g.kvCacheK[l] = append(g.kvCacheK[l], kd...)
-			g.kvCacheV[l] = append(g.kvCacheV[l], vd...)
-
-			// Attention
+			// KV cache append (GPU-resident, no host download)
 			seqLen := pos + 1
-			// Try GPU attention
-			gpuAttn := false
-			if g.kvGPU_K[l] != nil && seqLen <= 2048 {
-				// Upload current KV cache to GPU
-				kvK := gpu.NewDevBufFrom(g.kvCacheK[l])
-				kvV := gpu.NewDevBufFrom(g.kvCacheV[l])
-				if kvK.ToGPU() == nil && kvV.ToGPU() == nil {
-					gpu.DevAttention(g.attnOut, g.q, kvK, kvV, seqLen, numHeads, numKVHeads, headDim)
-					gpuAttn = true
-				}
-			}
-			if !gpuAttn {
+			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil && g.k.GPUPtr() != nil {
+				// GPU path: CopyDtoD K/V into cache at position offset
+				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
+				gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(kvDim*4))
+				gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(kvDim*4))
+				// GPU attention
+				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[l], g.kvGPU_V[l], seqLen, numHeads, numKVHeads, headDim)
+			} else {
+				// CPU fallback
+				gpu.Sync()
+				kd = g.k.Data()
+				vd = g.v.Data()
+				g.kvCacheK[l] = append(g.kvCacheK[l], kd...)
+				g.kvCacheV[l] = append(g.kvCacheV[l], vd...)
 				qd := g.q.Data()
 				attnCPU := gqaAttention(qd, g.kvCacheK[l], g.kvCacheV[l], seqLen, numHeads, numKVHeads, headDim)
 				copy(g.attnOut.Data(), attnCPU)
@@ -340,7 +336,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
 				g.gate.MarkDirty(); g.up.MarkDirty()
 			} else {
-				g.gemv(g.gate, g.normed, layer.GateW, h, inter)
+			g.gemv(g.gate, g.normed, layer.GateW, h, inter)
 				g.gemv(g.up, g.normed, layer.UpW, h, inter)
 			}
 
