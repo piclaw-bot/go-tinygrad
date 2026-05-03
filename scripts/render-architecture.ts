@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * render-architecture.ts — Generate the go-tinygrad architecture SVG diagram.
+ * render-architecture.ts — Generate the go-pherence architecture SVG diagram.
  *
  * Usage: bun run scripts/render-architecture.ts [--output docs/architecture.svg]
  *
@@ -163,7 +163,7 @@ svg += `    <marker id="ahg" markerWidth="8" markerHeight="8" refX="7" refY="4" 
 svg += `  </defs>\n`;
 
 // Title
-svg += `  <text x="${PAD}" y="28" class="title">go-tinygrad Architecture</text>\n`;
+svg += `  <text x="${PAD}" y="28" class="title">go-pherence Architecture</text>\n`;
 svg += `  <text x="${PAD}" y="44" class="sub">Pure Go + SIMD Assembly + PTX GPU · Zero CGo · Static Binary</text>\n`;
 
 // Render layers

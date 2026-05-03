@@ -55,7 +55,7 @@
     text { font-family: -apple-system, "Segoe UI", Helvetica, sans-serif; }
   </style>
   <rect width="920" height="758" rx="10" class="bg"/>
-  <text x="24" y="28" class="title">go-tinygrad Test Matrix</text>
+  <text x="24" y="28" class="title">go-pherence Test Matrix</text>
   <text x="24" y="44" class="subtitle">Pure Go + PTX · RTX 3060 12GB · 7 packages · 67 tests · 10 kernels</text>
   <rect x="460" y="20" width="10" height="10" rx="2" class="legend-cpu" stroke-width="1.5"/><text x="474" y="29" class="note">CPU scalar</text>
   <rect x="535" y="20" width="10" height="10" rx="2" class="legend-simd" stroke-width="1.5"/><text x="549" y="29" class="note">CPU SIMD (AVX2/NEON)</text>

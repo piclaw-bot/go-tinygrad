@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/rcarmo/go-tinygrad/gpu"
-	"github.com/rcarmo/go-tinygrad/tensor"
+	"github.com/rcarmo/go-pherence/gpu"
+	"github.com/rcarmo/go-pherence/tensor"
 )
 
 // GPUModel wraps a LlamaModel with GPU-resident weights and buffers.

@@ -8,9 +8,9 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/rcarmo/go-tinygrad/safetensors"
-	"github.com/rcarmo/go-tinygrad/simd"
-	"github.com/rcarmo/go-tinygrad/tensor"
+	"github.com/rcarmo/go-pherence/safetensors"
+	"github.com/rcarmo/go-pherence/simd"
+	"github.com/rcarmo/go-pherence/tensor"
 )
 
 // LlamaConfig holds model hyperparameters.

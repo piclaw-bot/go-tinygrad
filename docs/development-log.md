@@ -1,6 +1,6 @@
 # Development Log
 
-Step-by-step record of building go-tinygrad from scratch.
+Step-by-step record of building go-pherence from scratch.
 
 ## Session 1: Core framework + GTE-small inference
 
@@ -112,7 +112,7 @@ Forward pass: ~30ms for 5-token input.
 
 ### Step 10 — Performance comparison
 
-| | go-tinygrad | gte-go |
+| | go-pherence | gte-go |
 |---|---|---|
 | Latency | 30ms | 10ms |
 | Allocs/embed | 1,672 | 1 |

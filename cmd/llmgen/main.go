@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rcarmo/go-tinygrad/model"
+	"github.com/rcarmo/go-pherence/model"
 )
 
 func main() {

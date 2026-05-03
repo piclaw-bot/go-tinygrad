@@ -10,7 +10,7 @@ package model
 import (
 	"fmt"
 
-	"github.com/rcarmo/go-tinygrad/gpu"
+	"github.com/rcarmo/go-pherence/gpu"
 )
 
 // prefillGPU processes all prompt tokens through the model in one batched pass.

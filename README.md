@@ -1,4 +1,4 @@
-# go-tinygrad
+# go-pherence
 
 A minimal tensor computation framework in pure Go with SIMD assembly and GPU compute,
 inspired by [tinygrad](https://github.com/tinygrad/tinygrad).

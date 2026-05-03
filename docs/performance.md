@@ -1,8 +1,8 @@
 # Performance
 
-## GTE-small inference: go-tinygrad vs gte-go
+## GTE-small inference: go-pherence vs gte-go
 
-| | go-tinygrad fast | go-tinygrad API | gte-go |
+| | go-pherence fast | go-pherence API | gte-go |
 |---|---|---|---|
 | **Latency** | **14.9 ms** | 15.5 ms | 10.5 ms |
 | **Allocs/embed** | **8** | 1,668 | 1 |
@@ -22,7 +22,7 @@
 
 ## Where the remaining 1.4× gap comes from
 
-| Source | go-tinygrad | gte-go |
+| Source | go-pherence | gte-go |
 |---|---|---|
 | GEMM kernel | SgemmNN/NT (same SIMD) | gonum NT (different cache pattern) |
 | Workspace alloc | 8 allocs at Embed() call | 0 (pre-allocated on model) |
@@ -50,7 +50,7 @@ All CPU, pure Go + AVX2/FMA SIMD. F32 weights from BF16 safetensors.
 
 [AutoRound](https://github.com/intel/auto-round) is an advanced weight
 quantization algorithm that exports to multiple formats (AutoRound, GPTQ,
-AWQ, GGUF). Key benefits for go-tinygrad:
+AWQ, GGUF). Key benefits for go-pherence:
 
 - **INT4/INT8 quantized weights** — 4× less memory, enabling 7B models
   in ~4GB instead of ~28GB (F32) or ~14GB (BF16)

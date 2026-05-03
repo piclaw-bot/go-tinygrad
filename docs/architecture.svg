@@ -39,7 +39,7 @@
     <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#5070a0" stroke="none"/></marker>
     <marker id="ahg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#16a34a" stroke="none"/></marker>
   </defs>
-  <text x="24" y="28" class="title">go-tinygrad Architecture</text>
+  <text x="24" y="28" class="title">go-pherence Architecture</text>
   <text x="24" y="44" class="sub">Pure Go + SIMD Assembly + PTX GPU · Zero CGo · Static Binary</text>
   <g transform="translate(24,60)">
     <rect x="0" y="0" width="852" height="50" rx="8" class="zone"/>

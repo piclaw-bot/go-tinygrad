@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * render-test-matrix.ts — Generate the go-tinygrad test matrix SVG.
+ * render-test-matrix.ts — Generate the go-pherence test matrix SVG.
  *
  * Usage: bun run scripts/render-test-matrix.ts [--output docs/test-matrix.svg]
  *
@@ -170,7 +170,7 @@ svg += `  <style>
 svg += `  <rect width="${W}" height="${totalH}" rx="10" class="bg"/>\n`;
 
 // Title
-svg += `  <text x="24" y="28" class="title">go-tinygrad Test Matrix</text>\n`;
+svg += `  <text x="24" y="28" class="title">go-pherence Test Matrix</text>\n`;
 svg += `  <text x="24" y="44" class="subtitle">Pure Go + PTX · RTX 3060 12GB · 7 packages · 67 tests · 10 kernels</text>\n`;
 
 // Legend — execution target colours

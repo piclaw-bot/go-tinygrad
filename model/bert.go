@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/rcarmo/go-tinygrad/safetensors"
-	"github.com/rcarmo/go-tinygrad/tensor"
+	"github.com/rcarmo/go-pherence/safetensors"
+	"github.com/rcarmo/go-pherence/tensor"
 )
 
 // BertConfig holds model hyperparameters.

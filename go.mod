@@ -1,4 +1,4 @@
-module github.com/rcarmo/go-tinygrad
+module github.com/rcarmo/go-pherence
 
 go 1.26.2
 

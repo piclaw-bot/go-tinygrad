@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	"github.com/rcarmo/go-tinygrad/tensor"
+	"github.com/rcarmo/go-pherence/tensor"
 )
 
 func main() {
-	fmt.Println("go-tinygrad demo")
+	fmt.Println("go-pherence demo")
 	fmt.Println("================")
 
 	// Basic tensor ops

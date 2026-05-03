@@ -1,4 +1,4 @@
-# GPU Compute Options for go-tinygrad
+# GPU Compute Options for go-pherence
 
 ## Available Hardware
 - **NVIDIA GeForce RTX 3060** (12GB VRAM, Ampere, 3584 CUDA cores, 12.7 TFLOPS FP32)
