@@ -449,7 +449,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			hd = g.hidden.Data()
 			rmsNormInPlace(hd, g.normWeight, float32(cfg.RMSNormEps))
 			// LM head with SIMD dot product
-			gemvNT(logits, hd, g.lmHead, h, g.vocabSize)
+			gemvNTParallel(logits, hd, g.lmHead, h, g.vocabSize)
 		}
 
 		// Greedy sampling
