@@ -173,6 +173,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 
 	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
 
+	gpu.Sync()
 	elapsed := time.Since(start)
 	if useGPU { device = "GPU" }
 	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
@@ -238,7 +239,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
 
 			if l == 0 && step == 0 {
-				gpu.Sync()
+			// gpu.Sync() — removed, all on GPU
 			}
 			// Q/K/V projections
 			if layer.QWg != nil {
@@ -262,7 +263,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			if l == 0 && step == 0 {
-				gpu.Sync()
+			// gpu.Sync() — removed, all on GPU
 			}
 			// Bias (GPU add or CPU)
 			
@@ -273,7 +274,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// RoPE (GPU with precomputed cos/sin, or CPU fallback)
-			gpu.Sync()
+			// gpu.Sync() — removed, all on GPU
 			if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
 				gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
 				gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
@@ -297,7 +298,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[l], g.kvGPU_V[l], seqLen, numHeads, numKVHeads, headDim)
 			} else {
 				// CPU fallback
-				gpu.Sync()
+			// gpu.Sync() — removed, all on GPU
 				kd = g.k.Data()
 				vd = g.v.Data()
 				g.kvCacheK[l] = append(g.kvCacheK[l], kd...)
@@ -363,7 +364,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			gpu.DevAdd(g.hidden, g.residual, g.down)
 
 			if l == 0 && step == 0 {
-				gpu.Sync()
+			// gpu.Sync() — removed, all on GPU
 			}
 		}
 

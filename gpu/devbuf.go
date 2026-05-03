@@ -151,7 +151,7 @@ func tryGPU(bufs ...*DevBuf) bool {
 func DevAdd(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -171,7 +171,7 @@ func DevAdd(out, a, b *DevBuf) {
 func DevMul(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU(); b.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -190,7 +190,7 @@ func DevMul(out, a, b *DevBuf) {
 func DevScale(out, a *DevBuf, s float32) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -209,7 +209,7 @@ func DevScale(out, a *DevBuf, s float32) {
 func DevSiLU(out, a *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && n >= 2048 && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -229,7 +229,7 @@ func DevSiLU(out, a *DevBuf) {
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
 	n := x.n
-	if kernelsLoaded && n >= 2048 && n <= 256*8192 {
+	if kernelsLoaded && n <= 256*8192 {
 		x.ToGPU(); weight.ToGPU(); out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
