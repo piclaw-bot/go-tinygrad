@@ -40,6 +40,8 @@ var (
 	cuMemFree            func(CUdeviceptr) CUresult
 	cuMemcpyHtoD         func(CUdeviceptr, unsafe.Pointer, uint64) CUresult
 	cuMemcpyDtoH         func(unsafe.Pointer, CUdeviceptr, uint64) CUresult
+	cuMemcpyHtoDAsync    func(CUdeviceptr, unsafe.Pointer, uint64, uintptr) CUresult
+	cuMemcpyDtoHAsync    func(unsafe.Pointer, CUdeviceptr, uint64, uintptr) CUresult
 	cuModuleLoadData     func(*CUmodule, unsafe.Pointer) CUresult
 	cuModuleGetFunction  func(*CUfunction, CUmodule, unsafe.Pointer) CUresult
 	cuLaunchKernel       func(CUfunction, uint32, uint32, uint32, uint32, uint32, uint32, uint32, uintptr, unsafe.Pointer, unsafe.Pointer) CUresult
@@ -91,6 +93,8 @@ func Init() bool {
 		regFn(&cuMemFree, lib, "cuMemFree_v2", "cuMemFree")
 		regFn(&cuMemcpyHtoD, lib, "cuMemcpyHtoD_v2", "cuMemcpyHtoD")
 		regFn(&cuMemcpyDtoH, lib, "cuMemcpyDtoH_v2", "cuMemcpyDtoH")
+		regFn(&cuMemcpyHtoDAsync, lib, "cuMemcpyHtoDAsync_v2", "cuMemcpyHtoDAsync")
+		regFn(&cuMemcpyDtoHAsync, lib, "cuMemcpyDtoHAsync_v2", "cuMemcpyDtoHAsync")
 		regFn(&cuModuleLoadData, lib, "cuModuleLoadData")
 		regFn(&cuModuleGetFunction, lib, "cuModuleGetFunction")
 		regFn(&cuLaunchKernel, lib, "cuLaunchKernel")

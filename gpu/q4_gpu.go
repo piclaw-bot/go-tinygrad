@@ -93,7 +93,7 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 		return
 	}
 
-	x.ToGPU()
+	// x already on GPU (caller uploads)
 	out.EnsureGPU()
 
 	if x.gpu == nil || out.gpu == nil {

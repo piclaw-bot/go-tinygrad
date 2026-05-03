@@ -227,8 +227,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		if step == 0 {
 		}
 
+		
 		for l := 0; l < len(g.Layers); l++ {
-			if l > 0 && true { gpu.Sync() } // flush GPU queue periodically
 			layer := &g.Layers[l]
 
 			// Save residual
@@ -242,6 +242,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			// Q/K/V projections
 			if layer.QWg != nil {
+				g.normed.ToGPU() // upload once, reused by all 3 GemvQ4
 				gpu.GemvQ4(g.q, g.normed, layer.QWg)
 				gpu.GemvQ4(g.k, g.normed, layer.KWg)
 				gpu.GemvQ4(g.v, g.normed, layer.VWg)
@@ -310,6 +311,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// Output projection (GPU GEMV)
 			
 			if layer.OWg != nil {
+				g.attnOut.ToGPU()
 				gpu.GemvQ4(g.oOut, g.attnOut, layer.OWg)
 			} else if layer.OWq != nil {
 				oOut := g.oOut.Data()
@@ -346,6 +348,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Down projection
 			if layer.DownWg != nil {
+				g.gate.ToGPU()
 				gpu.GemvQ4(g.down, g.gate, layer.DownWg)
 			} else if layer.DownWq != nil {
 				gd := g.gate.Data()

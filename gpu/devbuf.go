@@ -104,7 +104,6 @@ func (b *DevBuf) ToCPU() {
 		b.cpu = make([]float32, b.n)
 	}
 	if b.gpu != nil && b.dev == GPU_DEVICE {
-		Sync()
 		b.gpu.Download(b.cpu)
 	}
 	b.dev = CPU
