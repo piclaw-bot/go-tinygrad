@@ -273,11 +273,9 @@ func DevSoftmax(x *DevBuf, n int) {
 // Copy copies src data to dst (same device).
 func DevCopy(dst, src *DevBuf) {
 	if src.gpu != nil && dst.gpu != nil && src.n >= 2048 {
-		// GPU-to-GPU copy via cuMemcpyDtoD
 		src.ToGPU()
 		dst.ToGPU()
 		cuMemcpyDtoD(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4))
-		Sync()
 		dst.dev = GPU_DEVICE
 		return
 	}

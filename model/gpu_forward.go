@@ -229,6 +229,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		
 		for l := 0; l < len(g.Layers); l++ {
+			if l > 0 && true { gpu.Sync() }
 			layer := &g.Layers[l]
 
 			// Save residual

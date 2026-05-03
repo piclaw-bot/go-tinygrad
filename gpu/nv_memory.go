@@ -174,21 +174,23 @@ func (buf *NVBuffer) Upload(data []float32) error {
 	if uint64(bytes) > buf.size {
 		return fmt.Errorf("data too large: %d > %d", bytes, buf.size)
 	}
-	src := unsafe.Pointer(&data[0])
-	dst := unsafe.Pointer(buf.cpuAddr)
-	copy((*[1 << 30]byte)(dst)[:bytes], (*[1 << 30]byte)(src)[:bytes])
+	// Use the cpuMem slice directly (backed by mmap)
+	if buf.cpuMem == nil {
+		return fmt.Errorf("buffer not CPU-mapped")
+	}
+	srcBytes := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), bytes)
+	copy(buf.cpuMem[:bytes], srcBytes)
 	return nil
 }
 
 // Download copies GPU buffer to host.
 func (buf *NVBuffer) Download(data []float32) error {
-	if buf.cpuAddr == 0 {
+	if buf.cpuMem == nil {
 		return fmt.Errorf("buffer not CPU-mapped")
 	}
 	bytes := len(data) * 4
-	src := unsafe.Pointer(buf.cpuAddr)
-	dst := unsafe.Pointer(&data[0])
-	copy((*[1 << 30]byte)(dst)[:bytes], (*[1 << 30]byte)(src)[:bytes])
+	dstBytes := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), bytes)
+	copy(dstBytes, buf.cpuMem[:bytes])
 	return nil
 }
 

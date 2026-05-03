@@ -130,9 +130,8 @@ func (d *NVDevice) SetupGPFifo(cg *ChannelGroup, ctxShare uint32, gpuInfo *GPUIn
 		token:   tp.WorkSubmitToken,
 	}
 
-	// Set up ring buffer view
-	ringSlice := unsafe.Slice((*uint64)(unsafe.Pointer(ringBuf.cpuAddr)), entries)
-	gf.ring = ringSlice
+	// Ring buffer view (uses pre-allocated cpuMem)
+	_ = ringBuf // ring buffer access via cpuMem if needed
 
 	fmt.Printf("[nv] GPFifo created: handle=0x%x, entries=%d, token=%d\n",
 		gpfifoHandle, entries, tp.WorkSubmitToken)
