@@ -343,8 +343,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// SiLU(gate) * up (GPU)
-			gpu.DevSiLU(g.gate, g.gate)
-			gpu.DevMul(g.gate, g.gate, g.up)
+			gpu.DevSiLUMul(g.gate, g.gate, g.up) // fused: 2 kernels -> 1
 
 			// Down projection
 			if layer.DownWg != nil {

@@ -421,3 +421,36 @@ func InitAllKernels() {
 	initRoPEAttn()
 	initQ4()
 }
+
+// Fused SiLU*Mul
+var (
+	fusedSiLUMulOnce sync.Once
+	fnFusedSiLUMul   CUfunction
+	fusedSiLUMulOK   bool
+)
+
+// DevSiLUMul computes out = silu(a) * b in one kernel launch
+func DevSiLUMul(out, a, b *DevBuf) {
+	fusedSiLUMulOnce.Do(func() {
+		if !SgemmReady() { return }
+		var err error
+		fnFusedSiLUMul, err = LoadPTX(FusedSiLUMulPTX, "fused_silu_mul")
+		if err != nil { return }
+		fusedSiLUMulOK = true
+	})
+	n := a.n
+	if fusedSiLUMulOK && tryGPU(a, b, out) {
+		nn := uint32(n)
+		LaunchKernel(fnFusedSiLUMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback
+	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	for i := 0; i < n; i++ {
+		x := a.cpu[i]
+		out.cpu[i] = x / (1.0 + float32(math.Exp(float64(-x)))) * b.cpu[i]
+	}
+}

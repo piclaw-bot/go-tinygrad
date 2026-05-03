@@ -119,3 +119,28 @@ L6: setp.ge.u32 %p, %r2, %r1; @%p bra L7;
 L7: ret;
 }
 `
+
+const FusedSiLUMulPTX = `.version 7.0
+.target sm_80
+.address_size 64
+.visible .entry fused_silu_mul(.param .u64 A, .param .u64 B, .param .u64 C, .param .u32 N) {
+    .reg .u32 %r<8>; .reg .u64 %rd<8>; .reg .f32 %f<8>; .reg .pred %p;
+    mov.u32 %r0, %ctaid.x; mov.u32 %r1, %ntid.x; mov.u32 %r2, %tid.x;
+    mad.lo.u32 %r3, %r0, %r1, %r2;
+    ld.param.u32 %r4, [N]; setp.ge.u32 %p, %r3, %r4; @%p bra done;
+    ld.param.u64 %rd0, [A]; ld.param.u64 %rd1, [B]; ld.param.u64 %rd2, [C];
+    mul.wide.u32 %rd3, %r3, 4;
+    add.u64 %rd4, %rd0, %rd3; add.u64 %rd5, %rd1, %rd3; add.u64 %rd6, %rd2, %rd3;
+    ld.global.f32 %f0, [%rd4]; ld.global.f32 %f1, [%rd5];
+    // silu(a) = a / (1 + exp(-a))
+    neg.f32 %f2, %f0;
+    mul.f32 %f2, %f2, 0f3FB8AA3B;
+    ex2.approx.f32 %f3, %f2;
+    add.f32 %f4, %f3, 0f3F800000;
+    div.rn.f32 %f5, %f0, %f4;
+    // out = silu(a) * b
+    mul.f32 %f6, %f5, %f1;
+    st.global.f32 [%rd6], %f6;
+done: ret;
+}
+`
