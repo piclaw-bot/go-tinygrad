@@ -38,6 +38,7 @@ type LlamaConfig struct {
 	ModelType      string  `json:"model_type"`
 	TieEmbeddings  bool    `json:"tie_word_embeddings"`
 	HeadDim        int     `json:"head_dim"`
+	HiddenAct      string  `json:"hidden_activation"` // "silu" (default), "gelu_pytorch_tanh"
 
 	// Quantization (populated from quantize_config.json or config.json)
 	QuantBits     int    `json:"-"`
@@ -66,7 +67,9 @@ type LlamaModel struct {
 // LlamaLayer holds weights for one decoder layer.
 type LlamaLayer struct {
 	InputNorm *tensor.Tensor // [hidden] RMSNorm weight
-	PostNorm  *tensor.Tensor // [hidden]
+	PostNorm      *tensor.Tensor // [hidden]
+	PreFFNNorm    *tensor.Tensor // [hidden] Gemma3: pre-feedforward norm
+	PostFFNNorm   *tensor.Tensor // [hidden] Gemma3: post-feedforward norm
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
 	QB, KB, VB     *tensor.Tensor // optional biases (Qwen2 has these)
@@ -396,13 +399,36 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer.KB = load(p+".self_attn.k_proj.bias", []int{kvDim})
 			layer.VB = load(p+".self_attn.v_proj.bias", []int{kvDim})
 		}
-		// Optional QK-Norm (Qwen3 has these)
+		// Optional pre/post FFN norms (Gemma3 has these)
+		if tryLoad(p+".pre_feedforward_layernorm.weight") {
+			layer.PreFFNNorm = load(p+".pre_feedforward_layernorm.weight", []int{h})
+			layer.PostFFNNorm = load(p+".post_feedforward_layernorm.weight", []int{h})
+		}
+		// Optional QK-Norm (Qwen3/Gemma3 have these)
 		headDim := cfg.HeadDim
 		if tryLoad(p+".self_attn.q_norm.weight") {
 			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{headDim})
 			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{headDim})
 		}
 		m.Layers[l] = layer
+	}
+
+	// Gemma: norm weights are stored as (w-1), add 1 back
+	if cfg.ModelType == "gemma3_text" {
+		for l := range m.Layers {
+			for _, norm := range []*tensor.Tensor{
+				m.Layers[l].InputNorm, m.Layers[l].PostNorm,
+				m.Layers[l].PreFFNNorm, m.Layers[l].PostFFNNorm,
+			} {
+				if norm != nil {
+					d := norm.Data()
+					for i := range d { d[i] += 1.0 }
+				}
+			}
+		}
+		// Also fix the final norm
+		nd := m.Norm.Data()
+		for i := range nd { nd[i] += 1.0 }
 	}
 
 	// Pre-compute RoPE frequencies
@@ -556,32 +582,46 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(oOut, attnOut, layer.OW.Data(), numHeads*headDim, h)
 			}
 
-			// Residual
-			for i := range hidden {
-				hidden[i] = residual[i] + oOut[i]
+			// Gemma3: post-attn norm BEFORE residual add
+			if layer.PreFFNNorm != nil {
+				// Gemma3 pattern: norm(attn_output), then add residual
+				rmsNormInPlace(oOut, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
+				for i := range hidden { hidden[i] = residual[i] + oOut[i] }
+				copy(residual, hidden)
+			} else {
+				// Qwen/LLaMA pattern: add residual, then norm
+				for i := range hidden { hidden[i] = residual[i] + oOut[i] }
+				copy(residual, hidden)
+				rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
 			}
 
-			// Post-attention norm
-			copy(residual, hidden)
-			rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
+			// MLP input: preFFNNorm for Gemma3, postNorm already applied for Qwen
+			mlpInput := hidden
+			if layer.PreFFNNorm != nil {
+				mlpInput = make([]float32, h)
+				copy(mlpInput, hidden)
+				rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+			}
 
 			// MLP: gate * up → SiLU → down
 			gate := make([]float32, inter)
 			up := make([]float32, inter)
 			if layer.GateWq != nil {
-				m.mvQ(gate, hidden, layer.GateWq)
-				m.mvQ(up, hidden, layer.UpWq)
+				m.mvQ(gate, mlpInput, layer.GateWq)
+				m.mvQ(up, mlpInput, layer.UpWq)
 			} else if layer.GateWm != nil {
-				GemvMLQ(gate, hidden, layer.GateWm)
-				GemvMLQ(up, hidden, layer.UpWm)
+				GemvMLQ(gate, mlpInput, layer.GateWm)
+				GemvMLQ(up, mlpInput, layer.UpWm)
 			} else {
-				m.mv(gate, hidden, layer.GateW.Data(), h, inter)
-				m.mv(up, hidden, layer.UpW.Data(), h, inter)
+				m.mv(gate, mlpInput, layer.GateW.Data(), h, inter)
+				m.mv(up, mlpInput, layer.UpW.Data(), h, inter)
 			}
 
-			// SiLU(gate) * up
-			for i := range gate {
-				gate[i] = gate[i] / (1 + float32(math.Exp(float64(-gate[i])))) * up[i]
+			// Activation(gate) * up
+			if cfg.HiddenAct == "gelu_pytorch_tanh" {
+				for i := range gate { gate[i] = geluTanh(gate[i]) * up[i] }
+			} else {
+				for i := range gate { gate[i] = gate[i] / (1 + float32(math.Exp(float64(-gate[i])))) * up[i] }
 			}
 
 			// Down projection
@@ -592,6 +632,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				GemvMLQ(down, gate, layer.DownWm)
 			} else {
 				m.mv(down, gate, layer.DownW.Data(), inter, h)
+			}
+
+			// Post-FFN norm (Gemma3)
+			if layer.PostFFNNorm != nil {
+				rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
 			}
 
 			// Residual
@@ -692,6 +737,13 @@ func gemvNT(out, x []float32, w []float32, inDim, outDim int) {
 		}
 		out[j] = sum
 	}
+}
+
+func geluTanh(x float32) float32 {
+	// GELU with tanh approximation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+	x3 := x * x * x
+	inner := float32(0.7978845608) * (x + 0.044715*x3) // sqrt(2/pi) ≈ 0.7978845608
+	return 0.5 * x * (1.0 + float32(math.Tanh(float64(inner))))
 }
 
 func applyRoPE(x, freqs []float32, pos, numHeads, headDim int) {
