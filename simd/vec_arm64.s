@@ -387,3 +387,122 @@ bf16_done:
 // func VecSiLUMul(dst, a, b []float32)
 TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
     B       ·vecSiLUMulGo(SB)
+
+// ============================================================
+// BF16 SIMD operations (ARM64 NEON)
+// Widen: USHLL (zero-extend u16→u32) + SHL $16
+// Narrow: USHR $16 + UZP1/XTN
+// ============================================================
+
+// func BF16DotAsm(x, y []uint16) float32
+TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
+    MOVD    x_base+0(FP), R0
+    MOVD    x_len+8(FP), R2
+    MOVD    y_base+24(FP), R1
+
+    VEOR    V0.B16, V0.B16, V0.B16   // acc
+
+    CMP     $4, R2
+    BLT     bf16dot_arm_scalar
+
+bf16dot_arm_loop4:
+    // Load 4× BF16
+    VLD1    (R0), [V2.H4]           // 4× u16
+    VLD1    (R1), [V3.H4]
+    // Widen to u32 then shift to F32
+    WORD    $0x2f10a442              // USHLL V2.4S, V2.4H, #0 (zero-extend)
+    WORD    $0x4f305442              // SHL V2.4S, V2.4S, #16
+    WORD    $0x2f10a463
+    WORD    $0x4f305463
+    // FMA
+    VFMLA   V2.S4, V3.S4, V0.S4
+    ADD     $8, R0
+    ADD     $8, R1
+    SUB     $4, R2, R2
+    CMP     $4, R2
+    BGE     bf16dot_arm_loop4
+
+bf16dot_arm_scalar:
+    // Horizontal reduce V0
+    VMOV    V0.S[0], R3
+    FMOVS   R3, F4
+    VMOV    V0.S[1], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+    VMOV    V0.S[2], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+    VMOV    V0.S[3], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+
+    CMP     $0, R2
+    BEQ     bf16dot_arm_done
+
+bf16dot_arm_tail:
+    MOVHU   (R0), R3
+    LSL     $16, R3, R3
+    FMOVS   R3, F5
+    MOVHU   (R1), R3
+    LSL     $16, R3, R3
+    FMOVS   R3, F6
+    FMADDS  F5, F4, F6, F4
+    ADD     $2, R0
+    ADD     $2, R1
+    SUB     $1, R2, R2
+    CBNZ    R2, bf16dot_arm_tail
+
+bf16dot_arm_done:
+    FMOVS   F4, ret+48(FP)
+    RET
+
+// func BF16VecAddAsm(dst, a, b []uint16)
+TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
+    // Scalar fallback for now (NEON BF16 widen needs manual encoding)
+    B       ·bf16VecAddGoFallback(SB)
+
+// func BF16RMSNormAsm(x, w []uint16, eps float32)
+TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
+    B       ·bf16RMSNormGoFallback(SB)
+
+// func BF16WidenToF32(dst []float32, src []uint16)
+TEXT ·BF16WidenToF32(SB), NOSPLIT, $0-48
+    MOVD    dst_base+0(FP), R3
+    MOVD    src_base+24(FP), R0
+    MOVD    src_len+32(FP), R2
+
+    CMP     $0, R2
+    BEQ     bfw_arm_done
+
+bfw_arm_loop:
+    MOVHU   (R0), R4
+    LSL     $16, R4, R4
+    MOVW    R4, (R3)
+    ADD     $2, R0
+    ADD     $4, R3
+    SUB     $1, R2, R2
+    CBNZ    R2, bfw_arm_loop
+
+bfw_arm_done:
+    RET
+
+// func BF16NarrowFromF32(dst []uint16, src []float32)
+TEXT ·BF16NarrowFromF32(SB), NOSPLIT, $0-48
+    MOVD    dst_base+0(FP), R3
+    MOVD    src_base+24(FP), R0
+    MOVD    src_len+32(FP), R2
+
+    CMP     $0, R2
+    BEQ     bfn_arm_done
+
+bfn_arm_loop:
+    MOVW    (R0), R4
+    LSR     $16, R4, R4
+    MOVH    R4, (R3)
+    ADD     $4, R0
+    ADD     $2, R3
+    SUB     $1, R2, R2
+    CBNZ    R2, bfn_arm_loop
+
+bfn_arm_done:
+    RET

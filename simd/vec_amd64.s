@@ -516,3 +516,342 @@ bf16_done:
 TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
     JMP ·vecSiLUMulGo(SB)
 
+
+// ============================================================
+// BF16 SIMD operations (AVX2)
+// BF16 values are uint16 with the same exponent+sign as F32.
+// Widen: zero-extend to u32, shift left 16 → valid F32.
+// Narrow: shift right 16, pack to u16.
+// ============================================================
+
+// func BF16DotAsm(x, y []uint16) float32
+// Loads 16 BF16 values per iteration (32 bytes = 2× YMM of u16),
+// widens to F32 (4× YMM), FMA accumulates, horizontal reduce.
+TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
+    MOVQ    x_base+0(FP), SI
+    MOVQ    x_len+8(FP), CX
+    MOVQ    y_base+24(FP), DI
+
+    VXORPS  Y0, Y0, Y0          // acc0
+    VXORPS  Y1, Y1, Y1          // acc1
+
+    CMPQ    CX, $16
+    JL      bf16dot_tail8
+
+bf16dot_loop16:
+    // Load 16× BF16 from x (32 bytes)
+    VMOVDQU (SI), Y2             // 16× u16
+    // Widen lower 8 to F32: extract low 128, zero-extend to 256, shift left 16
+    VPMOVZXWD (SI), Y4          // lower 8× u16 → 8× u32
+    VPSLLD  $16, Y4, Y4         // shift left 16 → F32
+    VPMOVZXWD 16(SI), Y5        // upper 8× u16 → 8× u32
+    VPSLLD  $16, Y5, Y5
+
+    // Same for y
+    VPMOVZXWD (DI), Y6
+    VPSLLD  $16, Y6, Y6
+    VPMOVZXWD 16(DI), Y7
+    VPSLLD  $16, Y7, Y7
+
+    // FMA accumulate
+    VFMADD231PS Y6, Y4, Y0
+    VFMADD231PS Y7, Y5, Y1
+
+    ADDQ    $32, SI
+    ADDQ    $32, DI
+    SUBQ    $16, CX
+    CMPQ    CX, $16
+    JGE     bf16dot_loop16
+
+bf16dot_tail8:
+    VADDPS  Y1, Y0, Y0
+
+    CMPQ    CX, $8
+    JL      bf16dot_reduce
+    VPMOVZXWD (SI), Y4
+    VPSLLD  $16, Y4, Y4
+    VPMOVZXWD (DI), Y6
+    VPSLLD  $16, Y6, Y6
+    VFMADD231PS Y6, Y4, Y0
+    ADDQ    $16, SI
+    ADDQ    $16, DI
+    SUBQ    $8, CX
+
+bf16dot_reduce:
+    VEXTRACTF128 $1, Y0, X1
+    VADDPS  X1, X0, X0
+    VHADDPS X0, X0, X0
+    VHADDPS X0, X0, X0
+
+    TESTQ   CX, CX
+    JZ      bf16dot_done
+
+bf16dot_scalar:
+    MOVWLZX (SI), R8
+    SHLL    $16, R8
+    MOVL    R8, X2
+    MOVWLZX (DI), R8
+    SHLL    $16, R8
+    MOVL    R8, X3
+    VFMADD231SS X3, X2, X0
+    ADDQ    $2, SI
+    ADDQ    $2, DI
+    DECQ    CX
+    JNZ     bf16dot_scalar
+
+bf16dot_done:
+    VMOVSS  X0, ret+48(FP)
+    VZEROUPPER
+    RET
+
+// func BF16VecAddAsm(dst, a, b []uint16)
+// Widens BF16→F32, adds, narrows F32→BF16
+TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
+    MOVQ    dst_base+0(FP), DI
+    MOVQ    a_base+24(FP), SI
+    MOVQ    a_len+32(FP), CX
+    MOVQ    b_base+48(FP), DX
+
+    CMPQ    CX, $8
+    JL      bf16add_scalar_check
+
+bf16add_loop8:
+    // Widen a[i:i+8] and b[i:i+8] to F32
+    VPMOVZXWD (SI), Y0
+    VPSLLD  $16, Y0, Y0
+    VPMOVZXWD (DX), Y1
+    VPSLLD  $16, Y1, Y1
+    // Add in F32
+    VADDPS  Y1, Y0, Y0
+    // Narrow F32→BF16: shift right 16, pack
+    VPSRLD  $16, Y0, Y0         // 8× u32 with BF16 in lower 16 bits
+    // Pack 8× u32 → 8× u16 (with saturation)
+    VEXTRACTI128 $1, Y0, X1
+    VPACKUSDW X1, X0, X0        // pack to 8× u16
+    VMOVDQU X0, (DI)
+    ADDQ    $16, SI
+    ADDQ    $16, DX
+    ADDQ    $16, DI
+    SUBQ    $8, CX
+    CMPQ    CX, $8
+    JGE     bf16add_loop8
+
+bf16add_scalar_check:
+    TESTQ   CX, CX
+    JZ      bf16add_done
+
+bf16add_scalar:
+    MOVWLZX (SI), R8
+    SHLL    $16, R8
+    MOVL    R8, X0
+    MOVWLZX (DX), R8
+    SHLL    $16, R8
+    MOVL    R8, X1
+    VADDSS  X1, X0, X0
+    // Narrow: extract bits, shift right
+    VMOVD   X0, R8
+    SHRL    $16, R8
+    MOVW    R8, (DI)
+    ADDQ    $2, SI
+    ADDQ    $2, DX
+    ADDQ    $2, DI
+    DECQ    CX
+    JNZ     bf16add_scalar
+
+bf16add_done:
+    VZEROUPPER
+    RET
+
+// func BF16RMSNormAsm(x, w []uint16, eps float32)
+TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
+    MOVQ    x_base+0(FP), SI
+    MOVQ    x_len+8(FP), CX
+    MOVQ    w_base+24(FP), DI
+    MOVSS   eps+48(FP), X8
+
+    MOVQ    SI, R8           // save x
+    MOVQ    CX, R9           // save n
+
+    // Phase 1: sum of squares (widen BF16→F32, square, accumulate)
+    VXORPS  Y0, Y0, Y0
+    VXORPS  Y1, Y1, Y1
+
+    CMPQ    CX, $16
+    JL      bf16rn_ss_tail
+
+bf16rn_ss_loop:
+    VPMOVZXWD (SI), Y4
+    VPSLLD  $16, Y4, Y4
+    VPMOVZXWD 16(SI), Y5
+    VPSLLD  $16, Y5, Y5
+    VFMADD231PS Y4, Y4, Y0
+    VFMADD231PS Y5, Y5, Y1
+    ADDQ    $32, SI
+    SUBQ    $16, CX
+    CMPQ    CX, $16
+    JGE     bf16rn_ss_loop
+
+bf16rn_ss_tail:
+    VADDPS  Y1, Y0, Y0
+    CMPQ    CX, $8
+    JL      bf16rn_ss_reduce
+    VPMOVZXWD (SI), Y4
+    VPSLLD  $16, Y4, Y4
+    VFMADD231PS Y4, Y4, Y0
+    ADDQ    $16, SI
+    SUBQ    $8, CX
+
+bf16rn_ss_reduce:
+    VEXTRACTF128 $1, Y0, X1
+    VADDPS  X1, X0, X0
+    VHADDPS X0, X0, X0
+    VHADDPS X0, X0, X0
+
+    TESTQ   CX, CX
+    JZ      bf16rn_compute
+
+bf16rn_ss_scalar:
+    MOVWLZX (SI), R10
+    SHLL    $16, R10
+    MOVL    R10, X2
+    VFMADD231SS X2, X2, X0
+    ADDQ    $2, SI
+    DECQ    CX
+    JNZ     bf16rn_ss_scalar
+
+bf16rn_compute:
+    // X0 = sum_sq, R9 = n
+    VCVTSI2SSQ R9, X1, X1
+    VDIVSS  X1, X0, X0
+    VADDSS  X8, X0, X0
+    VSQRTSS X0, X0, X0
+    MOVL    $0x3f800000, R11
+    MOVL    R11, X1
+    VDIVSS  X0, X1, X0
+    VBROADCASTSS X0, Y6      // invRMS
+
+    // Phase 2: x[i] = BF16(F32(x[i]) * invRMS * F32(w[i]))
+    MOVQ    R8, SI
+    MOVQ    R9, CX
+
+    CMPQ    CX, $8
+    JL      bf16rn_apply_scalar_check
+
+bf16rn_apply_loop:
+    // Widen x and w
+    VPMOVZXWD (SI), Y2
+    VPSLLD  $16, Y2, Y2
+    VPMOVZXWD (DI), Y3
+    VPSLLD  $16, Y3, Y3
+    // x * invRMS * w
+    VMULPS  Y6, Y2, Y2
+    VMULPS  Y3, Y2, Y2
+    // Narrow to BF16
+    VPSRLD  $16, Y2, Y2
+    VEXTRACTI128 $1, Y2, X3
+    VPACKUSDW X3, X2, X2
+    VMOVDQU X2, (SI)
+    ADDQ    $16, SI
+    ADDQ    $16, DI
+    SUBQ    $8, CX
+    CMPQ    CX, $8
+    JGE     bf16rn_apply_loop
+
+bf16rn_apply_scalar_check:
+    TESTQ   CX, CX
+    JZ      bf16rn_done
+
+bf16rn_apply_scalar:
+    MOVWLZX (SI), R10
+    SHLL    $16, R10
+    MOVL    R10, X2
+    MOVWLZX (DI), R10
+    SHLL    $16, R10
+    MOVL    R10, X3
+    VMULSS  X6, X2, X2
+    VMULSS  X3, X2, X2
+    VMOVD   X2, R10
+    SHRL    $16, R10
+    MOVW    R10, (SI)
+    ADDQ    $2, SI
+    ADDQ    $2, DI
+    DECQ    CX
+    JNZ     bf16rn_apply_scalar
+
+bf16rn_done:
+    VZEROUPPER
+    RET
+
+// func BF16WidenToF32(dst []float32, src []uint16)
+TEXT ·BF16WidenToF32(SB), NOSPLIT, $0-48
+    MOVQ    dst_base+0(FP), DI
+    MOVQ    src_base+24(FP), SI
+    MOVQ    src_len+32(FP), CX
+
+    CMPQ    CX, $8
+    JL      bfw_scalar_check
+
+bfw_loop8:
+    VPMOVZXWD (SI), Y0
+    VPSLLD  $16, Y0, Y0
+    VMOVUPS Y0, (DI)
+    ADDQ    $16, SI
+    ADDQ    $32, DI
+    SUBQ    $8, CX
+    CMPQ    CX, $8
+    JGE     bfw_loop8
+
+bfw_scalar_check:
+    TESTQ   CX, CX
+    JZ      bfw_done
+
+bfw_scalar:
+    MOVWLZX (SI), R8
+    SHLL    $16, R8
+    MOVL    R8, (DI)
+    ADDQ    $2, SI
+    ADDQ    $4, DI
+    DECQ    CX
+    JNZ     bfw_scalar
+
+bfw_done:
+    VZEROUPPER
+    RET
+
+// func BF16NarrowFromF32(dst []uint16, src []float32)
+TEXT ·BF16NarrowFromF32(SB), NOSPLIT, $0-48
+    MOVQ    dst_base+0(FP), DI
+    MOVQ    src_base+24(FP), SI
+    MOVQ    src_len+32(FP), CX
+
+    CMPQ    CX, $8
+    JL      bfn_scalar_check
+
+bfn_loop8:
+    VMOVUPS (SI), Y0
+    VPSRLD  $16, Y0, Y0
+    VEXTRACTI128 $1, Y0, X1
+    VPACKUSDW X1, X0, X0
+    VMOVDQU X0, (DI)
+    ADDQ    $32, SI
+    ADDQ    $16, DI
+    SUBQ    $8, CX
+    CMPQ    CX, $8
+    JGE     bfn_loop8
+
+bfn_scalar_check:
+    TESTQ   CX, CX
+    JZ      bfn_done
+
+bfn_scalar:
+    MOVL    (SI), R8
+    SHRL    $16, R8
+    MOVW    R8, (DI)
+    ADDQ    $4, SI
+    ADDQ    $2, DI
+    DECQ    CX
+    JNZ     bfn_scalar
+
+bfn_done:
+    VZEROUPPER
+    RET

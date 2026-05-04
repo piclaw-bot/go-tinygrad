@@ -123,3 +123,79 @@ func BenchmarkBF16RMSNorm(b *testing.B) {
 		BF16RMSNorm(x, w, 1e-6)
 	}
 }
+
+func TestBF16DotAsm(t *testing.T) {
+	x := BF16FromF32Slice([]float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
+	y := BF16FromF32Slice([]float32{0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5})
+	got := BF16DotAsm(x, y)
+	// sum(1..17)*0.5 = 153*0.5 = 76.5
+	ref := BF16Dot(x, y)
+	if got != ref {
+		t.Fatalf("BF16DotAsm=%f ref=%f", got, ref)
+	}
+	t.Logf("BF16DotAsm: %f (ref=%f, HasVecAsm=%v)", got, ref, HasVecAsm)
+}
+
+func TestBF16VecAddAsm(t *testing.T) {
+	a := BF16FromF32Slice([]float32{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	b := BF16FromF32Slice([]float32{10, 20, 30, 40, 50, 60, 70, 80, 90})
+	dst := make([]uint16, len(a))
+	ref := make([]uint16, len(a))
+	BF16VecAddAsm(dst, a, b)
+	BF16VecAdd(ref, a, b)
+	for i := range dst {
+		if dst[i] != ref[i] {
+			t.Fatalf("BF16VecAddAsm[%d]=%04x ref=%04x", i, dst[i], ref[i])
+		}
+	}
+	t.Log("BF16VecAddAsm: OK")
+}
+
+func TestBF16WidenNarrow(t *testing.T) {
+	src := BF16FromF32Slice([]float32{1.0, -0.5, 3.14, 0.001, 1000, 0, -1, 2.5, 99.9})
+	f32 := make([]float32, len(src))
+	BF16WidenToF32(f32, src)
+	for i := range src {
+		want := BF16ToF32(src[i])
+		if f32[i] != want {
+			t.Fatalf("Widen[%d]=%f want %f", i, f32[i], want)
+		}
+	}
+	back := make([]uint16, len(f32))
+	BF16NarrowFromF32(back, f32)
+	for i := range src {
+		if back[i] != src[i] {
+			t.Fatalf("Narrow[%d]=%04x want %04x", i, back[i], src[i])
+		}
+	}
+	t.Log("BF16 Widen/Narrow: OK")
+}
+
+func BenchmarkBF16DotAsm(b *testing.B) {
+	x := BF16FromF32Slice(make([]float32, 3584))
+	y := BF16FromF32Slice(make([]float32, 3584))
+	for i := range x { x[i] = F32ToBF16(float32(i)*0.001); y[i] = F32ToBF16(float32(i)*0.002) }
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BF16DotAsm(x, y)
+	}
+}
+
+func BenchmarkBF16RMSNormAsm(b *testing.B) {
+	x := BF16FromF32Slice(make([]float32, 3584))
+	w := BF16FromF32Slice(make([]float32, 3584))
+	for i := range x { x[i] = F32ToBF16(float32(i)*0.001-1.0); w[i] = F32ToBF16(1.0) }
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BF16RMSNormAsm(x, w, 1e-6)
+	}
+}
+
+func BenchmarkBF16WidenToF32(b *testing.B) {
+	src := BF16FromF32Slice(make([]float32, 3584))
+	dst := make([]float32, 3584)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BF16WidenToF32(dst, src)
+	}
+}

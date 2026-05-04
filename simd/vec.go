@@ -82,3 +82,22 @@ func unsafeSqrt(x float64) float64 {
 	y = y * (1.5 - 0.5*x*y*y)
 	return x * y
 }
+
+// BF16 SIMD operations (assembly on amd64/arm64, Go fallback on other)
+
+// BF16DotAsm computes dot product of two BF16 slices, accumulating in F32.
+// Uses AVX2: widen BF16→F32 via shift, VFMADD231PS, horizontal reduce.
+func BF16DotAsm(x, y []uint16) float32
+
+// BF16RMSNormAsm computes RMSNorm in-place on BF16 data with BF16 weights.
+// Phase 1: widen→square→sum in F32. Phase 2: widen→scale→narrow.
+func BF16RMSNormAsm(x, w []uint16, eps float32)
+
+// BF16VecAddAsm computes dst = a + b for BF16 slices.
+func BF16VecAddAsm(dst, a, b []uint16)
+
+// BF16WidenToF32 converts []uint16 BF16 to []float32 using SIMD.
+func BF16WidenToF32(dst []float32, src []uint16)
+
+// BF16NarrowFromF32 converts []float32 to []uint16 BF16 using SIMD.
+func BF16NarrowFromF32(dst []uint16, src []float32)

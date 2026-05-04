@@ -43,3 +43,13 @@ func toBF16Single(x float32) float32 {
 }
 
 func init() { HasVecAsm = false }
+
+func BF16DotAsm(x, y []uint16) float32     { return BF16Dot(x, y) }
+func BF16RMSNormAsm(x, w []uint16, eps float32) { BF16RMSNorm(x, w, eps) }
+func BF16VecAddAsm(dst, a, b []uint16)      { BF16VecAdd(dst, a, b) }
+func BF16WidenToF32(dst []float32, src []uint16) {
+	for i, v := range src { dst[i] = BF16ToF32(v) }
+}
+func BF16NarrowFromF32(dst []uint16, src []float32) {
+	for i, v := range src { dst[i] = F32ToBF16(v) }
+}
