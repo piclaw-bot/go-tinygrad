@@ -266,23 +266,24 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	}
 	if cfg.ModelType == "gemma4_text" && g.CPU != nil && g.CPU.Tok != nil {
 		turnStart, turnEnd := -1, -1
+		newlineID := -1
 		for id, tok := range g.CPU.Tok.InvVocab {
 			if tok == "<|turn>" { turnStart = id }
 			if tok == "<turn|>" { turnEnd = id }
+			if tok == "\n" { newlineID = id }
 		}
-		if turnStart >= 0 && turnEnd >= 0 {
-			nl := g.CPU.Tok.Encode("\n")
+		if turnStart >= 0 && turnEnd >= 0 && newlineID >= 0 {
 			user := g.CPU.Tok.Encode("user")
 			mdl := g.CPU.Tok.Encode("model")
 			wrapped := []int{cfg.BOSTokenID, turnStart}
 			wrapped = append(wrapped, user...)
-			wrapped = append(wrapped, nl...)
+			wrapped = append(wrapped, newlineID)
 			wrapped = append(wrapped, tokenIDs[1:]...)
 			wrapped = append(wrapped, turnEnd)
-			wrapped = append(wrapped, nl...)
+			wrapped = append(wrapped, newlineID)
 			wrapped = append(wrapped, turnStart)
 			wrapped = append(wrapped, mdl...)
-			wrapped = append(wrapped, nl...)
+			wrapped = append(wrapped, newlineID)
 			tokenIDs = wrapped
 		}
 	}
