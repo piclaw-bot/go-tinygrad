@@ -260,6 +260,10 @@ func (g *GPUModel) gemv(out, x, W *gpu.DevBuf, inDim, outDim int) {
 func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	runtime.LockOSThread()
 	cfg := g.Config
+	// Prepend BOS token if model requires it (Gemma)
+	if cfg.BOSTokenID > 0 && cfg.ModelType == "gemma3_text" {
+		tokenIDs = append([]int{cfg.BOSTokenID}, tokenIDs...)
+	}
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads

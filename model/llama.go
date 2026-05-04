@@ -37,8 +37,12 @@ type LlamaConfig struct {
 	RMSNormEps     float64 `json:"rms_norm_eps"`
 	ModelType      string  `json:"model_type"`
 	TieEmbeddings  bool    `json:"tie_word_embeddings"`
-	HeadDim        int     `json:"head_dim"`
-	HiddenAct      string  `json:"hidden_activation"` // "silu" (default), "gelu_pytorch_tanh"
+	HeadDim              int     `json:"head_dim"`
+	SlidingWindow        int     `json:"sliding_window"`
+	SlidingWindowPattern int     `json:"sliding_window_pattern"`
+	RopeLocalBaseFreq    float64 `json:"rope_local_base_freq"`
+	BOSTokenID           int     `json:"bos_token_id"`
+	HiddenAct            string  `json:"hidden_activation"`
 
 	// Quantization (populated from quantize_config.json or config.json)
 	QuantBits     int    `json:"-"`
