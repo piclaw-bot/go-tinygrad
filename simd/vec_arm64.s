@@ -402,10 +402,12 @@ TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
 
     VEOR    V0.B16, V0.B16, V0.B16   // acc
 
-    CMP     $4, R2
-    BLT     bf16dot_arm_scalar
+    VEOR    V1.B16, V1.B16, V1.B16  // acc1 for 8-wide
 
-bf16dot_arm_loop4:
+    CMP     $8, R2
+    BLT     bf16dot_arm_tail4
+
+bf16dot_arm_loop8:
     // Load 4× BF16
     VLD1    (R0), [V2.H4]           // 4× u16
     VLD1    (R1), [V3.H4]
@@ -464,10 +466,10 @@ TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
     MOVD    a_len+32(FP), R2
     MOVD    b_base+48(FP), R1
 
-    CMP     $4, R2
-    BLT     bf16add_arm_scalar
+    CMP     $8, R2
+    BLT     bf16add_arm_tail4
 
-bf16add_arm_loop4:
+bf16add_arm_loop8:
     // Load 4× BF16 from a and b
     VLD1    (R0), [V2.H4]
     VLD1    (R1), [V3.H4]
@@ -526,10 +528,12 @@ TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
     // Phase 1: sum of squares
     VEOR    V0.B16, V0.B16, V0.B16
 
-    CMP     $4, R2
-    BLT     bf16rn_arm_ss_scalar
+    VEOR    V1.B16, V1.B16, V1.B16
 
-bf16rn_arm_ss_loop4:
+    CMP     $8, R2
+    BLT     bf16rn_arm_ss_tail4
+
+bf16rn_arm_ss_loop8:
     VLD1    (R0), [V2.H4]
     WORD    $0x2f10a442    // USHLL V2.4S, V2.4H, #0
     WORD    $0x4f305442    // SHL   V2.4S, V2.4S, #16
@@ -586,7 +590,7 @@ bf16rn_arm_compute:
     CMP     $4, R2
     BLT     bf16rn_arm_apply_scalar
 
-bf16rn_arm_apply_loop4:
+bf16rn_arm_apply_loop4:    // 4-wide is optimal for apply (compute-bound)
     VLD1    (R0), [V2.H4]
     VLD1    (R1), [V3.H4]
     WORD    $0x2f10a442
@@ -629,43 +633,103 @@ bf16rn_arm_done:
     RET
 
 // func BF16WidenToF32(dst []float32, src []uint16)
+// Vectorized: 8 elements per iteration (2× USHLL+SHL)
 TEXT ·BF16WidenToF32(SB), NOSPLIT, $0-48
     MOVD    dst_base+0(FP), R3
     MOVD    src_base+24(FP), R0
     MOVD    src_len+32(FP), R2
 
+    CMP     $8, R2
+    BLT     bfw_arm_tail4
+
+bfw_arm_loop8:
+    // Load 8× BF16 (16 bytes)
+    VLD1.P  16(R0), [V2.H8]
+    // Widen lower 4: USHLL V4.4S, V2.4H, #0 + SHL V4.4S, #16
+    WORD    $0x2f10a444    // USHLL V4.4S, V2.4H, #0
+    WORD    $0x4f305484    // SHL   V4.4S, V4.4S, #16
+    // Widen upper 4: USHLL2 V5.4S, V2.8H, #0 + SHL V5.4S, #16
+    WORD    $0x6f10a445    // USHLL2 V5.4S, V2.8H, #0
+    WORD    $0x4f3054a5    // SHL   V5.4S, V5.4S, #16
+    // Store 8× F32 (32 bytes)
+    VST1.P  [V4.S4, V5.S4], 32(R3)
+    SUB     $8, R2, R2
+    CMP     $8, R2
+    BGE     bfw_arm_loop8
+
+bfw_arm_tail4:
+    CMP     $4, R2
+    BLT     bfw_arm_scalar
+    VLD1    (R0), [V2.H4]
+    WORD    $0x2f10a444
+    WORD    $0x4f305484
+    VST1.P  [V4.S4], 16(R3)
+    ADD     $8, R0
+    SUB     $4, R2, R2
+
+bfw_arm_scalar:
     CMP     $0, R2
     BEQ     bfw_arm_done
 
-bfw_arm_loop:
+bfw_arm_scalar_loop:
     MOVHU   (R0), R4
     LSL     $16, R4, R4
     MOVW    R4, (R3)
     ADD     $2, R0
     ADD     $4, R3
     SUB     $1, R2, R2
-    CBNZ    R2, bfw_arm_loop
+    CBNZ    R2, bfw_arm_scalar_loop
 
 bfw_arm_done:
     RET
 
 // func BF16NarrowFromF32(dst []uint16, src []float32)
+// Vectorized: 8 elements per iteration (2× USHR+UZP1)
 TEXT ·BF16NarrowFromF32(SB), NOSPLIT, $0-48
     MOVD    dst_base+0(FP), R3
     MOVD    src_base+24(FP), R0
     MOVD    src_len+32(FP), R2
 
+    CMP     $8, R2
+    BLT     bfn_arm_tail4
+
+bfn_arm_loop8:
+    // Load 8× F32 (32 bytes)
+    VLD1.P  32(R0), [V0.S4, V1.S4]
+    // Shift right 16: USHR V0.4S, V0.4S, #16
+    WORD    $0x6f300400    // USHR V0.4S, V0.4S, #16
+    WORD    $0x6f300421    // USHR V1.4S, V1.4S, #16
+    // Narrow: XTN V0.4H, V0.4S then XTN2 V0.8H, V1.4S
+    WORD    $0x0ea12800    // XTN  V0.4H, V0.4S
+    WORD    $0x4ea12820    // XTN2 V0.8H, V1.4S
+    // Store 8× BF16 (16 bytes)
+    VST1.P  [V0.H8], 16(R3)
+    SUB     $8, R2, R2
+    CMP     $8, R2
+    BGE     bfn_arm_loop8
+
+bfn_arm_tail4:
+    CMP     $4, R2
+    BLT     bfn_arm_scalar
+    VLD1.P  16(R0), [V0.S4]
+    WORD    $0x6f300400
+    WORD    $0x0ea12800
+    VST1    [V0.H4], (R3)
+    ADD     $8, R3
+    SUB     $4, R2, R2
+
+bfn_arm_scalar:
     CMP     $0, R2
     BEQ     bfn_arm_done
 
-bfn_arm_loop:
+bfn_arm_scalar_loop:
     MOVW    (R0), R4
     LSR     $16, R4, R4
     MOVH    R4, (R3)
     ADD     $4, R0
     ADD     $2, R3
     SUB     $1, R2, R2
-    CBNZ    R2, bfn_arm_loop
+    CBNZ    R2, bfn_arm_scalar_loop
 
 bfn_arm_done:
     RET
