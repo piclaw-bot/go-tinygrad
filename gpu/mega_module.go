@@ -137,6 +137,8 @@ func loadMegaModule() {
 			if err := initStreams(); err != nil {
 				fmt.Printf("[gpu] streams: %v\n", err)
 			}
+			// Try native BF16 kernels (Ampere+)
+			InitNativeBF16()
 		}
 	})
 }
