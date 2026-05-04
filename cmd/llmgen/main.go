@@ -36,6 +36,7 @@ func main() {
 		m.Config.NumLayers, m.Config.HiddenSize)
 
 	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
+	if err == nil { m.Tok = tok }
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tokenizer: %v\n", err)
 		os.Exit(1)

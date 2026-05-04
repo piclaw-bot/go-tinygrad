@@ -43,6 +43,8 @@ type LlamaConfig struct {
 	RopeLocalBaseFreq    float64 `json:"rope_local_base_freq"`
 	BOSTokenID           int     `json:"bos_token_id"`
 	LayerTypes           []string `json:"layer_types"`
+	NumKVSharedLayers    int      `json:"num_kv_shared_layers"`
+	GlobalHeadDim        int      `json:"global_head_dim"`
 	TensorPrefix         string  `json:"-"` // "language_model.model." for Gemma4
 	HiddenAct            string  `json:"hidden_activation"`
 
@@ -56,6 +58,7 @@ type LlamaConfig struct {
 // LlamaModel holds loaded weights for a LLaMA-style decoder.
 type LlamaModel struct {
 	Config LlamaConfig
+	Tok    *Tokenizer // optional, for chat templates
 
 	EmbedTokens *tensor.Tensor // [vocab, hidden]
 	Norm        *tensor.Tensor // [hidden]
@@ -75,6 +78,11 @@ type LlamaLayer struct {
 	InputNorm *tensor.Tensor // [hidden] RMSNorm weight
 	PostNorm      *tensor.Tensor // [hidden]
 	PreFFNNorm    *tensor.Tensor // [hidden] Gemma3: pre-feedforward norm
+	VNorm         *tensor.Tensor // Gemma4: V projection norm
+	LayerScalar   float32        // Gemma4: per-layer output scaling
+	HeadDimLocal  int            // per-layer head dim (may differ from config)
+	HasKV         bool           // Gemma4: false for KV-sharing layers
+	KVSourceLayer int            // Gemma4: which layer to share KV from
 	PostFFNNorm   *tensor.Tensor // [hidden] Gemma3: post-feedforward norm
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
@@ -457,6 +465,45 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{headDim})
 			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{headDim})
 		}
+		// Gemma4: per-layer properties
+		if len(cfg.LayerTypes) > l {
+			lt := cfg.LayerTypes[l]
+			// Head dim: global layers use GlobalHeadDim, sliding use HeadDim
+			if lt == "full_attention" && cfg.GlobalHeadDim > 0 {
+				layer.HeadDimLocal = cfg.GlobalHeadDim
+			} else {
+				layer.HeadDimLocal = cfg.HeadDim
+			}
+			// KV sharing: first N layers have own K/V, rest share
+			firstKVShared := cfg.NumLayers - cfg.NumKVSharedLayers
+			if l < firstKVShared || cfg.NumKVSharedLayers == 0 {
+				layer.HasKV = true
+			} else {
+				layer.HasKV = false
+				// Find the source layer (same layer type, in the first M layers)
+				for src := 0; src < firstKVShared; src++ {
+					if cfg.LayerTypes[src] == lt {
+						layer.KVSourceLayer = src
+					}
+				}
+			}
+		} else {
+			layer.HeadDimLocal = cfg.HeadDim
+			layer.HasKV = true
+		}
+
+		// Layer scalar (Gemma4)
+		layer.LayerScalar = 1.0
+		if tryLoad(p + ".layer_scalar") {
+			d := load(p+".layer_scalar", []int{1})
+			layer.LayerScalar = d.Data()[0]
+		}
+
+		// V norm (Gemma4)
+		if tryLoad(p + ".self_attn.v_norm.weight") {
+			layer.VNorm = load(p+".self_attn.v_norm.weight", []int{layer.HeadDimLocal})
+		}
+
 		m.Layers[l] = layer
 	}
 
@@ -524,6 +571,35 @@ func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 
 func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	cfg := m.Config
+
+	// BOS token for Gemma
+	if cfg.BOSTokenID > 0 && (cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text") {
+		tokenIDs = append([]int{cfg.BOSTokenID}, tokenIDs...)
+	}
+	// Gemma4 instruct chat template: <bos><|turn>user\n{prompt}<turn|>\n<|turn>model\n
+	if cfg.ModelType == "gemma4_text" && m.Tok != nil {
+		turnStart, turnEnd := -1, -1
+		for id, tok := range m.Tok.InvVocab {
+			if tok == "<|turn>" { turnStart = id }
+			if tok == "<turn|>" { turnEnd = id }
+		}
+		if turnStart >= 0 && turnEnd >= 0 {
+			nl := m.Tok.Encode("\n")
+			user := m.Tok.Encode("user")
+			mdl := m.Tok.Encode("model")
+			wrapped := []int{cfg.BOSTokenID, turnStart}
+			wrapped = append(wrapped, user...)
+			wrapped = append(wrapped, nl...)
+			wrapped = append(wrapped, tokenIDs[1:]...) // skip BOS
+			wrapped = append(wrapped, turnEnd)
+			wrapped = append(wrapped, nl...)
+			wrapped = append(wrapped, turnStart)
+			wrapped = append(wrapped, mdl...)
+			wrapped = append(wrapped, nl...)
+			tokenIDs = wrapped
+		}
+	}
+
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
@@ -580,10 +656,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			
 
 			// Q, K, V projections (single token: [1, h] @ [h, dim])
-			qDim := numHeads * headDim
+			layerHeadDim := headDim
+			if layer.HeadDimLocal > 0 { layerHeadDim = layer.HeadDimLocal }
+			qDim := numHeads * layerHeadDim
 			q := make([]float32, qDim)
-			k := make([]float32, kvDim)
-			v := make([]float32, kvDim)
+			layerKVDim := numKVHeads * layerHeadDim
+			k := make([]float32, layerKVDim)
+			v := make([]float32, layerKVDim)
 			if layer.QWq != nil {
 				m.mvQ(q, hidden, layer.QWq)
 				m.mvQ(k, hidden, layer.KWq)
@@ -593,7 +672,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				GemvMLQ(k, hidden, layer.KWm)
 				GemvMLQ(v, hidden, layer.VWm)
 			} else {
-				m.mv(q, hidden, layer.QW.Data(), h, numHeads*headDim)
+				m.mv(q, hidden, layer.QW.Data(), h, qDim)
 				m.mv(k, hidden, layer.KW.Data(), h, kvDim)
 				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
 			}
@@ -610,17 +689,27 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				simd.VecAdd(v, v, vb)
 			}
 
-			// QK-Norm (Qwen3/Gemma3): RMSNorm each head of Q and K separately
+			// Select norm function
+			normFn := rmsNormInPlace
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { normFn = rmsNormBF16 }
+
+			// V norm (Gemma4)
+			if layer.VNorm != nil {
+				vnorm := layer.VNorm.Data()
+				for head := 0; head < numKVHeads; head++ {
+					normFn(v[head*layerHeadDim:(head+1)*layerHeadDim], vnorm, float32(cfg.RMSNormEps))
+				}
+			}
+
+			// QK-Norm (Qwen3/Gemma3/4): RMSNorm each head of Q and K separately
 			if layer.QNorm != nil {
 				qNorm := layer.QNorm.Data()
 				kNorm := layer.KNorm.Data()
-				normFn := rmsNormInPlace
-				if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { normFn = rmsNormBF16 }
 				for head := 0; head < numHeads; head++ {
-					normFn(q[head*headDim:(head+1)*headDim], qNorm, float32(cfg.RMSNormEps))
+					normFn(q[head*layerHeadDim:(head+1)*layerHeadDim], qNorm, float32(cfg.RMSNormEps))
 				}
 				for head := 0; head < numKVHeads; head++ {
-					normFn(k[head*headDim:(head+1)*headDim], kNorm, float32(cfg.RMSNormEps))
+					normFn(k[head*layerHeadDim:(head+1)*layerHeadDim], kNorm, float32(cfg.RMSNormEps))
 				}
 			}
 
@@ -645,7 +734,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else if layer.OWm != nil {
 				GemvMLQ(oOut, attnOut, layer.OWm)
 			} else {
-				m.mv(oOut, attnOut, layer.OW.Data(), numHeads*headDim, h)
+				m.mv(oOut, attnOut, layer.OW.Data(), qDim, h)
 			}
 
 			// Gemma3: post-attn norm BEFORE residual add
@@ -722,6 +811,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Residual
 			simd.VecAdd(hidden, residual, down)
+			// Layer scalar (Gemma4)
+			if layer.LayerScalar != 1.0 {
+				for i := range hidden { hidden[i] *= layer.LayerScalar }
+			}
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { simd.ToBF16(hidden) }
 			if l == 0 && step == 0 {
 			}
