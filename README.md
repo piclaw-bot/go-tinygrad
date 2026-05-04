@@ -2,92 +2,128 @@
 
 ![go-pherence](docs/icon-256.png)
 
-A minimal tensor computation framework in pure Go with SIMD assembly and GPU compute,
-inspired by [tinygrad](https://github.com/tinygrad/tinygrad).
+**Run MLX models on any hardware.** A pure Go inference engine for Apple MLX, GPTQ and BF16 model weights — with CUDA, Vulkan, and SIMD assembly backends. Single static binary, no Python, no CGo, no external dependencies.
 
-## Architecture
+## Why
 
-![Architecture](docs/architecture.svg)
+Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantized model collection on HuggingFace (mlx-community). But MLX only runs on Apple Silicon. **go-pherence runs those same MLX weights on NVIDIA GPUs, Intel/AMD CPUs, ARM SBCs, and (soon) any Vulkan device.**
 
-## Runs LLMs in pure Go
+## Performance
 
-```
-$ llmgen -model Qwen2.5-7B-INT4 -tokens 30 -prompt "Why is the sky blue?"
-
-Why is the sky blue? The sky appears blue because of a phenomenon called
-Rayleigh scattering. When sunlight enters the Earth's atmosphere, it collides
-with molecules and small particles in...
-```
-
-| Model | Params | Format | tok/s | ms/tok |
+| Model | Arch | Format | GPU tok/s | CPU tok/s |
 |---|---|---|---|---|
-| SmolLM2-135M | 135M | BF16→F32 | **28.2** | 35 |
-| SmolLM2-360M | 360M | BF16→F32 | **10.8** | 93 |
-| SmolLM2-1.7B | 1.7B | BF16→F32 | **1.6** | 621 |
-| Qwen2.5-7B | 7.6B | BF16→F32 | **0.9** | 1,075 |
-| Qwen2.5-7B | 7.6B | GPTQ INT4 | **1.0** | 1,009 |
-| GTE-small | 23M | — | — | 10.8ms/embed |
+| **Qwen2.5-7B** | qwen2 | MLX 4-bit | **217** | 1.1 |
+| **Gemma4-E2B** | gemma4 | MLX 4-bit | **125** | 4.6 |
+| **SmolLM2-135M** | llama | BF16 | **86** | 35.5 |
+| **Qwen2.5-7B** | qwen2 | GPTQ 4-bit | **51** | 0.9 |
+| **Qwen2.5-0.5B** | qwen2 | MLX 4-bit | **31** | 7.2 |
+| **Qwen3-0.6B** | qwen3 | MLX 4-bit | **25** | 7.2 |
+| **Gemma3-1B** | gemma3 | MLX 4-bit | **18** | 4.9 |
 
-Single static binary. No Python, no C, no GGUF, no external dependencies.
-AVX2+FMA on amd64, NEON on arm64. Zero per-inference allocations.
+*RTX 3060 12GB + i7-12700 6-core. Pure Go, zero CGo.*
 
-## GPU Compute (RTX 3060)
+## Supported Models
 
-All GPU access via `purego` dlopen — zero CGo, static binary, GPU activates at runtime.
+| Architecture | Models | Formats | Status |
+|---|---|---|---|
+| **llama** | SmolLM2, LLaMA 3.x | BF16, F16, F32 | ✅ |
+| **qwen2** | Qwen2.5 0.5B–7B | MLX 4-bit, GPTQ 4-bit | ✅ |
+| **qwen3** | Qwen3 0.6B+ | MLX 4-bit, BF16 | ✅ |
+| **gemma3** | Gemma 3 1B+ | MLX 4-bit, BF16 | ✅ |
+| **gemma4** | Gemma 4 E2B+ | MLX 4-bit | ✅ |
 
-| Kernel | Performance | PTX |
-|---|---|---|
-| SGEMM (16×16 tiled) | **348 GFLOPS** @ 1024² | ✅ |
-| INT4 fused dequant+GEMV | **197µs** @ 3584² (1.7e-6 diff) | ✅ |
-| vec_add / mul / scale | threshold ≥2048 | ✅ |
-| vec_silu | exp2 approx | ✅ |
-| rms_norm | shared-memory reduction | ✅ |
-
-Plus NV direct ioctl path (zero dependencies, raw `/dev/nvidia*` syscalls):
-device discovery, GPU UUID, 84 SMs, channel group, host memory.
-
-## Test Matrix
-
-![Test Matrix](docs/test-matrix.svg)
-
-## Features
-
-- **Lazy tensor DAG** with elementwise fusion (2× for chained ops)
-- **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)
-- **SIMD GEMM kernels** — AVX2 VGATHERDPS, NEON GEBP (from [gte-go](https://github.com/rcarmo/gte-go))
-- **Safetensors loader** — F16/BF16/F32, sharded, GPTQ INT4
-- **LLaMA decoder** — RoPE, GQA, KV cache, SiLU MLP, RMS norm
-- **BERT encoder** — GTE-small at gte-go parity (10.8ms, 0 allocs)
-- **BPE tokenizer** — GPT-2 byte-level + Qwen array format
-- **NN modules** — Linear, LayerNorm, Embedding
-- **GPU DevBuf** — device-agnostic buffers, lazy CPU↔GPU, every op has GPU kernel + CPU fallback
-- **8 PTX kernels** — compiled by driver at runtime from embedded strings
+Any model from [mlx-community](https://huggingface.co/mlx-community) using these architectures works out of the box.
 
 ## Quick Start
 
 ```bash
-# Download a model
-mkdir -p models/smollm2-135m
-curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model.safetensors \
-  -o models/smollm2-135m/model.safetensors
-curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/config.json \
-  -o models/smollm2-135m/config.json
-curl -L https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/tokenizer.json \
-  -o models/smollm2-135m/tokenizer.json
+# Download any MLX model from HuggingFace
+mkdir -p models/qwen3-0.6b
+for f in config.json model.safetensors tokenizer.json; do
+  curl -L "https://huggingface.co/mlx-community/Qwen3-0.6B-4bit/resolve/main/$f" \
+    -o "models/qwen3-0.6b/$f"
+done
 
-# Run (CPU)
-go run ./cmd/llmgen -model models/smollm2-135m -tokens 50 -prompt "Once upon a time"
+# Run on CPU (AVX2/NEON SIMD)
+go run ./cmd/llmgen -model models/qwen3-0.6b -tokens 50 -prompt "The meaning of life is"
 
-# Run (GPU — auto-detects NVIDIA driver at runtime)
-go run ./cmd/llmgen -gpu -model models/smollm2-135m -tokens 50 -prompt "Once upon a time"
+# Run on GPU (auto-detects NVIDIA at runtime, zero CGo)
+go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meaning of life is"
 ```
 
-## Regenerate Diagrams
+## Backend Stack
 
-```bash
-bun run scripts/render-architecture.ts
-bun run scripts/render-test-matrix.ts
-```
+### GPU: CUDA PTX (NVIDIA)
+
+21 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen:
+
+- **Quantized GEMV**: INT4 dequant+multiply with shared memory tiling (GPTQ + MLX)
+- **Batched GEMM**: multi-token prefill, reads weights once for all tokens
+- **LM Head**: dedicated large-vocab GEMV with 2D grid
+- **RMSNorm, RoPE, GQA Attention, SiLU, VecAdd/Mul/Scale**
+- **BF16 kernels**: native `cvt.f32.bf16` on Ampere+ (sm_86), emulated on sm_80
+- **MLX bias correction**: post-GEMV fixup for MLX affine quantization
+
+### GPU: Vulkan Compute (any GPU)
+
+Portable compute backend for Intel iGPU, AMD, ARM Mali, Adreno:
+
+- 35 Vulkan API functions via `purego` (no SDK required)
+- GLSL compute shaders for all inference ops (F32 + BF16)
+- Command buffer dispatch with descriptor sets and push constants
+- Device auto-selection: discrete → integrated → software fallback
+
+### CPU: SIMD Assembly
+
+AVX2+FMA (amd64) and NEON (arm64) assembly for all hot paths:
+
+| Operation | AVX2 | NEON | Notes |
+|---|---|---|---|
+| **Sdot** | 16-wide FMA | 8-wide VFMLA | dot product |
+| **RMSNorm** | fused sum-sq + scale | 4-wide | 677ns / 3584 elements |
+| **VecAdd** | 16-wide VADDPS | 8-wide FADD | 217ns / 3584 elements |
+| **ToBF16** | 16-wide VANDPS | 8-wide AND | 179ns / 3584 elements |
+| **BF16 Dot** | widen+FMA+narrow | USHLL+VFMLA | 445ns / 3584 elements |
+| **BF16 RMSNorm** | fused BF16 | USHLL+XTN | 1.4µs / 3584 elements |
+| **BF16 Widen** | VPMOVZXWD+VPSLLD | USHLL+SHL | 292ns / 3584 elements |
+| **SiLU×Mul** | Go (exp not SIMD) | Go fallback | |
+
+Scalar fallback for `!amd64 && !arm64`.
+
+### Native BF16
+
+End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
+
+- **Safetensors**: `GetBF16()` returns `[]uint16` without F32 conversion
+- **SIMD**: AVX2 and NEON assembly for BF16 dot/norm/add/widen/narrow
+- **CUDA**: native `ld.global.b16` / `cvt.f32.bf16` on Ampere+
+- **Vulkan**: BF16 emulated via uint16 bitshift (universal)
+- **Model**: `BF16Hidden` type with zero-copy operations
+
+## Weight Format Support
+
+| Format | Detection | Dequant | GPU | Notes |
+|---|---|---|---|---|
+| **MLX affine 4-bit** | `config.json` quantization block | `val × scale + bias` | Transpose → GPTQ kernel | Primary format |
+| **GPTQ INT4** | `quantize_config.json` | `(val - 8) × scale` | Native tiled GEMV | Symmetric |
+| **BF16** | safetensors dtype | Direct load | F32 on GPU | Half bandwidth |
+| **F16** | safetensors dtype | F16→F32 at load | F32 on GPU | |
+| **F32** | safetensors dtype | Direct load | Native | |
+
+## Architecture Details
+
+- **Lazy tensor DAG** with elementwise fusion
+- **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)
+- **Safetensors loader** — sharded, F16/BF16/F32, GPTQ/MLX quantized
+- **Tokenizer** — BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
+- **LLaMA decoder** — RoPE (global + local), GQA, KV cache, SiLU/GELU MLP
+- **QK-Norm** — per-head RMSNorm (Qwen3, Gemma3/4)
+- **4-norm residual** — pre/post FFN norms (Gemma3/4)
+- **Sliding window attention** — alternating local/global (Gemma3/4)
+- **Embedding scaling** — `× √hidden_size` (Gemma3/4)
+- **Batched prefill** — GEMM for multi-token prompt processing
+- **Chunked LM head** — splits across available VRAM
+- **GPU DevBuf** — device-agnostic buffers, lazy CPU↔GPU transfer
 
 ## Documentation
 

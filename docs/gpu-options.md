@@ -1,97 +1,52 @@
-# GPU Compute Options for go-pherence
+# GPU Compute Options
 
-## Available Hardware
-- **NVIDIA GeForce RTX 3060** (12GB VRAM, Ampere, 3584 CUDA cores, 12.7 TFLOPS FP32)
-- Driver 580.126.09
-- Device nodes: `/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm`, `/dev/dri/renderD128`
+go-pherence supports three GPU backends, all via `purego` dlopen (no CGo):
 
-## Options Ranked by Feasibility
+## CUDA PTX (NVIDIA)
 
-### 1. Direct NVIDIA ioctl (pure Go) — THE TINYGRAD WAY ⭐
-**No C. No CGo. No libcuda. Pure Go + syscall.**
+Primary GPU backend. 21 hand-written PTX kernels:
 
-tinygrad itself does this: talks to `/dev/nvidiactl` + `/dev/nvidia-uvm` via raw
-`ioctl()` syscalls. Go's `syscall.Syscall` / `unix.IoctlSetPointerInt` can do this.
+| Category | Kernels | Notes |
+|---|---|---|
+| **Core GEMV** | sgemm_nn, gemv_q4sym, gemm_q4sym | GPTQ tiled + shared mem |
+| **MLX** | mlx_gemv, mlx_gemm, mlx_correct | Transposed layout + bias |
+| **Element-wise** | vec_add, vec_mul, vec_scale, vec_silu | threshold-free |
+| **Fused** | fused_silu_mul, rms_norm | reduced launch count |
+| **Attention** | rope_apply, gqa_attention | precomputed cos/sin |
+| **Utility** | lm_head_gemv, prefetch_l2 | 2D grid, L2 warming |
+| **BF16** | bf16_rms_norm, bf16_vec_add | emulated (sm_80) |
+| **BF16 native** | native_bf16_rms_norm/vec_add/gemv | ld.b16+cvt (sm_86+) |
 
-How it works:
-1. Open `/dev/nvidiactl`, `/dev/nvidia0` — allocate GPU context
-2. Open `/dev/nvidia-uvm` — unified virtual memory (GPU malloc)
-3. Compile PTX → CUBIN (need `nvptxas` or ship pre-compiled)
-4. Submit compute commands via ioctl command buffers
-5. Synchronize and read results
+Loaded as one mega module + optional native BF16 module.
 
-**Pros:** Zero dependencies. Static binary. Full GPU control.
-**Cons:** Must reverse-engineer / adapt ~2000 lines of ioctl structs from
-NVIDIA's open-source kernel module headers. Driver-version sensitive.
-**Effort:** High (2-3 days), but tinygrad's `runtime/ops_nv.py` is the blueprint.
-**Reference:** https://github.com/tinygrad/tinygrad/blob/master/tinygrad/runtime/ops_nv.py
+## Vulkan Compute (any GPU)
 
-### 2. Vulkan Compute via Go syscall (pure Go)
-Vulkan's Linux interface is `/dev/dri/renderD128` (DRM). In theory, pure Go:
-1. Open render node
-2. DRM ioctls for GPU memory alloc
-3. Submit SPIR-V compute shaders via command buffers
+Portable backend for non-NVIDIA hardware:
 
-But Vulkan has a massive API surface (hundreds of entry points via `libvulkan.so`).
-The DRM layer is simpler but NVIDIA's DRM support for compute is limited vs their
-proprietary path.
+- **Targets**: Intel iGPU (UHD/Iris/Arc), AMD RDNA, ARM Mali, Qualcomm Adreno, MoltenVK
+- **API**: 35 Vulkan functions, device auto-selection, compute queue + command pool
+- **Shaders**: 8 GLSL compute shaders (F32 + BF16 variants)
+- **BF16**: emulated via uint16 bitshift (no extensions needed)
+- **Status**: init + buffer + dispatch pipeline working; SPIR-V needs glslangValidator
 
-**Pros:** Cross-vendor (AMD, Intel, NVIDIA). Standard API.
-**Cons:** Still large; Vulkan loader (`libvulkan.so`) is practically required.
-NVIDIA Vulkan compute perf ~90% of CUDA for GEMM.
-**Effort:** Very high. Better to use CGo Vulkan bindings.
+## CPU SIMD Assembly
 
-### 3. OpenCL via /dev/nvidia* (needs libOpenCL)
-Similar to cuBLAS but more portable. Still needs a C library though.
+AVX2+FMA (amd64) and NEON (arm64):
 
-### 4. CUDA via dlopen (Go + syscall, no CGo)
-Load `libcuda.so` at runtime using `dlopen`/`dlsym` from pure Go:
-```go
-lib, _ := purego.Dlopen("libcuda.so.1", purego.RTLD_LAZY)
-purego.RegisterLibFunc(&cuInit, lib, "cuInit")
-```
-Using [purego](https://github.com/nicholasgasior/purego) or Go's `plugin` mechanism.
+- 13 F32 operations + 5 BF16 operations per architecture
+- All hot paths covered: RMSNorm, VecAdd, Dot, SiLU, BF16 widen/narrow
+- Scalar Go fallback for other architectures
 
-**Pros:** Full CUDA API. No CGo. Static binary + runtime GPU support.
-**Cons:** Still needs `libcuda.so.1` on the host (driver library).
-**Effort:** Medium (1 day). Clean, practical.
-
-### 5. Pre-compiled PTX kernels + minimal driver shim (pure Go)
-Write SGEMM kernels in PTX assembly (NVIDIA's GPU ISA), ship them as
-embedded strings, and use approach #1 or #4 to launch them.
-
-```ptx
-.version 8.0
-.target sm_86  // Ampere
-.address_size 64
-
-.visible .entry sgemm_128x128(
-    .param .u64 A, .param .u64 B, .param .u64 C,
-    .param .u32 M, .param .u32 N, .param .u32 K
-) {
-    // Tiled SGEMM using shared memory
-    ...
-}
-```
-
-### 6. CPU-only: wider SIMD (AVX-512)
-Our current AVX2+FMA kernels process 8 floats/cycle. AVX-512 does 16.
-The RTX 3060 CPU in this system might support AVX-512.
+## Backend Selection
 
 ```
-$ cat /proc/cpuinfo | grep avx512
+if NVIDIA GPU available:
+    → CUDA PTX (fastest, 21+ kernels)
+elif Vulkan device available:
+    → Vulkan SPIR-V (portable, 8 shaders)
+else:
+    → CPU SIMD (AVX2 or NEON assembly)
+    → Go scalar (universal fallback)
 ```
 
-## Recommendation
-
-**Phase 1 (immediate):** Option #4 — `purego` dlopen of `libcuda.so.1`
-- No CGo, static Go binary, GPU at runtime if driver present
-- Wrap just 10 functions: cuInit, cuDeviceGet, cuCtxCreate, cuMemAlloc,
-  cuMemcpyHtoD, cuMemcpyDtoH, cuModuleLoadData, cuModuleGetFunction,
-  cuLaunchKernel, cuCtxSynchronize
-- Ship PTX SGEMM kernel as embedded string
-
-**Phase 2 (ambitious):** Option #1 — direct ioctl
-- Port tinygrad's `ops_nv.py` to Go
-- True zero-dependency GPU compute
-- ~2000 lines of ioctl structs + command buffer construction
+The model forward pass auto-dispatches: each operation checks GPU availability and falls back to SIMD/scalar transparently.

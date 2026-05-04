@@ -1,106 +1,92 @@
 # Architecture
 
-## Design principles
+go-pherence is a multi-backend inference engine that runs MLX, GPTQ, and BF16 model weights on any hardware.
 
-1. **Lazy evaluation** — tensor ops build a DAG, computation happens at `Realize()`
-2. **UOp graph** — single IR node type for the entire computation graph
-3. **Elementwise fusion** — chains of unary/binary ops execute in one pass
-4. **SIMD kernels** — AVX2+FMA (amd64) and NEON (arm64) from gte-go
-5. **Zero-copy model loading** — safetensors F16→F32 conversion on read
+## Design Goals
 
-## Package structure
+1. **Run MLX weights everywhere** — Apple's MLX ecosystem has the best quantized models, but only runs on Apple Silicon. go-pherence makes them portable.
+2. **Pure Go, zero CGo** — single static binary, GPU activates at runtime via `purego` dlopen.
+3. **Three-tier acceleration** — CUDA PTX → Vulkan SPIR-V → SIMD assembly → Go scalar.
+4. **Native BF16** — half-bandwidth pipeline for models trained in BF16.
 
-```
-tensor/          Core tensor types and operations
-  tensor.go      Tensor API: constructors, lazy ops, Realize()
-  ops.go         Op enum (30+ operations)
-  dtype.go       Data types (Float32, Float16, Int32, ...)
-  shape.go       Shape tracking with strides
-  uop.go         UOp graph node (interned/hash-consed)
-  broadcast.go   Shape broadcasting for binary ops
-  realize.go     Eager graph interpreter
-  fuse.go        Elementwise fusion engine
-  matmul.go      MatMul + Linear with SIMD GEMM
-  nn.go          Softmax, LayerNorm, GELU
-  embedding.go   Token ID → vector lookup
-
-safetensors/     HuggingFace model file loader
-  safetensors.go Parse header, F16/BF16/F32 conversion
-
-model/           Pre-built model architectures
-  bert.go        BERT encoder (loads GTE-small, runs inference)
-
-simd/            SIMD assembly kernels (ported from gte-go)
-  Sdot, Saxpy    Vector dot product, scaled add
-  SgemmNN/NT     Matrix multiply (NoTrans, Trans)
-  GEBP           General Block Panel micro-kernels
-  Gather         AVX2 VGATHERDPS for NT without packing
-
-cmd/tinydemo/    Demo program
-```
-
-## UOp — the universal IR node
-
-Every computation is a node in a directed acyclic graph:
-
-```go
-type UOp struct {
-    Op    Ops       // ADD, MUL, REDUCE, RESHAPE, ...
-    DType DType     // Float32, Int32, ...
-    Src   []*UOp    // input nodes (immutable)
-    Arg   any       // op-specific (shape, axis, const value)
-    buf   *Buffer   // realized data (nil until Realize)
-}
-```
-
-UOps are **interned** — identical subgraphs share a single node via hash-consing.
-Buffer UOps are NOT interned (each allocation is unique by identity).
-
-## Elementwise fusion
-
-The fuser walks the UOp DAG and compiles chains of fusible ops into a single
-kernel that evaluates all ops per-element in one pass:
+## Backend Stack
 
 ```
-Before: a.Add(b).Mul(c)
-  → alloc tmp; for i { tmp[i] = a[i]+b[i] }
-  → alloc out; for i { out[i] = tmp[i]*c[i] }
-
-After fusion:
-  → alloc out; for i { out[i] = (a[i]+b[i]) * c[i] }
+┌─────────────────────────────────────────────────────────┐
+│                    Model Forward Pass                    │
+│  (llama, qwen2, qwen3, gemma3, gemma4)                 │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+│  │ CUDA PTX │  │  Vulkan  │  │   SIMD   │  ┌────────┐ │
+│  │ 21 kernels│ │ SPIR-V   │  │AVX2+NEON │  │Go scalar│ │
+│  │ sm_80+   │  │ any GPU  │  │asm       │  │fallback │ │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
+│       │              │             │             │       │
+│  ┌────┴────┐   ┌─────┴────┐  ┌────┴────┐   ┌───┴───┐  │
+│  │NVIDIA   │   │Intel iGPU│  │x86_64   │   │any    │  │
+│  │RTX/GTX  │   │AMD RDNA  │  │ARM64    │   │GOARCH │  │
+│  │Jetson   │   │Mali/Adr. │  │         │   │       │  │
+│  └─────────┘   └──────────┘  └─────────┘   └───────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-Fusion rules:
-- **Fusible**: all unary + binary ALU ops
-- **Breaks fusion**: Reduce, MatMul, Permute, broadcast, already-realized buffers
-
-## SIMD kernel dispatch
-
-MatMul uses the gte-go SIMD suite:
-
-| Operation | amd64 | arm64 |
-|---|---|---|
-| `MatMul` (A@B) | `SgemmNN` AVX2+FMA | `SgemmNN` NEON |
-| `MatMulTransposed` (A@B^T) | `SgemmNT` VGATHERDPS | `SgemmNT` GEBP NEON |
-| Attention Q·K^T | `Sdot` AVX2 | `Sdot` NEON |
-
-## Model inference flow
+## Weight Format Pipeline
 
 ```
-LoadGTESmall(safetensors)
-  → parse header, F16→F32 conversion
-  → create Tensor weights for each layer
-
-Embed(tokenIDs, attnMask)
-  → word + position + type embeddings
-  → LayerNorm
-  → 12× {
-      Q,K,V = Linear projections (MatMulTransposed + bias)
-      scores = Q·K^T / sqrt(headDim) per head
-      probs = softmax(scores)
-      context = probs @ V
-      output = Linear(context) + residual → LayerNorm
-      ffn = Linear → GELU → Linear + residual → LayerNorm
-    }
-  → mean pooling → L2 normalize
+HuggingFace (mlx-community, GPTQ, BF16)
+    │
+    ▼
+safetensors loader (GetFloat32, GetBF16, GetInt32, GetRaw)
+    │
+    ├─── MLX 4-bit: loadMLXWeight → [outDim, inDim/8] uint32 + scales + biases
+    │    └─── GPU: transpose → GPTQ kernel + bias correction
+    │
+    ├─── GPTQ 4-bit: loadQW → [inDim/8, outDim] int32 + g_idx + scales
+    │    └─── GPU: direct tiled GEMV
+    │
+    └─── BF16/F16/F32: load → tensor (optional BF16 native path)
+         └─── GPU: DevBuf upload
 ```
+
+## Model Architecture Support
+
+| Feature | llama | qwen2 | qwen3 | gemma3 | gemma4 |
+|---|---|---|---|---|---|
+| RoPE | ✅ | ✅ | ✅ | ✅ dual | ✅ dual |
+| GQA | ✅ | ✅ | ✅ | ✅ | ✅ |
+| QK-Norm | — | — | ✅ | ✅ | ✅ |
+| 4-norm residual | — | — | — | ✅ | ✅ |
+| Sliding window | — | — | — | ✅ | ✅ |
+| Embed scaling | — | — | — | ✅ ×√h | ✅ ×√h |
+| Norm +1 offset | — | — | — | ✅ | ✅ |
+| GELU activation | — | — | — | ✅ | ✅ |
+| BOS token | — | — | — | ✅ | ✅ |
+| Tensor prefix | — | — | — | — | ✅ language_model. |
+| Q/K/V bias | — | ✅ | — | — | — |
+| head_dim ≠ h/heads | — | — | ✅ | ✅ | ✅ |
+
+## BF16 Pipeline
+
+```
+safetensors BF16 → GetBF16() → []uint16 (zero conversion)
+    │
+    ├─── CPU: simd.BF16DotAsm (AVX2 445ns / NEON 8-wide)
+    │         simd.BF16RMSNormAsm (AVX2 1.4µs)
+    │         simd.BF16VecAddAsm (AVX2/NEON 8-wide)
+    │
+    ├─── GPU CUDA: ld.global.b16 + cvt.f32.bf16 (native Ampere+)
+    │              ld.global.u16 + shl (emulated sm_80)
+    │
+    └─── GPU Vulkan: uint16 load + bitshift (universal)
+```
+
+## Kernel Inventory
+
+| Backend | F32 | BF16 emulated | BF16 native | Total |
+|---|---|---|---|---|
+| CUDA PTX | 16 | 2 | 3 | **21** |
+| Vulkan SPIR-V | 4 | 4 | — | **8** |
+| AVX2 asm | 8 | 5 | — | **13** |
+| NEON asm | 8 | 5 | — | **13** |
+| Go scalar | all | all | — | fallback |
