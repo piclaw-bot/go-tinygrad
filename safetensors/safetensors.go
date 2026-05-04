@@ -272,3 +272,58 @@ func (sf *ShardedFile) GetInt32(name string) ([]int32, []int, error) {
 	shard := sf.shards[filename]
 	return shard.GetInt32(name)
 }
+
+// GetBF16 returns BF16 tensor data as []uint16 without F32 conversion.
+// For BF16 dtype, returns raw uint16 values.
+// For F32 dtype, converts F32→BF16 (truncation).
+// For F16 dtype, converts F16→BF16 via F32 intermediate.
+func (f *File) GetBF16(name string) ([]uint16, []int, error) {
+	raw, dtype, shape, err := f.GetRaw(name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	switch dtype {
+	case "BF16":
+		n := len(raw) / 2
+		out := make([]uint16, n)
+		for i := 0; i < n; i++ {
+			out[i] = binary.LittleEndian.Uint16(raw[i*2:])
+		}
+		return out, shape, nil
+
+	case "F32":
+		n := len(raw) / 4
+		out := make([]uint16, n)
+		for i := 0; i < n; i++ {
+			bits := binary.LittleEndian.Uint32(raw[i*4:])
+			out[i] = uint16(bits >> 16) // truncate to BF16
+		}
+		return out, shape, nil
+
+	case "F16":
+		n := len(raw) / 2
+		out := make([]uint16, n)
+		for i := 0; i < n; i++ {
+			f32 := float16ToFloat32(binary.LittleEndian.Uint16(raw[i*2:]))
+			out[i] = uint16(math.Float32bits(f32) >> 16)
+		}
+		return out, shape, nil
+
+	default:
+		return nil, nil, fmt.Errorf("tensor %q is %s, not BF16/F32/F16", name, dtype)
+	}
+}
+
+// GetBF16 for sharded files
+func (sf *ShardedFile) GetBF16(name string) ([]uint16, []int, error) {
+	filename, ok := sf.mapping[name]
+	if !ok {
+		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
+	}
+	shard, ok := sf.shards[filename]
+	if !ok {
+		return nil, nil, fmt.Errorf("shard %q not loaded", filename)
+	}
+	return shard.GetBF16(name)
+}
