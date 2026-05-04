@@ -430,6 +430,24 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		for i := range nd { nd[i] += 1.0 }
 	}
 
+	// Gemma3: norm formula is (1 + weight) — confirmed in mlx-lm gemma3_text.py line 111
+	if cfg.ModelType == "gemma3_text" {
+		for l := range m.Layers {
+			for _, norm := range []*tensor.Tensor{
+				m.Layers[l].InputNorm, m.Layers[l].PostNorm,
+				m.Layers[l].PreFFNNorm, m.Layers[l].PostFFNNorm,
+				m.Layers[l].QNorm, m.Layers[l].KNorm,
+			} {
+				if norm != nil {
+					d := norm.Data()
+					for i := range d { d[i] += 1.0 }
+				}
+			}
+		}
+		nd := m.Norm.Data()
+		for i := range nd { nd[i] += 1.0 }
+	}
+
 	// Pre-compute RoPE frequencies
 	m.precomputeRoPE()
 
@@ -509,6 +527,12 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		copy(hidden, embData[tokID*h:(tokID+1)*h])
 
 		pos := step
+
+		// Gemma3: scale embeddings by sqrt(hidden_size)
+		if cfg.ModelType == "gemma3_text" {
+			scale := float32(math.Sqrt(float64(h)))
+			for i := range hidden { hidden[i] *= scale }
+		}
 
 		for l := 0; l < cfg.NumLayers; l++ {
 			layer := &m.Layers[l]
