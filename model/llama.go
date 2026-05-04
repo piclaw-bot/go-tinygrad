@@ -42,6 +42,8 @@ type LlamaConfig struct {
 	SlidingWindowPattern int     `json:"sliding_window_pattern"`
 	RopeLocalBaseFreq    float64 `json:"rope_local_base_freq"`
 	BOSTokenID           int     `json:"bos_token_id"`
+	LayerTypes           []string `json:"layer_types"`
+	TensorPrefix         string  `json:"-"` // "language_model.model." for Gemma4
 	HiddenAct            string  `json:"hidden_activation"`
 
 	// Quantization (populated from quantize_config.json or config.json)
@@ -105,11 +107,39 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	if err := json.Unmarshal(cfgData, &cfg); err != nil {
 		return nil, err
 	}
+	// Gemma4: text config is nested under text_config
+	if cfg.HiddenSize == 0 {
+		var nested struct {
+			TextConfig LlamaConfig `json:"text_config"`
+			ModelType  string      `json:"model_type"`
+		}
+		if err := json.Unmarshal(cfgData, &nested); err == nil && nested.TextConfig.HiddenSize > 0 {
+			// Preserve top-level model_type
+			outerType := nested.ModelType
+			cfg = nested.TextConfig
+			if cfg.ModelType == "" { cfg.ModelType = outerType + "_text" }
+		}
+	}
 	if cfg.RMSNormEps == 0 {
 		cfg.RMSNormEps = 1e-5
 	}
 	if cfg.HeadDim == 0 {
 		cfg.HeadDim = cfg.HiddenSize / cfg.NumHeads
+	}
+	// Gemma4: infer sliding_window_pattern from layer_types
+	if len(cfg.LayerTypes) > 0 && cfg.SlidingWindowPattern == 0 {
+		for i, lt := range cfg.LayerTypes {
+			if lt == "full_attention" {
+				cfg.SlidingWindowPattern = i + 1
+				break
+			}
+		}
+	}
+
+	// Detect tensor prefix (Gemma4 uses "language_model.model.")
+	cfg.TensorPrefix = ""
+	if cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma4" {
+		cfg.TensorPrefix = "language_model."
 	}
 
 	// Try sharded first, then single file
@@ -181,8 +211,12 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	onTheFly := ForceOnTheFly && cfg.QuantBits > 0
 	m.OnTheFlyQuant = onTheFly
 
+	prefix := cfg.TensorPrefix
 	load := func(name string, shape []int) *tensor.Tensor {
-		data, actualShape, err := f.GetFloat32(name)
+		data, actualShape, err := f.GetFloat32(prefix + name)
+		if err != nil && prefix != "" {
+			data, actualShape, err = f.GetFloat32(name)
+		}
 		if err != nil {
 			panic(fmt.Sprintf("load %s: %v", name, err))
 		}
@@ -203,7 +237,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// loadQW loads raw GPTQ quantized weight without dequantization.
 	loadQW := func(name string, outDim, inDim int) *QuantWeight {
-		qw, _, err := f.GetInt32(name + ".qweight")
+		qw, _, err := f.GetInt32(prefix + name + ".qweight")
+		if err != nil && prefix != "" {
+			qw, _, err = f.GetInt32(name + ".qweight")
+		}
 		if err != nil {
 			panic(fmt.Sprintf("loadQW %s.qweight: %v", name, err))
 		}
@@ -232,7 +269,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// loadMLXW loads an MLX affine quantized weight.
 	loadMLXW := func(name string, outDim, inDim int) *MLXQuantWeight {
-		qw, err := loadMLXWeight(f, name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
+		qw, err := loadMLXWeight(f, prefix+name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
+		if err != nil && prefix != "" {
+			qw, err = loadMLXWeight(f, name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
+		}
 		if err != nil {
 			panic(fmt.Sprintf("loadMLXW %s: %v", name, err))
 		}
@@ -288,7 +328,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	// Load embeddings — MLX may quantize these
 	if cfg.QuantFormat == "mlx" {
 		// Try to load quantized embedding, dequantize for lookup
-		if emb, err := loadMLXWeight(f, "model.embed_tokens", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+		if emb, err := loadMLXWeight(f, prefix+"model.embed_tokens", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
 			data := DequantMLX(emb)
 			m.EmbedTokens = tensor.FromFloat32(data, []int{cfg.VocabSize, h})
 		} else {
@@ -301,7 +341,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// LM head: often tied to embed_tokens. MLX may quantize it too.
 	if cfg.QuantFormat == "mlx" {
-		if lm, err := loadMLXWeight(f, "lm_head", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+		if lm, err := loadMLXWeight(f, prefix+"lm_head", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
 			data := DequantMLX(lm)
 			m.LMHead = tensor.FromFloat32(data, []int{cfg.VocabSize, h})
 		} else {
@@ -317,7 +357,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// tryLoad checks if a tensor exists
 	tryLoad := func(name string) bool {
-		_, _, err := f.GetFloat32(name)
+		_, _, err := f.GetFloat32(prefix + name)
+		if err != nil && prefix != "" {
+			_, _, err = f.GetFloat32(name)
+		}
 		return err == nil
 	}
 	_ = tryLoad
@@ -418,7 +461,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	}
 
 	// Gemma3: norm formula is (1 + weight) — confirmed in mlx-lm gemma3_text.py line 111
-	if cfg.ModelType == "gemma3_text" {
+	if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 		for l := range m.Layers {
 			for _, norm := range []*tensor.Tensor{
 				m.Layers[l].InputNorm, m.Layers[l].PostNorm,
@@ -516,7 +559,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		pos := step
 
 		// Gemma3: scale embeddings by sqrt(hidden_size), BF16 precision
-		if cfg.ModelType == "gemma3_text" {
+		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 			scale := float32(math.Sqrt(float64(h)))
 			for i := range hidden { hidden[i] = toBF16(hidden[i] * scale) }
 		}
@@ -527,7 +570,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			copy(residual, hidden)
 
 			// RMS Norm (BF16 for Gemma3)
-			if cfg.ModelType == "gemma3_text" {
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 				simd.RMSNormBF16(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 			} else {
 				rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
@@ -555,7 +598,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
 			}
 
-			if cfg.ModelType == "gemma3_text" {
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 				simd.ToBF16(q); simd.ToBF16(k); simd.ToBF16(v)
 			}
 
@@ -572,7 +615,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				qNorm := layer.QNorm.Data()
 				kNorm := layer.KNorm.Data()
 				normFn := rmsNormInPlace
-				if cfg.ModelType == "gemma3_text" { normFn = rmsNormBF16 }
+				if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { normFn = rmsNormBF16 }
 				for head := 0; head < numHeads; head++ {
 					normFn(q[head*headDim:(head+1)*headDim], qNorm, float32(cfg.RMSNormEps))
 				}
@@ -623,7 +666,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.PreFFNNorm != nil {
 				mlpInput = make([]float32, h)
 				copy(mlpInput, hidden)
-				if cfg.ModelType == "gemma3_text" {
+				if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 					simd.RMSNormBF16(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
 					// mlpInput is already BF16 from RMSNormBF16
 				} else {
@@ -645,7 +688,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(up, mlpInput, layer.UpW.Data(), h, inter)
 			}
 
-			if cfg.ModelType == "gemma3_text" {
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 				simd.ToBF16(gate); simd.ToBF16(up)
 			}
 			// Activation(gate) * up
@@ -666,11 +709,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// BF16 down projection output for Gemma3
-			if cfg.ModelType == "gemma3_text" { simd.ToBF16(down) }
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { simd.ToBF16(down) }
 
 			// Post-FFN norm (Gemma3)
 			if layer.PostFFNNorm != nil {
-				if cfg.ModelType == "gemma3_text" {
+				if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 					rmsNormBF16(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
 				} else {
 					rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
@@ -679,13 +722,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Residual
 			simd.VecAdd(hidden, residual, down)
-			if cfg.ModelType == "gemma3_text" { simd.ToBF16(hidden) }
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { simd.ToBF16(hidden) }
 			if l == 0 && step == 0 {
 			}
 		}
 
 		// Final norm (BF16 for Gemma3)
-		if cfg.ModelType == "gemma3_text" {
+		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 			simd.RMSNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
 		} else {
 			rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
