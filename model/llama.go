@@ -545,7 +545,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// RMS Norm (BF16 for Gemma3)
 			if cfg.ModelType == "gemma3_text" {
-				rmsNormBF16(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
+				simd.RMSNormBF16(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 			} else {
 				rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 			}
@@ -569,17 +569,16 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
 			}
 
-			// BF16 precision for Gemma3 projections
 			if cfg.ModelType == "gemma3_text" {
-				bf16Slice(q); bf16Slice(k); bf16Slice(v)
+				simd.ToBF16(q); simd.ToBF16(k); simd.ToBF16(v)
 			}
 
 			// Add bias if present (Qwen2)
 			if layer.QB != nil {
 				qb, kb, vb := layer.QB.Data(), layer.KB.Data(), layer.VB.Data()
-				for i := range q { q[i] += qb[i] }
-				for i := range k { k[i] += kb[i] }
-				for i := range v { v[i] += vb[i] }
+				simd.VecAdd(q, q, qb)
+				simd.VecAdd(k, k, kb)
+				simd.VecAdd(v, v, vb)
 			}
 
 			// QK-Norm (Qwen3/Gemma3): RMSNorm each head of Q and K separately
@@ -628,7 +627,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				copy(residual, hidden)
 			} else {
 				// Qwen/LLaMA pattern: add residual, then norm
-				for i := range hidden { hidden[i] = residual[i] + oOut[i] }
+				simd.VecAdd(hidden, residual, oOut)
 				copy(residual, hidden)
 				rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
 			}
@@ -667,7 +666,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
 				for i := range gate { gate[i] = toBF16(geluTanh(gate[i]) * up[i]) }
 			} else {
-				for i := range gate { gate[i] = gate[i] / (1 + float32(math.Exp(float64(-gate[i])))) * up[i] }
+				simd.VecSiLUMul(gate, gate, up)
 			}
 
 			// Down projection
@@ -681,7 +680,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// BF16 down projection output for Gemma3
-			if cfg.ModelType == "gemma3_text" { bf16Slice(down) }
+			if cfg.ModelType == "gemma3_text" { simd.ToBF16(down) }
 
 			// Post-FFN norm (Gemma3)
 			if layer.PostFFNNorm != nil {
@@ -693,10 +692,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// Residual
-			for i := range hidden {
-				hidden[i] = residual[i] + down[i]
-			}
-			if cfg.ModelType == "gemma3_text" { bf16Slice(hidden) }
+			simd.VecAdd(hidden, residual, down)
+			if cfg.ModelType == "gemma3_text" { simd.ToBF16(hidden) }
 			if l == 0 && step == 0 {
 			}
 		}
@@ -743,15 +740,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 // --- Low-level helpers ---
 
 func rmsNormInPlace(x, weight []float32, eps float32) {
-	h := len(x)
-	ss := float32(0)
-	for _, v := range x {
-		ss += v * v
-	}
-	ss = float32(1.0 / math.Sqrt(float64(ss/float32(h)+eps)))
-	for i := range x {
-		x[i] = weight[i] * x[i] * ss
-	}
+	simd.RMSNorm(x, weight, eps)
 }
 
 // gemv: out = x @ w where w is either:
