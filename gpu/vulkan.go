@@ -194,6 +194,7 @@ func VulkanInit() bool {
 	reg(&vkCreateFence, "vkCreateFence")
 	reg(&vkWaitForFences, "vkWaitForFences")
 	reg(&vkResetFences, "vkResetFences")
+	reg(&vkCmdPushConstants, "vkCmdPushConstants")
 	reg(&vkGetBufferMemoryRequirements, "vkGetBufferMemoryRequirements")
 	reg(&vkDestroyBuffer, "vkDestroyBuffer")
 	reg(&vkFreeMemory, "vkFreeMemory")
