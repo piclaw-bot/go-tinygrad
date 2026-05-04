@@ -417,23 +417,6 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		m.Layers[l] = layer
 	}
 
-	// Gemma3: norm weights stored as w, applied as (1+w). Add 1 at load time.
-	if cfg.ModelType == "gemma3_text" {
-		for l := range m.Layers {
-			for _, norm := range []*tensor.Tensor{
-				m.Layers[l].InputNorm, m.Layers[l].PostNorm,
-				m.Layers[l].PreFFNNorm, m.Layers[l].PostFFNNorm,
-			} {
-				if norm != nil {
-					d := norm.Data()
-					for i := range d { d[i] += 1.0 }
-				}
-			}
-		}
-		nd := m.Norm.Data()
-		for i := range nd { nd[i] += 1.0 }
-	}
-
 	// Gemma3: norm formula is (1 + weight) — confirmed in mlx-lm gemma3_text.py line 111
 	if cfg.ModelType == "gemma3_text" {
 		for l := range m.Layers {
@@ -550,6 +533,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 			}
 
+			// BF16 embed scaling was already applied above
+			
+
 			// Q, K, V projections (single token: [1, h] @ [h, dim])
 			qDim := numHeads * headDim
 			q := make([]float32, qDim)
@@ -638,7 +624,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				mlpInput = make([]float32, h)
 				copy(mlpInput, hidden)
 				if cfg.ModelType == "gemma3_text" {
-					rmsNormBF16(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+					simd.RMSNormBF16(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+					// mlpInput is already BF16 from RMSNormBF16
 				} else {
 					rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
 				}
@@ -658,9 +645,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(up, mlpInput, layer.UpW.Data(), h, inter)
 			}
 
-			// BF16 for Gemma3 MLP projections
 			if cfg.ModelType == "gemma3_text" {
-				bf16Slice(gate); bf16Slice(up)
+				simd.ToBF16(gate); simd.ToBF16(up)
 			}
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
@@ -700,7 +686,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		// Final norm (BF16 for Gemma3)
 		if cfg.ModelType == "gemma3_text" {
-			rmsNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+			simd.RMSNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
 		} else {
 			rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
 		}
@@ -890,3 +876,4 @@ func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
 	}
 	wg.Wait()
 }
+
