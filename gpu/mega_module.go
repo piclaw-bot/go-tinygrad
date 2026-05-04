@@ -73,6 +73,8 @@ func loadMegaModule() {
 			{"mlx_gemv", MLXGemvPTX},
 			{"mlx_gemm", MLXGemmPTX},
 			{"mlx_correct", MLXCorrectPTX},
+			{"bf16_rms_norm", BF16RMSNormPTX},
+			{"bf16_vec_add", BF16VecAddPTX},
 		}
 
 		for _, e := range entries {
@@ -118,6 +120,8 @@ func loadMegaModule() {
 		fnMLXGemv = extractFn("mlx_gemv")
 		fnMLXGemm = extractFn("mlx_gemm")
 		fnMLXCorrect = extractFn("mlx_correct")
+		fnBF16RMSNorm = extractFn("bf16_rms_norm")
+		fnBF16VecAdd = extractFn("bf16_vec_add")
 
 		if allOK {
 			megaModuleOK = true

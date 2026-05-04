@@ -328,3 +328,35 @@ func LoadSPIRV(spirv []byte, numBuffers int) (*VkComputeShader, error) {
 		numBuffers:     numBuffers,
 	}, nil
 }
+
+// SPIR-V source (conceptual GLSL):
+//
+// BF16 vec_add:
+// layout(local_size_x = 256) in;
+// layout(set=0, binding=0) buffer A { uint a[]; };  // packed: 2× BF16 per uint32
+// layout(set=0, binding=1) buffer B { uint b[]; };
+// layout(set=0, binding=2) buffer C { uint c[]; };
+// layout(push_constant) uniform P { uint n; };
+// void main() {
+//     uint i = gl_GlobalInvocationID.x;
+//     if (i < n/2) {
+//         uint pa = a[i], pb = b[i];
+//         // Unpack 2× BF16 from uint32, widen to F32
+//         float a0 = uintBitsToFloat(pa << 16);
+//         float a1 = uintBitsToFloat(pa & 0xFFFF0000);
+//         float b0 = uintBitsToFloat(pb << 16);
+//         float b1 = uintBitsToFloat(pb & 0xFFFF0000);
+//         float c0 = a0 + b0;
+//         float c1 = a1 + b1;
+//         // Pack back to BF16 pair
+//         c[i] = (floatBitsToUint(c0) >> 16) | (floatBitsToUint(c1) & 0xFFFF0000);
+//     }
+// }
+//
+// This processes 2 BF16 elements per thread (packed in uint32).
+// 256 threads × 2 = 512 BF16 elements per workgroup.
+
+// VulkanBF16Ready returns true if Vulkan BF16 compute is available.
+func VulkanBF16Ready() bool {
+	return vkReady // BF16 emulated via bitshift, no extension needed
+}
