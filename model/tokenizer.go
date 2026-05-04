@@ -64,12 +64,17 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 
 // Encode tokenizes a string into token IDs.
 func (t *Tokenizer) Encode(text string) []int {
-	// Pre-tokenize: split on word boundaries, prefix non-first words with Ġ (space)
+	// Pre-tokenize: split on word boundaries, add space prefix
+	// Auto-detect: Ġ (U+0120, GPT-2/Qwen) or ▁ (U+2581, SentencePiece/Gemma)
+	spacePrefix := "\u0120" // GPT-2 default
+	if _, ok := t.Vocab["\u2581the"]; ok {
+		spacePrefix = "\u2581" // SentencePiece
+	}
 	words := strings.Fields(text)
 	var pieces []string
 	for i, w := range words {
 		if i > 0 {
-			w = "\u0120" + w // Ġ = U+0120 = space prefix in GPT-2 BPE
+			w = spacePrefix + w
 		}
 		pieces = append(pieces, w)
 	}
@@ -134,6 +139,8 @@ func (t *Tokenizer) Decode(ids []int) string {
 		}
 	}
 	text := strings.Join(parts, "")
+	// Replace SentencePiece space marker with actual space
+	text = strings.ReplaceAll(text, "\u2581", " ")
 	// Reverse byte-level BPE encoding
 	byteDecoder := getByteDecoder()
 	var decoded []byte

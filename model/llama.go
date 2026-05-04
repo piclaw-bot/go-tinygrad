@@ -532,10 +532,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		pos := step
 
-		// Gemma3: scale embeddings by sqrt(hidden_size)
+		// Gemma3: scale embeddings by sqrt(hidden_size), BF16 precision
 		if cfg.ModelType == "gemma3_text" {
 			scale := float32(math.Sqrt(float64(h)))
-			for i := range hidden { hidden[i] *= scale }
+			for i := range hidden { hidden[i] = toBF16(hidden[i] * scale) }
 		}
 
 		for l := 0; l < cfg.NumLayers; l++ {
@@ -543,8 +543,12 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			residual := make([]float32, h)
 			copy(residual, hidden)
 
-			// RMS Norm
-			rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
+			// RMS Norm (BF16 for Gemma3)
+			if cfg.ModelType == "gemma3_text" {
+				rmsNormBF16(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
+			} else {
+				rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
+			}
 
 			// Q, K, V projections (single token: [1, h] @ [h, dim])
 			qDim := numHeads * headDim
@@ -565,6 +569,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(v, hidden, layer.VW.Data(), h, kvDim)
 			}
 
+			// BF16 precision for Gemma3 projections
+			if cfg.ModelType == "gemma3_text" {
+				bf16Slice(q); bf16Slice(k); bf16Slice(v)
+			}
+
 			// Add bias if present (Qwen2)
 			if layer.QB != nil {
 				qb, kb, vb := layer.QB.Data(), layer.KB.Data(), layer.VB.Data()
@@ -573,15 +582,17 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				for i := range v { v[i] += vb[i] }
 			}
 
-			// QK-Norm (Qwen3): RMSNorm each head of Q and K separately
+			// QK-Norm (Qwen3/Gemma3): RMSNorm each head of Q and K separately
 			if layer.QNorm != nil {
 				qNorm := layer.QNorm.Data()
 				kNorm := layer.KNorm.Data()
+				normFn := rmsNormInPlace
+				if cfg.ModelType == "gemma3_text" { normFn = rmsNormBF16 }
 				for head := 0; head < numHeads; head++ {
-					rmsNormInPlace(q[head*headDim:(head+1)*headDim], qNorm, float32(cfg.RMSNormEps))
+					normFn(q[head*headDim:(head+1)*headDim], qNorm, float32(cfg.RMSNormEps))
 				}
 				for head := 0; head < numKVHeads; head++ {
-					rmsNormInPlace(k[head*headDim:(head+1)*headDim], kNorm, float32(cfg.RMSNormEps))
+					normFn(k[head*headDim:(head+1)*headDim], kNorm, float32(cfg.RMSNormEps))
 				}
 			}
 
@@ -627,7 +638,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.PreFFNNorm != nil {
 				mlpInput = make([]float32, h)
 				copy(mlpInput, hidden)
-				rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+				if cfg.ModelType == "gemma3_text" {
+					rmsNormBF16(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+				} else {
+					rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(cfg.RMSNormEps))
+				}
 			}
 
 			// MLP: gate * up → SiLU → down
@@ -644,9 +659,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(up, mlpInput, layer.UpW.Data(), h, inter)
 			}
 
+			// BF16 for Gemma3 MLP projections
+			if cfg.ModelType == "gemma3_text" {
+				bf16Slice(gate); bf16Slice(up)
+			}
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
-				for i := range gate { gate[i] = geluTanh(gate[i]) * up[i] }
+				for i := range gate { gate[i] = toBF16(geluTanh(gate[i]) * up[i]) }
 			} else {
 				for i := range gate { gate[i] = gate[i] / (1 + float32(math.Exp(float64(-gate[i])))) * up[i] }
 			}
@@ -661,21 +680,33 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				m.mv(down, gate, layer.DownW.Data(), inter, h)
 			}
 
+			// BF16 down projection output for Gemma3
+			if cfg.ModelType == "gemma3_text" { bf16Slice(down) }
+
 			// Post-FFN norm (Gemma3)
 			if layer.PostFFNNorm != nil {
-				rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
+				if cfg.ModelType == "gemma3_text" {
+					rmsNormBF16(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
+				} else {
+					rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
+				}
 			}
 
 			// Residual
 			for i := range hidden {
 				hidden[i] = residual[i] + down[i]
 			}
+			if cfg.ModelType == "gemma3_text" { bf16Slice(hidden) }
 			if l == 0 && step == 0 {
 			}
 		}
 
-		// Final norm
-		rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+		// Final norm (BF16 for Gemma3)
+		if cfg.ModelType == "gemma3_text" {
+			rmsNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+		} else {
+			rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+		}
 
 		// LM head: logits = hidden @ lm_head^T (greedy: take argmax)
 		if step >= len(tokenIDs)-1 {
