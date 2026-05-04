@@ -855,3 +855,110 @@ bfn_scalar:
 bfn_done:
     VZEROUPPER
     RET
+
+// func RMSNormNoScale(x []float32, eps float32)
+// Normalizes x in-place by RMS without weight multiplication.
+TEXT ·RMSNormNoScale(SB), NOSPLIT, $0-28
+    MOVQ    x_base+0(FP), SI
+    MOVQ    x_len+8(FP), CX
+    MOVSS   eps+24(FP), X8
+
+    MOVQ    SI, R8          // save x pointer
+    MOVQ    CX, R9          // save n
+
+    // Phase 1: sum of squares (8-wide AVX2)
+    VXORPS  Y0, Y0, Y0
+    VXORPS  Y1, Y1, Y1
+
+    CMPQ    CX, $16
+    JL      rnns_ss_tail8
+
+rnns_ss_loop16:
+    VMOVUPS (SI), Y2
+    VMOVUPS 32(SI), Y3
+    VFMADD231PS Y2, Y2, Y0
+    VFMADD231PS Y3, Y3, Y1
+    ADDQ    $64, SI
+    SUBQ    $16, CX
+    CMPQ    CX, $16
+    JGE     rnns_ss_loop16
+
+rnns_ss_tail8:
+    VADDPS  Y1, Y0, Y0
+    CMPQ    CX, $8
+    JL      rnns_ss_reduce
+    VMOVUPS (SI), Y2
+    VFMADD231PS Y2, Y2, Y0
+    ADDQ    $32, SI
+    SUBQ    $8, CX
+
+rnns_ss_reduce:
+    VEXTRACTF128 $1, Y0, X1
+    VADDPS  X1, X0, X0
+    VHADDPS X0, X0, X0
+    VHADDPS X0, X0, X0
+
+    TESTQ   CX, CX
+    JZ      rnns_compute
+
+rnns_ss_scalar:
+    VMOVSS  (SI), X1
+    VFMADD231SS X1, X1, X0
+    ADDQ    $4, SI
+    DECQ    CX
+    JNZ     rnns_ss_scalar
+
+rnns_compute:
+    // X0 = sum_of_squares; R9 = n
+    VCVTSI2SSQ R9, X1, X1
+    VDIVSS  X1, X0, X0      // mean_sq
+    VADDSS  X8, X0, X0      // + eps
+    VSQRTSS X0, X0, X0
+    MOVL    $0x3f800000, R11
+    MOVL    R11, X1
+    VDIVSS  X0, X1, X0      // invRMS
+    VBROADCASTSS X0, Y6
+
+    // Phase 2: x[i] *= invRMS
+    MOVQ    R8, SI
+    MOVQ    R9, CX
+
+    CMPQ    CX, $16
+    JL      rnns_apply_tail8
+
+rnns_apply_loop16:
+    VMOVUPS (SI), Y0
+    VMOVUPS 32(SI), Y1
+    VMULPS  Y6, Y0, Y0
+    VMULPS  Y6, Y1, Y1
+    VMOVUPS Y0, (SI)
+    VMOVUPS Y1, 32(SI)
+    ADDQ    $64, SI
+    SUBQ    $16, CX
+    CMPQ    CX, $16
+    JGE     rnns_apply_loop16
+
+rnns_apply_tail8:
+    CMPQ    CX, $8
+    JL      rnns_apply_scalar_check
+    VMOVUPS (SI), Y0
+    VMULPS  Y6, Y0, Y0
+    VMOVUPS Y0, (SI)
+    ADDQ    $32, SI
+    SUBQ    $8, CX
+
+rnns_apply_scalar_check:
+    TESTQ   CX, CX
+    JZ      rnns_done
+
+rnns_apply_scalar:
+    VMOVSS  (SI), X0
+    VMULSS  X6, X0, X0
+    VMOVSS  X0, (SI)
+    ADDQ    $4, SI
+    DECQ    CX
+    JNZ     rnns_apply_scalar
+
+rnns_done:
+    VZEROUPPER
+    RET

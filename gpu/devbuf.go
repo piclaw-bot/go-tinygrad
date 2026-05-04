@@ -36,6 +36,7 @@ var (
 	fnVecScale    CUfunction
 	fnVecSilu     CUfunction
 	fnRmsNorm     CUfunction
+	fnRmsNormNoScale CUfunction
 )
 
 func initKernels() { loadMegaModule() }
@@ -225,6 +226,27 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	for i := 0; i < n; i++ {
 		out.cpu[i] = x.cpu[i] * ss * weight.cpu[i]
 	}
+}
+
+// DevRMSNormNoScale: normalize x by RMS without weight. out = x / rms(x)
+func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
+	initKernels()
+	n := x.n
+	if kernelsLoaded && fnRmsNormNoScale != 0 && n <= 256*8192 {
+		x.ToGPU(); out.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
+			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&nn), unsafe.Pointer(&eps))
+		out.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback
+	x.ToCPU(); out.ToCPU()
+	var ss float32
+	for _, v := range x.cpu[:n] { ss += v * v }
+	ss = 1.0 / float32(math.Sqrt(float64(ss/float32(n)+eps)))
+	for i := 0; i < n; i++ { out.cpu[i] = x.cpu[i] * ss }
 }
 
 // Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)

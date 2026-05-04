@@ -27,6 +27,14 @@ func VecSiLUMul(dst, a, b []float32) {
 
 func RMSNorm(x, w []float32, eps float32) { rmsNormGo(x, w, eps) }
 
+func RMSNormNoScale(x []float32, eps float32) {
+	n := len(x)
+	ss := float32(0)
+	for _, v := range x { ss += v * v }
+	ss = float32(1.0 / math.Sqrt(float64(ss/float32(n)+eps)))
+	for i := range x { x[i] *= ss }
+}
+
 func RMSNormBF16(x, w []float32, eps float32) {
 	rmsNormGo(x, w, eps)
 	ToBF16(x)

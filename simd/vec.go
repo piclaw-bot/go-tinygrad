@@ -28,6 +28,10 @@ func RMSNorm(x, w []float32, eps float32)
 // RMSNormBF16 is RMSNorm with each output rounded to BF16 precision.
 func RMSNormBF16(x, w []float32, eps float32)
 
+// RMSNormNoScale normalizes x in-place by dividing by RMS, without weight.
+// Used for Gemma4 V-norm (RMSNormNoScale in MLX).
+func RMSNormNoScale(x []float32, eps float32)
+
 // ToBF16 rounds each element to BF16 precision in-place.
 func ToBF16(x []float32)
 

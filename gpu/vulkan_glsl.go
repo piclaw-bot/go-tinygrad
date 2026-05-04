@@ -177,3 +177,24 @@ package gpu
 // This file contains GLSL source as documentation.
 // The actual SPIR-V binaries are in vulkan_spirv.go.
 // To compile: glslangValidator -V -S comp <shader>.glsl -o <shader>.spv
+
+// ========== rms_norm_no_scale_f32.glsl ==========
+// RMSNorm without learned weight — just normalize by RMS.
+// Used for Gemma4 V-norm (RMSNormNoScale in MLX).
+// layout(set=0, binding=0) buffer X { float x[]; };
+// layout(set=0, binding=1) buffer Out { float out_data[]; };
+// layout(push_constant) uniform Params { uint n; float eps; };
+// layout(local_size_x = 256) in;
+// Same reduction pattern as rms_norm but output = x[i] * invRMS (no weight).
+
+// ========== rope_partial_f32.glsl ==========
+// RoPE with partial rotation support.
+// Only rotates the first rotHalf pairs per head; remaining dims untouched.
+// layout(set=0, binding=0) buffer X { float x[]; };
+// layout(set=0, binding=1) buffer CosSin { float cs[]; };
+// layout(push_constant) uniform Params { uint numHeads; uint headDim; uint rotHalf; uint pos; };
+// layout(local_size_x = 256) in;
+// For each head h and each pair i < rotHalf:
+//   idx0 = h*headDim + i; idx1 = h*headDim + i + rotHalf
+//   cos = cs[(pos*rotHalf + i)*2]; sin = cs[(pos*rotHalf + i)*2 + 1]
+//   x[idx0] = x0*cos - x1*sin; x[idx1] = x0*sin + x1*cos

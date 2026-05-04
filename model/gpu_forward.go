@@ -31,7 +31,11 @@ type GPUModel struct {
 	kvGPU_K, kvGPU_V   []*gpu.DevBuf // GPU buffers [maxSeq * kvDim] per layer
 
 	// RoPE precomputed cos/sin
-	ropeCosSin *gpu.DevBuf
+	ropeCosSin    *gpu.DevBuf
+	ropeCosSinSWA *gpu.DevBuf // Gemma4: SWA RoPE
+	ropeCosSinFull *gpu.DevBuf // Gemma4: full attention RoPE
+	ropeHalfSWA   int
+	ropeHalfFull  int
 
 	// Final norm + lm_head stay on CPU (vocab is huge)
 	normWeight []float32
@@ -50,6 +54,7 @@ type gpuLayerBufs struct {
 	QNorm, KNorm           *gpu.DevBuf // QK-Norm (Qwen3)
 	GateW, UpW, DownW      *gpu.DevBuf
 	InputNorm, PostNorm    *gpu.DevBuf
+	PreFFNNorm, PostFFNNorm *gpu.DevBuf // Gemma3/4
 	// GPTQ quantized (CPU fallback)
 	QWq, KWq, VWq, OWq       *QuantWeight
 	GateWq, UpWq, DownWq     *QuantWeight
@@ -80,17 +85,28 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		vocabSize: cfg.VocabSize,
 	}
 
-	// Work buffers
+	// Work buffers — sized for max across all layer types
+	maxHeadDim := cfg.HeadDim
+	if cfg.GlobalHeadDim > maxHeadDim { maxHeadDim = cfg.GlobalHeadDim }
+	maxQDim := cfg.NumHeads * maxHeadDim
+	maxKVDim := cfg.NumKVHeads * maxHeadDim
+	// Max intermediate (Gemma4 double-wide MLP for shared layers)
+	maxInter := inter
+	for _, layer := range m.Layers {
+		if layer.GateWm != nil && layer.GateWm.OutDim > maxInter { maxInter = layer.GateWm.OutDim }
+		if layer.GateW != nil { s := layer.GateW.Shape(); if len(s) > 0 && s[0] > maxInter { maxInter = s[0] } }
+	}
+
 	g.hidden = gpu.NewDevBuf(h)
 	g.residual = gpu.NewDevBuf(h)
 	g.normed = gpu.NewDevBuf(h)
-	g.q = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
-	g.k = gpu.NewDevBuf(kvDim)
-	g.v = gpu.NewDevBuf(kvDim)
-	g.attnOut = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
-	g.oOut = gpu.NewDevBuf(cfg.NumHeads * cfg.HeadDim)
-	g.gate = gpu.NewDevBuf(inter)
-	g.up = gpu.NewDevBuf(inter)
+	g.q = gpu.NewDevBuf(maxQDim)
+	g.k = gpu.NewDevBuf(maxKVDim)
+	g.v = gpu.NewDevBuf(maxKVDim)
+	g.attnOut = gpu.NewDevBuf(maxQDim)
+	g.oOut = gpu.NewDevBuf(maxQDim)
+	g.gate = gpu.NewDevBuf(maxInter)
+	g.up = gpu.NewDevBuf(maxInter)
 	g.down = gpu.NewDevBuf(h)
 
 	// Try to move work buffers to GPU
@@ -158,6 +174,8 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			gl.DownW = wrapTensor(layer.DownW)
 		}
 
+		gl.PreFFNNorm = wrapTensor(layer.PreFFNNorm)
+		gl.PostFFNNorm = wrapTensor(layer.PostFFNNorm)
 		gl.QB = wrapTensor(layer.QB)
 		gl.KB = wrapTensor(layer.KB)
 		gl.VB = wrapTensor(layer.VB)
@@ -167,12 +185,16 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.Layers[i] = gl
 	}
 
-	// KV cache
+	// KV cache (per-layer kvDim for Gemma4)
 	g.kvCacheK = make([][]float32, len(m.Layers))
 	g.kvCacheV = make([][]float32, len(m.Layers))
 	for l := range g.kvCacheK {
-		g.kvCacheK[l] = make([]float32, 0, 2048*kvDim)
-		g.kvCacheV[l] = make([]float32, 0, 2048*kvDim)
+		lkv := kvDim
+		if m.Layers[l].HeadDimLocal > 0 {
+			lkv = cfg.NumKVHeads * m.Layers[l].HeadDimLocal
+		}
+		g.kvCacheK[l] = make([]float32, 0, 2048*lkv)
+		g.kvCacheV[l] = make([]float32, 0, 2048*lkv)
 	}
 
 	// Final layers stay CPU
@@ -194,6 +216,18 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.logitsGPU.ToGPU()
 	}
 
+	// Gemma4: precompute dual RoPE tables
+	if cfg.ModelType == "gemma4_text" && m.RopeFreqsSWA != nil {
+		g.ropeHalfSWA = m.RopeHalfSWA
+		g.ropeHalfFull = m.RopeHalfFull
+		// Upload SWA table
+		g.ropeCosSinSWA = gpu.NewDevBufFrom(m.RopeFreqsSWA)
+		g.ropeCosSinSWA.ToGPU()
+		// Upload Full table
+		g.ropeCosSinFull = gpu.NewDevBufFrom(m.RopeFreqsFull)
+		g.ropeCosSinFull.ToGPU()
+	}
+
 	device := "CPU"
 	// Precompute RoPE cos/sin table
 	{
@@ -212,13 +246,17 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		g.ropeCosSin.ToGPU()
 	}
 
-	// GPU KV cache: pre-allocate for all layers
+	// GPU KV cache: per-layer kvDim
 	maxSeq := 2048
 	g.kvGPU_K = make([]*gpu.DevBuf, len(m.Layers))
 	g.kvGPU_V = make([]*gpu.DevBuf, len(m.Layers))
 	for i := range g.kvGPU_K {
-		g.kvGPU_K[i] = gpu.NewDevBuf(maxSeq * kvDim)
-		g.kvGPU_V[i] = gpu.NewDevBuf(maxSeq * kvDim)
+		lkv := kvDim
+		if m.Layers[i].HeadDimLocal > 0 {
+			lkv = cfg.NumKVHeads * m.Layers[i].HeadDimLocal
+		}
+		g.kvGPU_K[i] = gpu.NewDevBuf(maxSeq * lkv)
+		g.kvGPU_V[i] = gpu.NewDevBuf(maxSeq * lkv)
 		g.kvGPU_K[i].ToGPU()
 		g.kvGPU_V[i].ToGPU()
 	}
@@ -291,7 +329,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
 	headDim := cfg.HeadDim
-	kvDim := headDim * numKVHeads
+	_ = headDim * numKVHeads
 	inter := cfg.Intermediate
 	m := g.CPU
 
@@ -299,15 +337,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	copy(output, tokenIDs)
 
 	// Temp CPU buffers for RoPE + attention (sequential ops)
-	qCPU := make([]float32, h)
 	var kd, vd []float32
-	kCPU := make([]float32, kvDim)
-	vCPU := make([]float32, kvDim)
 	logits := make([]float32, g.vocabSize)
 
 	// Batched prefill: process all prompt tokens at once
 	prefillStart := 0
-	if len(tokenIDs) > 1 && gpu.BatchGEMMReady() {
+	if len(tokenIDs) > 1 && gpu.BatchGEMMReady() && cfg.ModelType != "gemma4_text" {
 		if lastHidden := g.prefillGPU(tokenIDs); lastHidden != nil {
 			// Prefill succeeded — skip to decode phase
 			prefillStart = len(tokenIDs) - 1 // skip all but last prompt token
@@ -334,137 +369,206 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		embData := m.EmbedTokens.Data()
 		hd = g.hidden.Data()
 		copy(hd, embData[tokID*h:(tokID+1)*h])
-		g.hidden.MarkDirty() // CPU data set
-		if step == 0 {
+		g.hidden.MarkDirty()
+		// Gemma3/4: scale embeddings by sqrt(hidden_size)
+		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+			scale := float32(math.Sqrt(float64(h)))
+			for i := range hd { hd[i] *= scale }
+			g.hidden.MarkDirty()
 		}
 
 		
+		// Gemma4: per-layer input gating (CPU path)
+		var perLayerInputs [][]float32
+		if cfg.ModelType == "gemma4_text" && m.PerLayerModelProj != nil && cfg.HiddenPerLayer > 0 {
+			hpl := cfg.HiddenPerLayer
+			nl := cfg.NumLayers
+			totalDim := nl * hpl
+			proj := make([]float32, totalDim)
+			hd2 := g.hidden.Data()
+			gemvNT(proj, hd2, m.PerLayerModelProj, h, totalDim)
+			for i := range proj { proj[i] *= m.PerLayerProjScale }
+			for ll := 0; ll < nl; ll++ {
+				sl := proj[ll*hpl : (ll+1)*hpl]
+				rmsNormInPlace(sl, m.PerLayerProjNorm, float32(cfg.RMSNormEps))
+			}
+			if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
+				embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
+				for i := range proj {
+					proj[i] = (proj[i] + embRow[i]*m.EmbedPerLayerScale) * m.PerLayerInputScale
+				}
+			}
+			perLayerInputs = make([][]float32, nl)
+			for ll := 0; ll < nl; ll++ {
+				perLayerInputs[ll] = proj[ll*hpl : (ll+1)*hpl]
+			}
+		}
+
 		for l := 0; l < len(g.Layers); l++ {
-			// Debug: trace each GPU op
-						layer := &g.Layers[l]
+			layer := &g.Layers[l]
+			cpuLayer := &m.Layers[l]
+
+			// Per-layer dims
+			layerHeadDim := headDim
+			if cpuLayer.HeadDimLocal > 0 { layerHeadDim = cpuLayer.HeadDimLocal }
+			qDim := numHeads * layerHeadDim
+			layerKVDim := numKVHeads * layerHeadDim
+			layerInter := inter
+			if cpuLayer.GateWm != nil { layerInter = cpuLayer.GateWm.OutDim }
 
 			// Save residual
+			gpu.DevCopy(g.residual, g.hidden)
 
 			// RMSNorm (GPU kernel with CPU fallback)
+			gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
 
 			if l == 0 && step == 0 {
 			// gpu.Sync() — removed, all on GPU
 			}
-			// Q/K/V projections
-			if layer.QWg != nil {
-				// GPTQ GPU path
-				gpu.PrefetchWeights(layer.OWg, layer.GateWg, layer.UpWg, layer.DownWg)
-				gpu.GemvQ4(g.q, g.normed, layer.QWg)
-				gpu.GemvQ4(g.k, g.normed, layer.KWg)
-				gpu.GemvQ4(g.v, g.normed, layer.VWg)
-				gpu.WaitPrefetch()
-			} else if layer.QWmg != nil {
-				// MLX GPU path
+			// Q projection (always)
+			if layer.QWmg != nil {
 				gpu.GemvMLX(g.q, g.normed, layer.QWmg)
-				gpu.GemvMLX(g.k, g.normed, layer.KWmg)
-				gpu.GemvMLX(g.v, g.normed, layer.VWmg)
-			} else if layer.QWq != nil {
-				nd := g.normed.Data()
-				gemvQ4Sym(qCPU, nd, layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
-				gemvQ4Sym(kCPU, nd, layer.KWq.QWeight, layer.KWq.GIdx, layer.KWq.Scales, layer.KWq.InDim, layer.KWq.OutDim)
-				gemvQ4Sym(vCPU, nd, layer.VWq.QWeight, layer.VWq.GIdx, layer.VWq.Scales, layer.VWq.InDim, layer.VWq.OutDim)
-				copy(g.q.Data(), qCPU)
-				copy(g.k.Data(), kCPU)
-				copy(g.v.Data(), vCPU)
-				g.q.MarkDirty(); g.k.MarkDirty(); g.v.MarkDirty()
-			} else {
-				g.gemv(g.q, g.normed, layer.QW, h, h)
-				g.gemv(g.k, g.normed, layer.KW, h, kvDim)
-				g.gemv(g.v, g.normed, layer.VW, h, kvDim)
+			} else if layer.QWg != nil {
+				gpu.GemvQ4(g.q, g.normed, layer.QWg)
+			} else if layer.QW != nil {
+				g.gemv(g.q, g.normed, layer.QW, h, qDim)
 			}
 
-			if l == 0 && step == 0 {
-			// gpu.Sync() — removed, all on GPU
+			// K/V projections (only for HasKV layers)
+			if cpuLayer.HasKV {
+				if layer.KWmg != nil {
+					gpu.GemvMLX(g.k, g.normed, layer.KWmg)
+					gpu.GemvMLX(g.v, g.normed, layer.VWmg)
+				} else if layer.KWg != nil {
+					gpu.GemvQ4(g.k, g.normed, layer.KWg)
+					gpu.GemvQ4(g.v, g.normed, layer.VWg)
+				} else if layer.KW != nil {
+					g.gemv(g.k, g.normed, layer.KW, h, layerKVDim)
+					g.gemv(g.v, g.normed, layer.VW, h, layerKVDim)
+				}
 			}
-			// Bias (GPU add or CPU)
-			
+
+			// Bias (Qwen2 only)
 			if layer.QB != nil {
 				gpu.DevAdd(g.q, g.q, layer.QB)
-				gpu.DevAdd(g.k, g.k, layer.KB)
-				gpu.DevAdd(g.v, g.v, layer.VB)
+				if cpuLayer.HasKV {
+					gpu.DevAdd(g.k, g.k, layer.KB)
+					gpu.DevAdd(g.v, g.v, layer.VB)
+				}
 			}
 
-			// QK-Norm (Qwen3): RMSNorm each head independently
+			// V norm (Gemma4: RMSNormNoScale — no learned weight)
+			if cfg.ModelType == "gemma4_text" && cpuLayer.HasKV {
+				eps := float32(cfg.RMSNormEps)
+				for head := 0; head < numKVHeads; head++ {
+					vSlice := g.v.Slice(head*layerHeadDim, layerHeadDim)
+					gpu.DevRMSNormNoScale(vSlice, vSlice, eps)
+				}
+			}
+
+			// QK-Norm: RMSNorm each head
 			if layer.QNorm != nil {
-				// Per-head RMSNorm on Q and K
 				for head := 0; head < numHeads; head++ {
-					qSlice := g.q.Slice(head*headDim, headDim)
+					qSlice := g.q.Slice(head*layerHeadDim, layerHeadDim)
 					gpu.DevRMSNorm(qSlice, qSlice, layer.QNorm, float32(cfg.RMSNormEps))
 				}
-				for head := 0; head < numKVHeads; head++ {
-					kSlice := g.k.Slice(head*headDim, headDim)
-					gpu.DevRMSNorm(kSlice, kSlice, layer.KNorm, float32(cfg.RMSNormEps))
+				if cpuLayer.HasKV {
+					for head := 0; head < numKVHeads; head++ {
+						kSlice := g.k.Slice(head*layerHeadDim, layerHeadDim)
+						gpu.DevRMSNorm(kSlice, kSlice, layer.KNorm, float32(cfg.RMSNormEps))
+					}
 				}
 			}
 
-			// RoPE (GPU with precomputed cos/sin, or CPU fallback)
-			// gpu.Sync() — removed, all on GPU
-			if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
+			// RoPE: Gemma4 uses per-layer tables, others use global
+			if cfg.ModelType == "gemma4_text" && g.ropeCosSinSWA != nil {
+				isSWA := true
+				if len(cfg.LayerTypes) > l { isSWA = cfg.LayerTypes[l] == "sliding_attention" }
+				qd := g.q.Data()
+				if isSWA {
+					applyRoPEPartial(qd, m.RopeFreqsSWA, pos, numHeads, layerHeadDim, m.RopeHalfSWA)
+					if cpuLayer.HasKV {
+						kd3 := g.k.Data()
+						applyRoPEPartial(kd3, m.RopeFreqsSWA, pos, numKVHeads, layerHeadDim, m.RopeHalfSWA)
+						g.k.MarkDirty()
+					}
+				} else {
+					applyRoPEPartial(qd, m.RopeFreqsFull, pos, numHeads, layerHeadDim, m.RopeHalfFull)
+					if cpuLayer.HasKV {
+						kd3 := g.k.Data()
+						applyRoPEPartial(kd3, m.RopeFreqsFull, pos, numKVHeads, layerHeadDim, m.RopeHalfFull)
+						g.k.MarkDirty()
+					}
+				}
+				g.q.MarkDirty()
+			} else if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
 				gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
-				gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
+				if cpuLayer.HasKV {
+					gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
+				}
 			} else {
 				qd := g.q.Data()
-				kd2 := g.k.Data()
 				applyRoPE(qd, m.RopeFreqs, pos, numHeads, headDim)
-				applyRoPE(kd2, m.RopeFreqs, pos, numKVHeads, headDim)
 				g.q.MarkDirty()
-				g.k.MarkDirty()
+				if cpuLayer.HasKV {
+					kd2 := g.k.Data()
+					applyRoPE(kd2, m.RopeFreqs, pos, numKVHeads, headDim)
+					g.k.MarkDirty()
+				}
 			}
 
-			// KV cache append (GPU-resident, no host download)
+			// KV cache: HasKV layers append, shared layers reuse source
+			kvLayer := l
+			if !cpuLayer.HasKV { kvLayer = cpuLayer.KVSourceLayer }
 			seqLen := pos + 1
-			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
+
+			if cpuLayer.HasKV && g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
 				g.k.ToGPU()
 				g.v.ToGPU()
-				// GPU path: CopyDtoD K/V into cache at position offset
-				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
-				gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(kvDim*4))
-				gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(kvDim*4))
-				// GPU attention
-				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[l], g.kvGPU_V[l], seqLen, numHeads, numKVHeads, headDim)
-			} else {
-				// CPU fallback
-			// gpu.Sync() — removed, all on GPU
+				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(layerKVDim) * 4)
+				gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(layerKVDim*4))
+				gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(layerKVDim*4))
+			} else if cpuLayer.HasKV {
 				kd = g.k.Data()
 				vd = g.v.Data()
-				g.kvCacheK[l] = append(g.kvCacheK[l], kd...)
-				g.kvCacheV[l] = append(g.kvCacheV[l], vd...)
+				g.kvCacheK[l] = append(g.kvCacheK[l], kd[:layerKVDim]...)
+				g.kvCacheV[l] = append(g.kvCacheV[l], vd[:layerKVDim]...)
+			}
+
+			// Attention (with per-layer headDim and scale)
+			attnScale := float32(1.0 / math.Sqrt(float64(layerHeadDim)))
+			if cfg.ModelType == "gemma4_text" { attnScale = 1.0 }
+
+			if g.kvGPU_K[kvLayer] != nil && g.kvGPU_K[kvLayer].GPUPtr() != nil {
+				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim)
+			} else {
 				qd := g.q.Data()
-				attnCPU := gqaAttention(qd, g.kvCacheK[l], g.kvCacheV[l], seqLen, numHeads, numKVHeads, headDim)
+				attnCPU := gqaAttentionScale(qd[:qDim], g.kvCacheK[kvLayer], g.kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
 				copy(g.attnOut.Data(), attnCPU)
 				g.attnOut.MarkDirty()
 			}
 
-			// Output projection (GPU GEMV)
-			
-			if layer.OWg != nil {
+			// Output projection
+			if layer.OWmg != nil {
+				gpu.GemvMLX(g.oOut, g.attnOut, layer.OWmg)
+			} else if layer.OWg != nil {
 				g.attnOut.ToGPU()
 				gpu.GemvQ4(g.oOut, g.attnOut, layer.OWg)
-			} else if layer.OWmg != nil {
-				gpu.GemvMLX(g.oOut, g.attnOut, layer.OWmg)
-			} else if layer.OWq != nil {
-				oOut := g.oOut.Data()
-				gemvQ4Sym(oOut, g.attnOut.Data(), layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
-				g.oOut.MarkDirty()
+			} else if layer.OW != nil {
+				g.gemv(g.oOut, g.attnOut, layer.OW, qDim, h)
+			}
+
+			// Gemma3/4: post-attn norm before residual, separate pre-FFN norm
+			if layer.PreFFNNorm != nil {
+				gpu.DevRMSNorm(g.oOut, g.oOut, layer.PostNorm, float32(cfg.RMSNormEps))
+				gpu.DevAdd(g.hidden, g.residual, g.oOut)
+				gpu.DevCopy(g.residual, g.hidden)
+				gpu.DevRMSNorm(g.normed, g.hidden, layer.PreFFNNorm, float32(cfg.RMSNormEps))
 			} else {
-				g.gemv(g.oOut, g.attnOut, layer.OW, h, h)
+				gpu.DevAdd(g.hidden, g.residual, g.oOut)
+				gpu.DevCopy(g.residual, g.hidden)
+				gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
 			}
-
-			// Residual add (GPU)
-			gpu.DevAdd(g.hidden, g.residual, g.oOut)
-			// Prefetch next layer's attention weights
-			if l+1 < len(g.Layers) {
-				next := &g.Layers[l+1]
-				gpu.PrefetchWeights(next.QWg, next.KWg, next.VWg)
-			}
-
-			// Post-attention norm
-			gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
 
 			// MLP: gate + up projections
 			if layer.GateWg != nil {
@@ -486,11 +590,29 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				g.gemv(g.up, g.normed, layer.UpW, h, inter)
 			}
 
-			// SiLU(gate) * up (GPU)
-			gpu.DevSiLUMul(g.gate, g.gate, g.up) // fused: 2 kernels -> 1
+			// Activation(gate) * up
+			if cfg.HiddenAct == "gelu_pytorch_tanh" {
+				// GELU (Gemma3/4) — CPU fallback, re-upload
+				gpu.Sync()
+				gd := g.gate.Data()
+				ud := g.up.Data()
+				for i := range gd { gd[i] = geluTanh(gd[i]) * ud[i] }
+				g.gate.MarkDirty()
+				g.gate.ToGPU()
+				gpu.Sync()
+			} else {
+				gpu.DevSiLUMul(g.gate, g.gate, g.up)
+			}
 
 			// Down projection
-			if layer.DownWg != nil {
+			if cfg.ModelType == "gemma4_text" && cpuLayer.DownWm != nil {
+				// Gemma4: CPU fallback for down (GELU gate is on CPU)
+				gpu.Sync()
+				gd := g.gate.Data()
+				dd := g.down.Data()
+				GemvMLQ(dd, gd[:layerInter], cpuLayer.DownWm)
+				g.down.MarkDirty()
+			} else if layer.DownWg != nil {
 				g.gate.ToGPU()
 				gpu.GemvQ4(g.down, g.gate, layer.DownWg)
 			} else if layer.DownWmg != nil {
@@ -504,12 +626,37 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				g.gemv(g.down, g.gate, layer.DownW, inter, h)
 			}
 
+
+
+			// Post-FFN norm (Gemma3/4)
+			if layer.PostFFNNorm != nil {
+				gpu.DevRMSNorm(g.down, g.down, layer.PostFFNNorm, float32(cfg.RMSNormEps))
+			}
+
 			// Residual add
-			
 			gpu.DevAdd(g.hidden, g.residual, g.down)
 
-			if l == 0 && step == 0 {
-			// gpu.Sync() — removed, all on GPU
+			// Per-layer input gating (Gemma4, CPU path)
+			if cpuLayer.PLIGate != nil && perLayerInputs != nil && l < len(perLayerInputs) {
+				hpl := cfg.HiddenPerLayer
+				pli := perLayerInputs[l]
+				hd3 := g.hidden.Data()
+				gate2 := make([]float32, hpl)
+				gemvNT(gate2, hd3, cpuLayer.PLIGate, h, hpl)
+				for i := range gate2 { gate2[i] = geluTanh(gate2[i]) }
+				for i := range gate2 { gate2[i] *= pli[i] }
+				proj2 := make([]float32, h)
+				gemvNT(proj2, gate2, cpuLayer.PLIProj, hpl, h)
+				rmsNormInPlace(proj2, cpuLayer.PLIPostNorm, float32(cfg.RMSNormEps))
+				for i := range hd3 { hd3[i] += proj2[i] }
+				g.hidden.MarkDirty()
+			}
+
+			// Layer scalar (Gemma4)
+			if cpuLayer.LayerScalar != 1.0 {
+				hd3 := g.hidden.Data()
+				for i := range hd3 { hd3[i] *= cpuLayer.LayerScalar }
+				g.hidden.MarkDirty()
 			}
 		}
 

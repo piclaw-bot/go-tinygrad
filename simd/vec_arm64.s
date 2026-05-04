@@ -733,3 +733,111 @@ bfn_arm_scalar_loop:
 
 bfn_arm_done:
     RET
+
+// func RMSNormNoScale(x []float32, eps float32)
+// Normalizes x in-place by RMS without weight multiplication.
+TEXT ·RMSNormNoScale(SB), NOSPLIT, $0-28
+    MOVD    x_base+0(FP), R0
+    MOVD    x_len+8(FP), R2
+    FMOVS   eps+24(FP), F8
+
+    MOVD    R0, R4          // save x
+    MOVD    R2, R5          // save n
+
+    // Phase 1: sum of squares
+    VEOR    V0.B16, V0.B16, V0.B16
+    VEOR    V1.B16, V1.B16, V1.B16
+
+    CMP     $8, R2
+    BLT     rnns_arm_ss_tail4
+
+rnns_arm_ss_loop8:
+    WORD    $0xACC10C04  // LDP Q4, Q5, [R0], #32 — load 8 floats
+    WORD    $0x4E24CC80  // FMLA V0.4S, V4.4S, V4.4S
+    WORD    $0x4E25CCA1  // FMLA V1.4S, V5.4S, V5.4S
+    SUB     $8, R2, R2
+    CMP     $8, R2
+    BGE     rnns_arm_ss_loop8
+
+rnns_arm_ss_tail4:
+    WORD    $0x4EA1D400  // FADD V0.4S, V0.4S, V1.4S
+    CMP     $4, R2
+    BLT     rnns_arm_ss_reduce
+    WORD    $0x3DC00004  // LDR Q4, [R0]
+    WORD    $0x4E24CC80  // FMLA V0.4S, V4.4S, V4.4S
+    ADD     $16, R0
+    SUB     $4, R2, R2
+
+rnns_arm_ss_reduce:
+    // Horizontal sum V0 → F4
+    VMOV    V0.S[0], R3
+    FMOVS   R3, F4
+    VMOV    V0.S[1], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+    VMOV    V0.S[2], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+    VMOV    V0.S[3], R3
+    FMOVS   R3, F5
+    FADDS   F5, F4, F4
+
+    CMP     $0, R2
+    BEQ     rnns_arm_compute
+
+rnns_arm_ss_scalar:
+    FMOVS   (R0), F5
+    FMADDS  F5, F4, F5, F4
+    ADD     $4, R0
+    SUB     $1, R2, R2
+    CBNZ    R2, rnns_arm_ss_scalar
+
+rnns_arm_compute:
+    // F4 = sum_sq, R5 = n
+    SCVTFS  R5, F5
+    FDIVS   F5, F4, F4      // mean_sq
+    FADDS   F8, F4, F4      // + eps
+    FSQRTS  F4, F4
+    FMOVS   $1.0, F5
+    FDIVS   F4, F5, F4      // invRMS
+    VDUP    F4, V6.S4       // broadcast
+
+    // Phase 2: x[i] *= invRMS
+    MOVD    R4, R0
+    MOVD    R5, R2
+
+    CMP     $8, R2
+    BLT     rnns_arm_apply_tail4
+
+rnns_arm_apply_loop8:
+    WORD    $0xACC10C04  // LDP Q4, Q5, [R0], #32
+    WORD    $0x6E26DC84  // FMUL V4.4S, V4.4S, V6.4S
+    WORD    $0x6E26DCA5  // FMUL V5.4S, V5.4S, V6.4S
+    WORD    $0xACBF0C04  // STP Q4, Q5, [R0, #-32]
+    SUB     $8, R2, R2
+    CMP     $8, R2
+    BGE     rnns_arm_apply_loop8
+
+rnns_arm_apply_tail4:
+    CMP     $4, R2
+    BLT     rnns_arm_apply_scalar
+    WORD    $0x3DC00004  // LDR Q4, [R0]
+    WORD    $0x6E26DC84  // FMUL V4.4S, V4.4S, V6.4S
+    WORD    $0x3D800004  // STR Q4, [R0]
+    ADD     $16, R0
+    SUB     $4, R2, R2
+
+rnns_arm_apply_scalar:
+    CMP     $0, R2
+    BEQ     rnns_arm_done
+
+rnns_arm_scalar_loop:
+    FMOVS   (R0), F0
+    FMULS   F4, F0, F0
+    FMOVS   F0, (R0)
+    ADD     $4, R0
+    SUB     $1, R2, R2
+    CBNZ    R2, rnns_arm_scalar_loop
+
+rnns_arm_done:
+    RET
