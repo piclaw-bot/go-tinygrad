@@ -404,6 +404,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 		}
 
+		useDirectMLX := cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma3_text"
 		for l := 0; l < len(g.Layers); l++ {
 			layer := &g.Layers[l]
 			cpuLayer := &m.Layers[l]
@@ -427,7 +428,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			// Q projection (always)
 			if layer.QWmg != nil {
-				gpu.GemvMLX(g.q, g.normed, layer.QWmg)
+				if useDirectMLX { gpu.GemvMLXDirect(g.q, g.normed, layer.QWmg) } else { gpu.GemvMLX(g.q, g.normed, layer.QWmg) }
 			} else if layer.QWg != nil {
 				gpu.GemvQ4(g.q, g.normed, layer.QWg)
 			} else if layer.QW != nil {
@@ -437,8 +438,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// K/V projections (only for HasKV layers)
 			if cpuLayer.HasKV {
 				if layer.KWmg != nil {
-					gpu.GemvMLX(g.k, g.normed, layer.KWmg)
-					gpu.GemvMLX(g.v, g.normed, layer.VWmg)
+					if useDirectMLX { gpu.GemvMLXDirect(g.k, g.normed, layer.KWmg) } else { gpu.GemvMLX(g.k, g.normed, layer.KWmg) }
+					if useDirectMLX { gpu.GemvMLXDirect(g.v, g.normed, layer.VWmg) } else { gpu.GemvMLX(g.v, g.normed, layer.VWmg) }
 				} else if layer.KWg != nil {
 					gpu.GemvQ4(g.k, g.normed, layer.KWg)
 					gpu.GemvQ4(g.v, g.normed, layer.VWg)
@@ -550,7 +551,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Output projection
 			if layer.OWmg != nil {
-				gpu.GemvMLX(g.oOut, g.attnOut, layer.OWmg)
+				if useDirectMLX { gpu.GemvMLXDirect(g.oOut, g.attnOut, layer.OWmg) } else { gpu.GemvMLX(g.oOut, g.attnOut, layer.OWmg) }
 			} else if layer.OWg != nil {
 				g.attnOut.ToGPU()
 				gpu.GemvQ4(g.oOut, g.attnOut, layer.OWg)
@@ -576,8 +577,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.GemvQ4(g.gate, g.normed, layer.GateWg)
 				gpu.GemvQ4(g.up, g.normed, layer.UpWg)
 			} else if layer.GateWmg != nil {
-				gpu.GemvMLX(g.gate, g.normed, layer.GateWmg)
-				gpu.GemvMLX(g.up, g.normed, layer.UpWmg)
+				if useDirectMLX { gpu.GemvMLXDirect(g.gate, g.normed, layer.GateWmg) } else { gpu.GemvMLX(g.gate, g.normed, layer.GateWmg) }
+				if useDirectMLX { gpu.GemvMLXDirect(g.up, g.normed, layer.UpWmg) } else { gpu.GemvMLX(g.up, g.normed, layer.UpWmg) }
 			} else if layer.GateWq != nil {
 				nd := g.normed.Data()
 				gd := g.gate.Data()
@@ -600,12 +601,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Down projection
 			if layer.DownWmg != nil {
-				gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+				if useDirectMLX { gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg) } else { gpu.GemvMLX(g.down, g.gate, layer.DownWmg) }
 			} else if layer.DownWg != nil {
 				g.gate.ToGPU()
 				gpu.GemvQ4(g.down, g.gate, layer.DownWg)
 			} else if layer.DownWmg != nil {
-				gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+				if useDirectMLX { gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg) } else { gpu.GemvMLX(g.down, g.gate, layer.DownWmg) }
 			} else if layer.DownWq != nil {
 				gd := g.gate.Data()
 				dd := g.down.Data()

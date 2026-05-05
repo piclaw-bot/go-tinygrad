@@ -665,3 +665,39 @@ done:
     ret;
 }
 `
+
+// GemvMLXDirect uses the native MLX kernel (no GPTQ transpose).
+// Matches CPU GemvMLQ precision. Use for precision-sensitive models.
+func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
+	if w == nil || fnMLXGemv == 0 || w.QWeight == nil {
+		// Fall back to GPTQ path if native buffers unavailable
+		GemvMLX(out, x, w)
+		return
+	}
+	EnsureContext()
+	x.ToGPU()
+	out.EnsureGPU()
+
+	if x.gpu == nil || out.gpu == nil {
+		return
+	}
+
+	outDim := uint32(w.OutDim)
+	inDim := uint32(w.InDim)
+	groups := uint32(w.Groups)
+	groupSz := uint32(w.GroupSz)
+
+	sharedMem := uint32(256 * 4)
+
+	LaunchKernel(fnMLXGemv, outDim, 1, 1, 256, 1, 1, sharedMem,
+		unsafe.Pointer(&x.gpu.Ptr),
+		unsafe.Pointer(&w.QWeight.Ptr),
+		unsafe.Pointer(&w.Scales.Ptr),
+		unsafe.Pointer(&w.Biases.Ptr),
+		unsafe.Pointer(&out.gpu.Ptr),
+		unsafe.Pointer(&inDim),
+		unsafe.Pointer(&outDim),
+		unsafe.Pointer(&groups),
+		unsafe.Pointer(&groupSz))
+	out.dev = GPU_DEVICE
+}
