@@ -21,21 +21,21 @@ const (
 
 // DevBuf is a device-agnostic buffer that can live on CPU or GPU.
 type DevBuf struct {
-	cpu  []float32  // CPU data (nil if GPU-only)
-	gpu  *Buffer    // GPU data (nil if CPU-only)
-	n    int        // number of float32 elements
-	dev  Device     // current authoritative location
+	cpu []float32 // CPU data (nil if GPU-only)
+	gpu *Buffer   // GPU data (nil if CPU-only)
+	n   int       // number of float32 elements
+	dev Device    // current authoritative location
 }
 
 // Kernel function pointers (loaded once)
 var (
-	kernelsOnce   sync.Once
-	kernelsLoaded bool
-	fnVecAdd      CUfunction
-	fnVecMul      CUfunction
-	fnVecScale    CUfunction
-	fnVecSilu     CUfunction
-	fnRmsNorm     CUfunction
+	kernelsOnce      sync.Once
+	kernelsLoaded    bool
+	fnVecAdd         CUfunction
+	fnVecMul         CUfunction
+	fnVecScale       CUfunction
+	fnVecSilu        CUfunction
+	fnRmsNorm        CUfunction
 	fnRmsNormNoScale CUfunction
 	fnGELUTanhMul    CUfunction
 )
@@ -96,7 +96,9 @@ func (b *DevBuf) Data() []float32 {
 
 // EnsureGPU ensures GPU buffer exists without uploading CPU data.
 func (b *DevBuf) EnsureGPU() error {
-	if b.gpu != nil { return nil }
+	if b.gpu != nil {
+		return nil
+	}
 	return b.ToGPU()
 }
 
@@ -131,7 +133,9 @@ func DevAdd(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
 	if kernelsLoaded && tryGPU(a, out) {
-		a.ToGPU(); b.ToGPU(); out.ToGPU()
+		a.ToGPU()
+		b.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
@@ -140,7 +144,9 @@ func DevAdd(out, a, b *DevBuf) {
 		return
 	}
 	// CPU fallback
-	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	a.ToCPU()
+	b.ToCPU()
+	out.ToCPU()
 	for i := 0; i < n; i++ {
 		out.cpu[i] = a.cpu[i] + b.cpu[i]
 	}
@@ -151,7 +157,9 @@ func DevMul(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
 	if kernelsLoaded && tryGPU(a, out) {
-		a.ToGPU(); b.ToGPU(); out.ToGPU()
+		a.ToGPU()
+		b.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
@@ -159,7 +167,9 @@ func DevMul(out, a, b *DevBuf) {
 		out.dev = GPU_DEVICE
 		return
 	}
-	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	a.ToCPU()
+	b.ToCPU()
+	out.ToCPU()
 	for i := 0; i < n; i++ {
 		out.cpu[i] = a.cpu[i] * b.cpu[i]
 	}
@@ -170,7 +180,8 @@ func DevScale(out, a *DevBuf, s float32) {
 	initKernels()
 	n := a.n
 	if kernelsLoaded && tryGPU(a, out) {
-		a.ToGPU(); out.ToGPU()
+		a.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -178,7 +189,8 @@ func DevScale(out, a *DevBuf, s float32) {
 		out.dev = GPU_DEVICE
 		return
 	}
-	a.ToCPU(); out.ToCPU()
+	a.ToCPU()
+	out.ToCPU()
 	for i := 0; i < n; i++ {
 		out.cpu[i] = a.cpu[i] * s
 	}
@@ -189,7 +201,8 @@ func DevSiLU(out, a *DevBuf) {
 	initKernels()
 	n := a.n
 	if kernelsLoaded && tryGPU(a, out) {
-		a.ToGPU(); out.ToGPU()
+		a.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -197,7 +210,8 @@ func DevSiLU(out, a *DevBuf) {
 		out.dev = GPU_DEVICE
 		return
 	}
-	a.ToCPU(); out.ToCPU()
+	a.ToCPU()
+	out.ToCPU()
 	for i := 0; i < n; i++ {
 		x := a.cpu[i]
 		out.cpu[i] = x / (1.0 + float32(math.Exp(float64(-x))))
@@ -208,9 +222,13 @@ func DevSiLU(out, a *DevBuf) {
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
 	n := weight.n // use weight size as canonical dimension (handles oversized buffers)
-	if n > x.n { n = x.n }
+	if n > x.n {
+		n = x.n
+	}
 	if kernelsLoaded && n <= 256*8192 {
-		x.ToGPU(); weight.ToGPU(); out.ToGPU()
+		x.ToGPU()
+		weight.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
@@ -219,7 +237,9 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 		return
 	}
 	// CPU fallback
-	x.ToCPU(); weight.ToCPU(); out.ToCPU()
+	x.ToCPU()
+	weight.ToCPU()
+	out.ToCPU()
 	var ss float32
 	for _, v := range x.cpu[:n] {
 		ss += v * v
@@ -235,7 +255,8 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 	initKernels()
 	n := x.n
 	if kernelsLoaded && fnRmsNormNoScale != 0 && n <= 256*8192 {
-		x.ToGPU(); out.ToGPU()
+		x.ToGPU()
+		out.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -244,11 +265,16 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 		return
 	}
 	// CPU fallback
-	x.ToCPU(); out.ToCPU()
+	x.ToCPU()
+	out.ToCPU()
 	var ss float32
-	for _, v := range x.cpu[:n] { ss += v * v }
+	for _, v := range x.cpu[:n] {
+		ss += v * v
+	}
 	ss = 1.0 / float32(math.Sqrt(float64(ss/float32(n)+eps)))
-	for i := 0; i < n; i++ { out.cpu[i] = x.cpu[i] * ss }
+	for i := 0; i < n; i++ {
+		out.cpu[i] = x.cpu[i] * ss
+	}
 }
 
 // Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)
@@ -261,7 +287,9 @@ func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
 		}
 	}
 	// CPU fallback: out[j] = dot(W[j,:], x)
-	x.ToCPU(); W.ToCPU(); out.ToCPU()
+	x.ToCPU()
+	W.ToCPU()
+	out.ToCPU()
 	w := W.cpu
 	xd := x.cpu
 	for j := 0; j < M; j++ {
@@ -324,7 +352,9 @@ func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
 		}
 	}
 	// CPU fallback
-	x.ToCPU(); W.ToCPU(); out.ToCPU()
+	x.ToCPU()
+	W.ToCPU()
+	out.ToCPU()
 	xd := x.cpu
 	w := W.cpu
 	for j := 0; j < N; j++ {
@@ -339,11 +369,13 @@ func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
 // --- GPU RoPE + Attention ---
 
 var (
-	ropeOnce   sync.Once
-	ropeFn     CUfunction
-	attnFn     CUfunction
-	ropeReady  bool
-	attnReady  bool
+	ropeOnce         sync.Once
+	ropeFn           CUfunction
+	ropePartialFn    CUfunction
+	attnFn           CUfunction
+	ropeReady        bool
+	ropePartialReady bool
+	attnReady        bool
 )
 
 func initRoPEAttn() { loadMegaModule() }
@@ -366,6 +398,28 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 		return
 	}
 	// CPU fallback in model code
+}
+
+// DevRoPEPartial applies partial rotary position embedding on GPU (in-place).
+// cosSin is [maxSeq * rotHalf * 2] with interleaved cos,sin pairs.
+func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int) bool {
+	initRoPEAttn()
+	if ropePartialReady && tryGPU(x, cosSin) {
+		p := uint32(pos)
+		nh := uint32(nHeads)
+		hd := uint32(headDim)
+		rh := uint32(rotHalf)
+		totalPairs := nHeads * rotHalf
+		LaunchKernel(ropePartialFn, (uint32(totalPairs)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&x.gpu.Ptr),
+			unsafe.Pointer(&cosSin.gpu.Ptr),
+			unsafe.Pointer(&p),
+			unsafe.Pointer(&nh),
+			unsafe.Pointer(&hd),
+			unsafe.Pointer(&rh))
+		return true
+	}
+	return false
 }
 
 // DevAttention runs GQA attention on GPU.
@@ -401,7 +455,6 @@ func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
 	cuMemcpyDtoD(dst, src, bytes)
 }
 
-
 // Fused SiLU*Mul
 var (
 	fusedSiLUMulOnce sync.Once
@@ -412,10 +465,14 @@ var (
 // DevSiLUMul computes out = silu(a) * b in one kernel launch
 func DevSiLUMul(out, a, b *DevBuf) {
 	fusedSiLUMulOnce.Do(func() {
-		if !SgemmReady() { return }
+		if !SgemmReady() {
+			return
+		}
 		var err error
 		fnFusedSiLUMul, err = LoadPTX(FusedSiLUMulPTX, "fused_silu_mul")
-		if err != nil { return }
+		if err != nil {
+			return
+		}
 		fusedSiLUMulOK = true
 	})
 	n := a.n
@@ -428,7 +485,9 @@ func DevSiLUMul(out, a, b *DevBuf) {
 		return
 	}
 	// CPU fallback
-	a.ToCPU(); b.ToCPU(); out.ToCPU()
+	a.ToCPU()
+	b.ToCPU()
+	out.ToCPU()
 	for i := 0; i < n; i++ {
 		x := a.cpu[i]
 		out.cpu[i] = x / (1.0 + float32(math.Exp(float64(-x)))) * b.cpu[i]
@@ -447,7 +506,8 @@ func DevGELUTanhMul(gate, up *DevBuf, n int) {
 		return
 	}
 	// CPU fallback
-	gate.ToCPU(); up.ToCPU()
+	gate.ToCPU()
+	up.ToCPU()
 	for i := 0; i < n; i++ {
 		x := gate.cpu[i]
 		// gelu_tanh(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715*x^3)))
@@ -457,11 +517,11 @@ func DevGELUTanhMul(gate, up *DevBuf, n int) {
 		gate.cpu[i] = 0.5 * x * (1 + tanh_z) * up.cpu[i]
 	}
 }
+
 var (
 	jitSiLUMul *CompiledKernel
 	jitAdd     *CompiledKernel
 )
-
 
 // Slice returns a DevBuf view into a sub-range [offset:offset+n] of this buffer.
 // The slice shares CPU memory with the parent. GPU pointer is offset accordingly.

@@ -16,7 +16,7 @@ var (
 	megaModuleOK   bool
 
 	// Function handles extracted from the mega module
-	sgemmReady       bool
+	sgemmReady bool
 
 	// Set in sgemm.go, kernels_ptx.go, attn_ptx.go, gemv_q4_ptx.go
 )
@@ -64,6 +64,7 @@ func loadMegaModule() {
 			{"vec_silu", VecSiLUPTX},
 			{"rms_norm", RmsNormPTX},
 			{"rope_apply", RoPEPTX},
+			{"rope_partial", RoPEPartialPTX},
 			{"gqa_attention", AttentionPTX},
 			{"gelu_tanh_mul", GELUTanhMulPTX},
 			{"gemv_q4sym", GemvQ4OptPTX},
@@ -113,6 +114,7 @@ func loadMegaModule() {
 		fnVecSilu = extractFn("vec_silu")
 		fnRmsNorm = extractFn("rms_norm")
 		ropeFn = extractFn("rope_apply")
+		ropePartialFn = extractFn("rope_partial")
 		attnFn = extractFn("gqa_attention")
 		q4Fn = extractFn("gemv_q4sym")
 		fnFusedSiLUMul = extractFn("fused_silu_mul")
@@ -133,6 +135,7 @@ func loadMegaModule() {
 			sgemmOK = true
 			kernelsLoaded = true
 			ropeReady = true
+			ropePartialReady = true
 			attnReady = true
 			q4Ready = true
 			fusedSiLUMulOK = true

@@ -77,6 +77,79 @@ done:
 }
 `
 
+// RoPEPartial: apply partial rotary position embedding in-place on Q or K.
+// Only the first rotHalf pairs are rotated; dimensions beyond rotHalf*2 are untouched.
+const RoPEPartialPTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry rope_partial(
+    .param .u64 param_x,
+    .param .u64 param_cos_sin,
+    .param .u32 param_pos,
+    .param .u32 param_nHeads,
+    .param .u32 param_headDim,
+    .param .u32 param_rotHalf
+) {
+    .reg .u32 %r<18>;
+    .reg .u64 %rd<8>;
+    .reg .f32 %f<12>;
+    .reg .pred %p;
+
+    mov.u32 %r0, %ctaid.x;
+    mov.u32 %r1, %ntid.x;
+    mov.u32 %r2, %tid.x;
+    mad.lo.u32 %r3, %r0, %r1, %r2; // global pair index
+
+    ld.param.u32 %r4, [param_nHeads];
+    ld.param.u32 %r5, [param_headDim];
+    ld.param.u32 %r6, [param_rotHalf];
+
+    mul.lo.u32 %r7, %r4, %r6; // total pairs = nHeads * rotHalf
+    setp.ge.u32 %p, %r3, %r7;
+    @%p bra done;
+
+    div.u32 %r8, %r3, %r6; // head
+    rem.u32 %r9, %r3, %r6; // i within rotated half
+
+    // idx0 = head * headDim + i; idx1 = idx0 + rotHalf
+    mul.lo.u32 %r10, %r8, %r5;
+    add.u32 %r11, %r10, %r9;
+    add.u32 %r12, %r11, %r6;
+
+    ld.param.u64 %rd0, [param_x];
+    mul.wide.u32 %rd1, %r11, 4;
+    add.u64 %rd2, %rd0, %rd1;
+    ld.global.f32 %f0, [%rd2];
+    mul.wide.u32 %rd3, %r12, 4;
+    add.u64 %rd4, %rd0, %rd3;
+    ld.global.f32 %f1, [%rd4];
+
+    // cos/sin offset = (pos * rotHalf + i) * 2
+    ld.param.u32 %r13, [param_pos];
+    ld.param.u64 %rd5, [param_cos_sin];
+    mul.lo.u32 %r14, %r13, %r6;
+    add.u32 %r14, %r14, %r9;
+    shl.b32 %r14, %r14, 1;
+    mul.wide.u32 %rd6, %r14, 4;
+    add.u64 %rd7, %rd5, %rd6;
+    ld.global.f32 %f3, [%rd7];      // cos
+    ld.global.f32 %f4, [%rd7+4];    // sin
+
+    neg.f32 %f6, %f4;
+    mul.f32 %f5, %f1, %f6;
+    fma.rn.f32 %f7, %f0, %f3, %f5;  // x0*cos - x1*sin
+    mul.f32 %f9, %f1, %f3;
+    fma.rn.f32 %f10, %f0, %f4, %f9; // x0*sin + x1*cos
+
+    st.global.f32 [%rd2], %f7;
+    st.global.f32 [%rd4], %f10;
+
+done:
+    ret;
+}
+`
+
 // Attention: single-query attention against KV cache.
 // For each head: score = softmax(Q*K^T / sqrt(d)) * V
 // Launches one block per head, threads cooperate on the sequence dimension.
