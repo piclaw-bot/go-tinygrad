@@ -61,6 +61,7 @@ func loadMegaModule() {
 			{"vec_add", VecAddPTX},
 			{"vec_mul", VecMulPTX},
 			{"vec_scale", VecScalePTX},
+			{"to_bf16_f32", ToBF16F32PTX},
 			{"vec_silu", VecSiLUPTX},
 			{"rms_norm", RmsNormPTX},
 			{"rope_apply", RoPEPTX},
@@ -114,6 +115,7 @@ func loadMegaModule() {
 		fnVecAdd = extractFn("vec_add")
 		fnVecMul = extractFn("vec_mul")
 		fnVecScale = extractFn("vec_scale")
+		fnToBF16F32 = extractFn("to_bf16_f32")
 		fnVecSilu = extractFn("vec_silu")
 		fnRmsNorm = extractFn("rms_norm")
 		ropeFn = extractFn("rope_apply")

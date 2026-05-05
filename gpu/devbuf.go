@@ -34,6 +34,7 @@ var (
 	fnVecAdd         CUfunction
 	fnVecMul         CUfunction
 	fnVecScale       CUfunction
+	fnToBF16F32      CUfunction
 	fnVecSilu        CUfunction
 	fnRmsNorm        CUfunction
 	fnRmsNormNoScale CUfunction
@@ -193,6 +194,31 @@ func DevScale(out, a *DevBuf, s float32) {
 	out.ToCPU()
 	for i := 0; i < n; i++ {
 		out.cpu[i] = a.cpu[i] * s
+	}
+}
+
+// ToBF16: truncate float32 values in-place to BF16 precision.
+func DevToBF16(x *DevBuf, n int) {
+	initKernels()
+	if n <= 0 {
+		n = x.n
+	}
+	if kernelsLoaded && fnToBF16F32 != 0 && tryGPU(x) {
+		x.ToGPU()
+		nn := uint32(n)
+		LaunchKernel(fnToBF16F32, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&nn))
+		x.dev = GPU_DEVICE
+		return
+	}
+	x.ToCPU()
+	if n > x.n {
+		n = x.n
+	}
+	for i := 0; i < n; i++ {
+		bits := math.Float32bits(x.cpu[i])
+		bits &= 0xFFFF0000
+		x.cpu[i] = math.Float32frombits(bits)
 	}
 }
 

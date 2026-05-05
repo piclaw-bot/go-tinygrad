@@ -3,7 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	
+
 	"math"
 	"os"
 	"runtime"
@@ -26,35 +26,35 @@ type QuantWeight struct {
 }
 
 type LlamaConfig struct {
-	VocabSize      int     `json:"vocab_size"`
-	HiddenSize     int     `json:"hidden_size"`
-	Intermediate   int     `json:"intermediate_size"`
-	NumLayers      int     `json:"num_hidden_layers"`
-	NumHeads       int     `json:"num_attention_heads"`
-	NumKVHeads     int     `json:"num_key_value_heads"`
-	MaxSeqLen      int     `json:"max_position_embeddings"`
-	RopeTheta      float64 `json:"rope_theta"`
-	RMSNormEps     float64 `json:"rms_norm_eps"`
-	ModelType      string  `json:"model_type"`
-	TieEmbeddings  bool    `json:"tie_word_embeddings"`
-	HeadDim              int     `json:"head_dim"`
-	SlidingWindow        int     `json:"sliding_window"`
-	SlidingWindowPattern int     `json:"sliding_window_pattern"`
-	RopeLocalBaseFreq    float64 `json:"rope_local_base_freq"`
-	BOSTokenID           int     `json:"bos_token_id"`
+	VocabSize            int      `json:"vocab_size"`
+	HiddenSize           int      `json:"hidden_size"`
+	Intermediate         int      `json:"intermediate_size"`
+	NumLayers            int      `json:"num_hidden_layers"`
+	NumHeads             int      `json:"num_attention_heads"`
+	NumKVHeads           int      `json:"num_key_value_heads"`
+	MaxSeqLen            int      `json:"max_position_embeddings"`
+	RopeTheta            float64  `json:"rope_theta"`
+	RMSNormEps           float64  `json:"rms_norm_eps"`
+	ModelType            string   `json:"model_type"`
+	TieEmbeddings        bool     `json:"tie_word_embeddings"`
+	HeadDim              int      `json:"head_dim"`
+	SlidingWindow        int      `json:"sliding_window"`
+	SlidingWindowPattern int      `json:"sliding_window_pattern"`
+	RopeLocalBaseFreq    float64  `json:"rope_local_base_freq"`
+	BOSTokenID           int      `json:"bos_token_id"`
 	LayerTypes           []string `json:"layer_types"`
 	NumKVSharedLayers    int      `json:"num_kv_shared_layers"`
 	GlobalHeadDim        int      `json:"global_head_dim"`
 	HiddenPerLayer       int      `json:"hidden_size_per_layer_input"`
 	VocabPerLayer        int      `json:"vocab_size_per_layer_input"`
-	TensorPrefix         string  `json:"-"` // "language_model.model." for Gemma4
-	HiddenAct            string  `json:"hidden_activation"`
+	TensorPrefix         string   `json:"-"` // "language_model.model." for Gemma4
+	HiddenAct            string   `json:"hidden_activation"`
 
 	// Quantization (populated from quantize_config.json or config.json)
-	QuantBits     int    `json:"-"`
-	QuantGroup    int    `json:"-"`
-	QuantSym      bool   `json:"-"`
-	QuantFormat   string `json:"-"` // "gptq" or "mlx"
+	QuantBits   int    `json:"-"`
+	QuantGroup  int    `json:"-"`
+	QuantSym    bool   `json:"-"`
+	QuantFormat string `json:"-"` // "gptq" or "mlx"
 }
 
 // LlamaModel holds loaded weights for a LLaMA-style decoder.
@@ -65,14 +65,14 @@ type LlamaModel struct {
 	EmbedTokens *tensor.Tensor // [vocab, hidden]
 
 	// Gemma4 per-layer input gating (model-level weights)
-	EmbedPerLayer       []float32 // [vocabPerLayer, numLayers * hiddenPerLayer] dequantized
-	PerLayerModelProj   []float32 // [numLayers * hiddenPerLayer, hidden] F32
-	PerLayerProjNorm    []float32 // [hiddenPerLayer] F32
-	PerLayerInputScale  float32   // 2^-0.5
-	PerLayerProjScale   float32   // hidden^-0.5
-	EmbedPerLayerScale  float32   // hiddenPerLayer^0.5
-	Norm        *tensor.Tensor // [hidden]
-	LMHead      *tensor.Tensor // [vocab, hidden] (may share with embed)
+	EmbedPerLayer      []float32      // [vocabPerLayer, numLayers * hiddenPerLayer] dequantized
+	PerLayerModelProj  []float32      // [numLayers * hiddenPerLayer, hidden] F32
+	PerLayerProjNorm   []float32      // [hiddenPerLayer] F32
+	PerLayerInputScale float32        // 2^-0.5
+	PerLayerProjScale  float32        // hidden^-0.5
+	EmbedPerLayerScale float32        // hiddenPerLayer^0.5
+	Norm               *tensor.Tensor // [hidden]
+	LMHead             *tensor.Tensor // [vocab, hidden] (may share with embed)
 
 	Layers []LlamaLayer
 
@@ -82,14 +82,14 @@ type LlamaModel struct {
 	RopeFreqsFull []float32 // Gemma4: full attention RoPE (theta=1M, partial rotation)
 	RopeHalfSWA   int       // half-dim for SWA RoPE
 	RopeHalfFull  int       // half-dim for full attention RoPE
-	Large     bool // true if weights are NOT pre-transposed
-	Quantized     bool // true if using GPTQ INT4 weights
-	OnTheFlyQuant bool // true = keep INT4 in memory, dequant per token (slow but low memory) // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
+	Large         bool      // true if weights are NOT pre-transposed
+	Quantized     bool      // true if using GPTQ INT4 weights
+	OnTheFlyQuant bool      // true = keep INT4 in memory, dequant per token (slow but low memory) // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
 }
 
 // LlamaLayer holds weights for one decoder layer.
 type LlamaLayer struct {
-	InputNorm *tensor.Tensor // [hidden] RMSNorm weight
+	InputNorm     *tensor.Tensor // [hidden] RMSNorm weight
 	PostNorm      *tensor.Tensor // [hidden]
 	PreFFNNorm    *tensor.Tensor // [hidden] Gemma3: pre-feedforward norm
 	VNorm         *tensor.Tensor // Gemma4: V projection norm
@@ -99,22 +99,22 @@ type LlamaLayer struct {
 	KVSourceLayer int            // Gemma4: which layer to share KV from
 
 	// Gemma4 per-layer input gating (per-layer weights)
-	PLIGate     []float32 // [hiddenPerLayer, hidden] dequantized
-	PLIProj     []float32 // [hidden, hiddenPerLayer] dequantized
-	PLIPostNorm []float32 // [hidden]
-	PostFFNNorm   *tensor.Tensor // [hidden] Gemma3: post-feedforward norm
+	PLIGate     []float32      // [hiddenPerLayer, hidden] dequantized
+	PLIProj     []float32      // [hidden, hiddenPerLayer] dequantized
+	PLIPostNorm []float32      // [hidden]
+	PostFFNNorm *tensor.Tensor // [hidden] Gemma3: post-feedforward norm
 
 	QW, KW, VW, OW *tensor.Tensor // pre-transposed
 	QB, KB, VB     *tensor.Tensor // optional biases (Qwen2 has these)
 	QNorm, KNorm   *tensor.Tensor // optional QK-Norm (Qwen3 has these)
 
 	// GPTQ INT4 quantized weights (nil if not quantized)
-	QWq, KWq, VWq, OWq         *QuantWeight
-	GateWq, UpWq, DownWq       *QuantWeight
+	QWq, KWq, VWq, OWq   *QuantWeight
+	GateWq, UpWq, DownWq *QuantWeight
 
 	// MLX affine quantized weights (nil if not MLX)
-	QWm, KWm, VWm, OWm         *MLXQuantWeight
-	GateWm, UpWm, DownWm       *MLXQuantWeight
+	QWm, KWm, VWm, OWm   *MLXQuantWeight
+	GateWm, UpWm, DownWm *MLXQuantWeight
 
 	GateW, UpW, DownW *tensor.Tensor // pre-transposed
 }
@@ -144,7 +144,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			// Preserve top-level model_type
 			outerType := nested.ModelType
 			cfg = nested.TextConfig
-			if cfg.ModelType == "" { cfg.ModelType = outerType + "_text" }
+			if cfg.ModelType == "" {
+				cfg.ModelType = outerType + "_text"
+			}
 		}
 	}
 	if cfg.RMSNormEps == 0 {
@@ -250,8 +252,12 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		// Use actual shape from safetensors if it matches element count
 		if len(actualShape) > 0 {
 			n := 1
-			for _, d := range actualShape { n *= d }
-			if n == len(data) { shape = actualShape }
+			for _, d := range actualShape {
+				n *= d
+			}
+			if n == len(data) {
+				shape = actualShape
+			}
 		}
 		return tensor.FromFloat32(data, shape)
 	}
@@ -398,9 +404,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		var layer LlamaLayer
 
 		// Per-layer Q/K/V/O dimensions (Gemma4: varies by layer type)
-		qDimL := h // Q output = numHeads * headDim
+		qDimL := h      // Q output = numHeads * headDim
 		kvDimL := kvDim // K/V output = numKVHeads * headDim
-		oDimIn := h  // O input = numHeads * headDim
+		oDimIn := h     // O input = numHeads * headDim
 		if len(cfg.LayerTypes) > l {
 			lt := cfg.LayerTypes[l]
 			var lhd int
@@ -418,13 +424,13 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
 				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-				QWm:    loadMLXW(p+".self_attn.q_proj", qDimL, h),
-				KWm:    loadMLXW(p+".self_attn.k_proj", kvDimL, h),
-				VWm:    loadMLXW(p+".self_attn.v_proj", kvDimL, h),
-				OWm:    loadMLXW(p+".self_attn.o_proj", h, oDimIn),
-				GateWm: loadMLXW(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpWm:   loadMLXW(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownWm: loadMLXW(p+".mlp.down_proj", h, cfg.Intermediate),
+				QWm:       loadMLXW(p+".self_attn.q_proj", qDimL, h),
+				KWm:       loadMLXW(p+".self_attn.k_proj", kvDimL, h),
+				VWm:       loadMLXW(p+".self_attn.v_proj", kvDimL, h),
+				OWm:       loadMLXW(p+".self_attn.o_proj", h, oDimIn),
+				GateWm:    loadMLXW(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpWm:      loadMLXW(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownWm:    loadMLXW(p+".mlp.down_proj", h, cfg.Intermediate),
 			}
 		} else if cfg.QuantFormat == "mlx" {
 			// MLX dequant-at-load
@@ -440,65 +446,65 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
 				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-				QW: loadMLXDeq(p+".self_attn.q_proj", qDimL, h),
-				KW: loadMLXDeq(p+".self_attn.k_proj", kvDimL, h),
-				VW: loadMLXDeq(p+".self_attn.v_proj", kvDimL, h),
-				OW: loadMLXDeq(p+".self_attn.o_proj", h, oDimIn),
-				GateW: loadMLXDeq(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpW:   loadMLXDeq(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownW: loadMLXDeq(p+".mlp.down_proj", h, cfg.Intermediate),
+				QW:        loadMLXDeq(p+".self_attn.q_proj", qDimL, h),
+				KW:        loadMLXDeq(p+".self_attn.k_proj", kvDimL, h),
+				VW:        loadMLXDeq(p+".self_attn.v_proj", kvDimL, h),
+				OW:        loadMLXDeq(p+".self_attn.o_proj", h, oDimIn),
+				GateW:     loadMLXDeq(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpW:       loadMLXDeq(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownW:     loadMLXDeq(p+".mlp.down_proj", h, cfg.Intermediate),
 			}
 		} else if cfg.QuantBits > 0 && onTheFly {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
 				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-				QWq:    loadQW(p+".self_attn.q_proj", qDimL, h),
-				KWq:    loadQW(p+".self_attn.k_proj", kvDimL, h),
-				VWq:    loadQW(p+".self_attn.v_proj", kvDimL, h),
-				OWq:    loadQW(p+".self_attn.o_proj", h, oDimIn),
-				GateWq: loadQW(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpWq:   loadQW(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownWq: loadQW(p+".mlp.down_proj", h, cfg.Intermediate),
+				QWq:       loadQW(p+".self_attn.q_proj", qDimL, h),
+				KWq:       loadQW(p+".self_attn.k_proj", kvDimL, h),
+				VWq:       loadQW(p+".self_attn.v_proj", kvDimL, h),
+				OWq:       loadQW(p+".self_attn.o_proj", h, oDimIn),
+				GateWq:    loadQW(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpWq:      loadQW(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownWq:    loadQW(p+".mlp.down_proj", h, cfg.Intermediate),
 			}
 		} else if cfg.QuantBits > 0 {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
 				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-				QW: loadQ(p+".self_attn.q_proj", qDimL, h),
-				KW: loadQ(p+".self_attn.k_proj", kvDimL, h),
-				VW: loadQ(p+".self_attn.v_proj", kvDimL, h),
-				OW: loadQ(p+".self_attn.o_proj", h, oDimIn),
-				GateW: loadQ(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpW:   loadQ(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownW: loadQ(p+".mlp.down_proj", h, cfg.Intermediate),
+				QW:        loadQ(p+".self_attn.q_proj", qDimL, h),
+				KW:        loadQ(p+".self_attn.k_proj", kvDimL, h),
+				VW:        loadQ(p+".self_attn.v_proj", kvDimL, h),
+				OW:        loadQ(p+".self_attn.o_proj", h, oDimIn),
+				GateW:     loadQ(p+".mlp.gate_proj", cfg.Intermediate, h),
+				UpW:       loadQ(p+".mlp.up_proj", cfg.Intermediate, h),
+				DownW:     loadQ(p+".mlp.down_proj", h, cfg.Intermediate),
 			}
 		} else {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
 				PostNorm:  load(p+".post_attention_layernorm.weight", []int{h}),
-				QW: loadT(p+".self_attn.q_proj.weight", []int{qDimL, h}),
-				KW: loadT(p+".self_attn.k_proj.weight", []int{kvDimL, h}),
-				VW: loadT(p+".self_attn.v_proj.weight", []int{kvDimL, h}),
-				OW: loadT(p+".self_attn.o_proj.weight", []int{h, oDimIn}),
-				GateW: loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h}),
-				UpW:   loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
-				DownW: loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
+				QW:        loadT(p+".self_attn.q_proj.weight", []int{qDimL, h}),
+				KW:        loadT(p+".self_attn.k_proj.weight", []int{kvDimL, h}),
+				VW:        loadT(p+".self_attn.v_proj.weight", []int{kvDimL, h}),
+				OW:        loadT(p+".self_attn.o_proj.weight", []int{h, oDimIn}),
+				GateW:     loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h}),
+				UpW:       loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
+				DownW:     loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
 			}
 		}
 		// Optional Q/K/V biases (Qwen2 has these, LLaMA doesn't)
-		if tryLoad(p+".self_attn.q_proj.bias") {
+		if tryLoad(p + ".self_attn.q_proj.bias") {
 			layer.QB = load(p+".self_attn.q_proj.bias", []int{qDimL})
 			layer.KB = load(p+".self_attn.k_proj.bias", []int{kvDimL})
 			layer.VB = load(p+".self_attn.v_proj.bias", []int{kvDimL})
 		}
 		// Optional pre/post FFN norms (Gemma3 has these)
-		if tryLoad(p+".pre_feedforward_layernorm.weight") {
+		if tryLoad(p + ".pre_feedforward_layernorm.weight") {
 			layer.PreFFNNorm = load(p+".pre_feedforward_layernorm.weight", []int{h})
 			layer.PostFFNNorm = load(p+".post_feedforward_layernorm.weight", []int{h})
 		}
 		// Optional QK-Norm (Qwen3/Gemma3 have these)
 		layerHD := qDimL / cfg.NumHeads // per-layer head dim
-		if tryLoad(p+".self_attn.q_norm.weight") {
+		if tryLoad(p + ".self_attn.q_norm.weight") {
 			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{layerHD})
 			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{layerHD})
 		}
@@ -548,7 +554,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				if qw, err := loadMLXWeight(f, prefix+p+".per_layer_input_gate", hpl, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
 					layer.PLIGate = DequantMLX(qw)
 					qw2, _ := loadMLXWeight(f, prefix+p+".per_layer_projection", h, hpl, cfg.QuantGroup, cfg.QuantBits)
-					if qw2 != nil { layer.PLIProj = DequantMLX(qw2) }
+					if qw2 != nil {
+						layer.PLIProj = DequantMLX(qw2)
+					}
 					if tryLoad(p + ".post_per_layer_input_norm.weight") {
 						layer.PLIPostNorm = load(p+".post_per_layer_input_norm.weight", []int{h}).Data()
 					}
@@ -573,12 +581,16 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			} {
 				if norm != nil {
 					d := norm.Data()
-					for i := range d { d[i] += 1.0 }
+					for i := range d {
+						d[i] += 1.0
+					}
 				}
 			}
 		}
 		nd := m.Norm.Data()
-		for i := range nd { nd[i] += 1.0 }
+		for i := range nd {
+			nd[i] += 1.0
+		}
 	}
 
 	// Gemma4: load model-level per-layer projection weights
@@ -594,20 +606,26 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			m.PerLayerProjNorm = load("model.per_layer_projection_norm.weight", []int{hpl}).Data()
 			// Apply (1+w) for Gemma4
 			if cfg.ModelType == "gemma4_text" {
-				for i := range m.PerLayerProjNorm { m.PerLayerProjNorm[i] += 1.0 }
+				for i := range m.PerLayerProjNorm {
+					m.PerLayerProjNorm[i] += 1.0
+				}
 			}
 			// Also apply (1+w) to per-layer post norms
 			if cfg.ModelType == "gemma4_text" {
 				for l := range m.Layers {
 					if m.Layers[l].PLIPostNorm != nil {
-						for i := range m.Layers[l].PLIPostNorm { m.Layers[l].PLIPostNorm[i] += 1.0 }
+						for i := range m.Layers[l].PLIPostNorm {
+							m.Layers[l].PLIPostNorm[i] += 1.0
+						}
 					}
 				}
 			}
 		}
 		// embed_tokens_per_layer: [vocabPerLayer, totalDim] quantized
 		vpl := cfg.VocabPerLayer
-		if vpl == 0 { vpl = 262144 } // default for Gemma4
+		if vpl == 0 {
+			vpl = 262144
+		} // default for Gemma4
 		if cfg.QuantFormat == "mlx" && cfg.QuantBits > 0 {
 			if qw, err := loadMLXWeight(f, prefix+"model.embed_tokens_per_layer", vpl, totalDim, cfg.QuantGroup, cfg.QuantBits); err == nil {
 				m.EmbedPerLayer = DequantMLX(qw)
@@ -627,7 +645,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	// Gemma4: precompute separate RoPE for SWA and full attention
 	if cfg.ModelType == "gemma4_text" {
 		maxSeq := cfg.MaxSeqLen
-		if maxSeq > 2048 { maxSeq = 2048 }
+		if maxSeq > 2048 {
+			maxSeq = 2048
+		}
 
 		// SWA: head_dim=256, theta=10000, partial_rotary_factor=1.0
 		swaHD := cfg.HeadDim // 256
@@ -647,9 +667,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		}
 
 		// Full: head_dim=512, theta=1000000, partial_rotary_factor=0.25
-		fullHD := cfg.GlobalHeadDim // 512
+		fullHD := cfg.GlobalHeadDim                // 512
 		rotatedDims := int(float64(fullHD) * 0.25) // 128
-		fullHalf := rotatedDims / 2 // 64 rotated pairs
+		fullHalf := rotatedDims / 2                // 64 rotated pairs
 		m.RopeHalfFull = fullHalf
 		m.RopeFreqsFull = make([]float32, maxSeq*fullHalf*2)
 		fullTheta := 1000000.0
@@ -675,9 +695,13 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 func (m *LlamaModel) precomputeRoPE() {
 	cfg := m.Config
 	headDim := cfg.HeadDim
-	if headDim == 0 { headDim = cfg.HiddenSize / cfg.NumHeads }
+	if headDim == 0 {
+		headDim = cfg.HiddenSize / cfg.NumHeads
+	}
 	// For models with variable head_dim (Gemma4), use the max
-	if cfg.GlobalHeadDim > headDim { headDim = cfg.GlobalHeadDim }
+	if cfg.GlobalHeadDim > headDim {
+		headDim = cfg.GlobalHeadDim
+	}
 	halfDim := headDim / 2
 	maxSeq := cfg.MaxSeqLen
 	if maxSeq > 2048 {
@@ -704,7 +728,6 @@ func (m *LlamaModel) mvQ(out, x []float32, qw *QuantWeight) {
 	}
 }
 
-
 func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 	if m.Large {
 		gemvNT(out, x, w, inDim, outDim)
@@ -725,9 +748,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		turnStart, turnEnd := -1, -1
 		newlineID := -1
 		for id, tok := range m.Tok.InvVocab {
-			if tok == "<|turn>" { turnStart = id }
-			if tok == "<turn|>" { turnEnd = id }
-			if tok == "\n" { newlineID = id }
+			if tok == "<|turn>" {
+				turnStart = id
+			}
+			if tok == "<turn|>" {
+				turnEnd = id
+			}
+			if tok == "\n" {
+				newlineID = id
+			}
 		}
 		if turnStart >= 0 && turnEnd >= 0 && newlineID >= 0 {
 			user := m.Tok.Encode("user")
@@ -782,10 +811,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		// Gemma3: scale embeddings by sqrt(hidden_size), BF16 precision
 		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 			scale := float32(math.Sqrt(float64(h)))
-			for i := range hidden { hidden[i] = toBF16(hidden[i] * scale) }
+			for i := range hidden {
+				hidden[i] = toBF16(hidden[i] * scale)
+			}
 		}
-
-
 
 		// Gemma4: compute per-layer inputs for this token
 		var perLayerInputs [][]float32
@@ -796,7 +825,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// Project hidden → [numLayers * hiddenPerLayer]
 			proj := make([]float32, totalDim)
 			gemvNT(proj, hidden, m.PerLayerModelProj, h, totalDim)
-			for i := range proj { proj[i] *= m.PerLayerProjScale }
+			for i := range proj {
+				proj[i] *= m.PerLayerProjScale
+			}
 			// RMSNorm each layer's slice
 			for l := 0; l < nl; l++ {
 				sl := proj[l*hpl : (l+1)*hpl]
@@ -829,17 +860,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// BF16 embed scaling was already applied above
-			
 
 			// Q, K, V projections (single token: [1, h] @ [h, dim])
 			layerHeadDim := headDim
-			if layer.HeadDimLocal > 0 { layerHeadDim = layer.HeadDimLocal }
+			if layer.HeadDimLocal > 0 {
+				layerHeadDim = layer.HeadDimLocal
+			}
 			qDim := numHeads * layerHeadDim
 			q := make([]float32, qDim)
 			layerKVDim := numKVHeads * layerHeadDim
-
-
-
 
 			// Always compute Q
 			if layer.QWq != nil {
@@ -869,9 +898,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 				simd.ToBF16(q)
-				if k != nil { simd.ToBF16(k); simd.ToBF16(v) }
+				if k != nil {
+					simd.ToBF16(k)
+					simd.ToBF16(v)
+				}
 			}
-
 
 			// Add bias if present (Qwen2)
 			if layer.QB != nil {
@@ -886,17 +917,23 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Select norm function
 			normFn := rmsNormInPlace
-			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { normFn = rmsNormBF16 }
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+				normFn = rmsNormBF16
+			}
 
 			// V norm (Gemma4: RMSNormNoScale — normalize without weight)
 			if cfg.ModelType == "gemma4_text" && v != nil {
 				eps := float32(cfg.RMSNormEps)
 				for head := 0; head < numKVHeads; head++ {
-					sl := v[head*layerHeadDim:(head+1)*layerHeadDim]
+					sl := v[head*layerHeadDim : (head+1)*layerHeadDim]
 					var ss float32
-					for _, x := range sl { ss += x * x }
+					for _, x := range sl {
+						ss += x * x
+					}
 					scale := float32(1.0 / math.Sqrt(float64(ss/float32(len(sl))+eps)))
-					for i := range sl { sl[i] *= scale }
+					for i := range sl {
+						sl[i] *= scale
+					}
 				}
 			} else if layer.VNorm != nil && v != nil {
 				vnorm := layer.VNorm.Data()
@@ -919,15 +956,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 
-
-
-
-
 			// RoPE on Q (always) and K (only if HasKV)
 			if cfg.ModelType == "gemma4_text" && m.RopeFreqsSWA != nil {
 				// Gemma4: per-layer RoPE with different theta and partial rotation
 				isSWA := true
-				if len(cfg.LayerTypes) > l { isSWA = cfg.LayerTypes[l] == "sliding_attention" }
+				if len(cfg.LayerTypes) > l {
+					isSWA = cfg.LayerTypes[l] == "sliding_attention"
+				}
 				if isSWA {
 					// SWA: full rotation, theta=10k, head_dim=256
 					applyRoPEPartial(q, m.RopeFreqsSWA, pos, numHeads, layerHeadDim, m.RopeHalfSWA)
@@ -948,10 +983,11 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 
-
 			// KV cache: append for HasKV layers, reuse source for shared layers
 			kvLayer := l
-			if !layer.HasKV { kvLayer = layer.KVSourceLayer }
+			if !layer.HasKV {
+				kvLayer = layer.KVSourceLayer
+			}
 			if k != nil {
 				kvCacheK[l] = append(kvCacheK[l], k...)
 				kvCacheV[l] = append(kvCacheV[l], v...)
@@ -965,8 +1001,6 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else {
 				attnOut = gqaAttention(q, kvCacheK[kvLayer], kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim)
 			}
-
-
 
 			// Output projection
 			oOut := make([]float32, h)
@@ -982,7 +1016,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.PreFFNNorm != nil {
 				// Gemma3 pattern: norm(attn_output), then add residual
 				rmsNormInPlace(oOut, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
-				for i := range hidden { hidden[i] = residual[i] + oOut[i] }
+				for i := range hidden {
+					hidden[i] = residual[i] + oOut[i]
+				}
 				copy(residual, hidden)
 			} else {
 				// Qwen/LLaMA pattern: add residual, then norm
@@ -1019,7 +1055,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
-				simd.ToBF16(gate); simd.ToBF16(up)
+				simd.ToBF16(gate)
+				simd.ToBF16(up)
 			}
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
@@ -1040,7 +1077,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 			// BF16 down projection output for Gemma3
-			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { simd.ToBF16(down) }
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+				simd.ToBF16(down)
+			}
 
 			// Post-FFN norm (Gemma3)
 			if layer.PostFFNNorm != nil {
@@ -1061,22 +1100,35 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				// gate = gelu(per_layer_input_gate(h)) → [hiddenPerLayer]
 				gate2 := make([]float32, hpl)
 				gemvNT(gate2, hidden, layer.PLIGate, h, hpl)
-				for i := range gate2 { gate2[i] = geluTanh(gate2[i]) }
+				for i := range gate2 {
+					gate2[i] = geluTanh(gate2[i])
+				}
 				// gate = gate * per_layer_input
-				for i := range gate2 { gate2[i] *= pli[i] }
+				for i := range gate2 {
+					gate2[i] *= pli[i]
+				}
 				// proj = per_layer_projection(gate) → [hidden]
 				proj2 := make([]float32, h)
 				gemvNT(proj2, gate2, layer.PLIProj, hpl, h)
 				// norm
 				rmsNormInPlace(proj2, layer.PLIPostNorm, float32(cfg.RMSNormEps))
 				// residual add
-				for i := range hidden { hidden[i] += proj2[i] }
+				for i := range hidden {
+					hidden[i] += proj2[i]
+				}
 			}
 			// Layer scalar (Gemma4)
 			if layer.LayerScalar != 1.0 {
-				for i := range hidden { hidden[i] *= layer.LayerScalar }
+				for i := range hidden {
+					hidden[i] *= layer.LayerScalar
+				}
 			}
-			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" { simd.ToBF16(hidden) }
+			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+				simd.ToBF16(hidden)
+			}
+			if debugLayerHook != nil {
+				debugLayerHook("cpu", step, l, hidden)
+			}
 
 		}
 
@@ -1113,6 +1165,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					maxIdx = i + 1
 				}
 			}
+			if debugLogitsHook != nil {
+				debugLogitsHook("cpu", step, hidden, logits)
+			}
 			output = append(output, maxIdx)
 		}
 	}
@@ -1126,8 +1181,9 @@ func rmsNormInPlace(x, weight []float32, eps float32) {
 }
 
 // gemv: out = x @ w where w is either:
-//   pre-transposed [inDim, outDim] (use NN), or
-//   original [outDim, inDim] (use NT via dot products)
+//
+//	pre-transposed [inDim, outDim] (use NN), or
+//	original [outDim, inDim] (use NT via dot products)
 func gemv(out, x []float32, w []float32, inDim, outDim int) {
 
 	for i := range out {
@@ -1186,7 +1242,9 @@ func applyRoPEPartial(x, freqs []float32, pos, numHeads, headDim, rotHalf int) {
 	for h := 0; h < numHeads; h++ {
 		for i := 0; i < rotHalf; i++ {
 			freqOff := (pos*rotHalf + i) * 2
-			if freqOff+1 >= len(freqs) { break }
+			if freqOff+1 >= len(freqs) {
+				break
+			}
 			cos := freqs[freqOff]
 			sin := freqs[freqOff+1]
 			idx0 := h*headDim + i
@@ -1255,15 +1313,19 @@ func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads
 // gemvNTParallel is like gemvNT but parallelized across CPU cores.
 func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
 	nCPU := runtime.NumCPU()
-	if nCPU > 8 { nCPU = 8 } // cap at 8 for cache efficiency
+	if nCPU > 8 {
+		nCPU = 8
+	} // cap at 8 for cache efficiency
 	chunkSize := (outDim + nCPU - 1) / nCPU
-	
+
 	var wg sync.WaitGroup
 	wg.Add(nCPU)
 	for c := 0; c < nCPU; c++ {
 		start := c * chunkSize
 		end := start + chunkSize
-		if end > outDim { end = outDim }
+		if end > outDim {
+			end = outDim
+		}
 		go func(s, e int) {
 			defer wg.Done()
 			for j := s; j < e; j++ {
@@ -1282,4 +1344,3 @@ func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
 	}
 	wg.Wait()
 }
-

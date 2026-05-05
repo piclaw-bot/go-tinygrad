@@ -448,6 +448,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					hd[i] *= scale
 				}
 				g.hidden.MarkDirty()
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.hidden, h)
+				}
 			}
 
 			// Gemma4: per-layer input gating (GPU path with CPU fallback)
@@ -518,6 +521,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 				// RMSNorm (GPU kernel with CPU fallback)
 				gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.normed, h)
+				}
 
 				if l == 0 && step == 0 {
 					// gpu.Sync() — removed, all on GPU
@@ -557,6 +563,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					}
 				}
 
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.q, qDim)
+					if cpuLayer.HasKV {
+						gpu.DevToBF16(g.k, layerKVDim)
+						gpu.DevToBF16(g.v, layerKVDim)
+					}
+				}
+
 				// Bias (Qwen2 only)
 				if layer.QB != nil {
 					gpu.DevAdd(g.q, g.q, layer.QB)
@@ -572,6 +586,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					for head := 0; head < numKVHeads; head++ {
 						vSlice := g.v.Slice(head*layerHeadDim, layerHeadDim)
 						gpu.DevRMSNormNoScale(vSlice, vSlice, eps)
+						gpu.DevToBF16(vSlice, layerHeadDim)
 					}
 				}
 
@@ -580,11 +595,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					for head := 0; head < numHeads; head++ {
 						qSlice := g.q.Slice(head*layerHeadDim, layerHeadDim)
 						gpu.DevRMSNorm(qSlice, qSlice, layer.QNorm, float32(cfg.RMSNormEps))
+						if cfg.ModelType == "gemma4_text" {
+							gpu.DevToBF16(qSlice, layerHeadDim)
+						}
 					}
 					if cpuLayer.HasKV {
 						for head := 0; head < numKVHeads; head++ {
 							kSlice := g.k.Slice(head*layerHeadDim, layerHeadDim)
 							gpu.DevRMSNorm(kSlice, kSlice, layer.KNorm, float32(cfg.RMSNormEps))
+							if cfg.ModelType == "gemma4_text" {
+								gpu.DevToBF16(kSlice, layerHeadDim)
+							}
 						}
 					}
 				}
@@ -728,10 +749,18 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					g.gemv(g.up, g.normed, layer.UpW, h, inter)
 				}
 
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.gate, layerInter)
+					gpu.DevToBF16(g.up, layerInter)
+				}
+
 				// Activation(gate) * up
 				if cfg.HiddenAct == "gelu_pytorch_tanh" {
 					// GELU (Gemma3/4) — GPU kernel
 					gpu.DevGELUTanhMul(g.gate, g.up, layerInter)
+					if cfg.ModelType == "gemma4_text" {
+						gpu.DevToBF16(g.gate, layerInter)
+					}
 				} else {
 					gpu.DevSiLUMul(g.gate, g.gate, g.up)
 				}
@@ -761,9 +790,16 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					g.gemv(g.down, g.gate, layer.DownW, inter, h)
 				}
 
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.down, h)
+				}
+
 				// Post-FFN norm (Gemma3/4)
 				if layer.PostFFNNorm != nil {
 					gpu.DevRMSNorm(g.down, g.down, layer.PostFFNNorm, float32(cfg.RMSNormEps))
+					if cfg.ModelType == "gemma4_text" {
+						gpu.DevToBF16(g.down, h)
+					}
 				}
 
 				// Residual add
@@ -807,6 +843,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					}
 					g.hidden.MarkDirty()
 				}
+				if cfg.ModelType == "gemma4_text" {
+					gpu.DevToBF16(g.hidden, h)
+				}
+				if debugLayerHook != nil {
+					debugLayerHook("gpu", step, l, g.hidden.Data())
+				}
 			}
 
 		} // end !skipLayers
@@ -817,6 +859,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		if g.lmHeadGPU != nil {
 			// GPU path: RMSNorm + GEMV on GPU, download logits
 			gpu.DevRMSNorm(g.hidden, g.hidden, g.normGPU, float32(cfg.RMSNormEps))
+			if cfg.ModelType == "gemma4_text" {
+				gpu.DevToBF16(g.hidden, h)
+			}
 			// logits = lmHead[vocab,h] × hidden[h] → [vocab]
 			gpu.DevLMHead(g.logitsGPU, g.hidden, g.lmHeadGPU, g.vocabSize, h)
 			gpu.Sync()
@@ -839,6 +884,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					bestVal = logits[j]
 					bestID = j
 				}
+			}
+			if debugLogitsHook != nil {
+				debugLogitsHook("gpu", step, g.hidden.Data(), logits)
 			}
 			output = append(output, bestID)
 		}
