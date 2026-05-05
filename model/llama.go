@@ -903,6 +903,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					simd.ToBF16(v)
 				}
 			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "q", q)
+				if k != nil {
+					debugOpHook("cpu", step, l, "k", k)
+					debugOpHook("cpu", step, l, "v", v)
+				}
+			}
 
 			// Add bias if present (Qwen2)
 			if layer.QB != nil {
@@ -1001,6 +1008,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else {
 				attnOut = gqaAttention(q, kvCacheK[kvLayer], kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim)
 			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "attn", attnOut)
+			}
 
 			// Output projection
 			oOut := make([]float32, h)
@@ -1010,6 +1020,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				GemvMLQ(oOut, attnOut, layer.OWm)
 			} else {
 				m.mv(oOut, attnOut, layer.OW.Data(), qDim, h)
+			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "o", oOut)
 			}
 
 			// Gemma3: post-attn norm BEFORE residual add
@@ -1058,6 +1071,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				simd.ToBF16(gate)
 				simd.ToBF16(up)
 			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "gate_pre", gate)
+				debugOpHook("cpu", step, l, "up", up)
+			}
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
 				simd.GELUTanhMul(gate, gate, up)
@@ -1079,6 +1096,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			// BF16 down projection output for Gemma3
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 				simd.ToBF16(down)
+			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "down", down)
 			}
 
 			// Post-FFN norm (Gemma3)

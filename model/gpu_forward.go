@@ -570,6 +570,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						gpu.DevToBF16(g.v, layerKVDim)
 					}
 				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "q", g.q.Data()[:qDim])
+					if cpuLayer.HasKV {
+						debugOpHook("gpu", step, l, "k", g.k.Data()[:layerKVDim])
+						debugOpHook("gpu", step, l, "v", g.v.Data()[:layerKVDim])
+					}
+				}
 
 				// Bias (Qwen2 only)
 				if layer.QB != nil {
@@ -693,6 +700,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					copy(g.attnOut.Data(), attnCPU)
 					g.attnOut.MarkDirty()
 				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "attn", g.attnOut.Data()[:qDim])
+				}
 
 				// Output projection
 				if layer.OWmg != nil {
@@ -706,6 +716,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gpu.GemvQ4(g.oOut, g.attnOut, layer.OWg)
 				} else if layer.OW != nil {
 					g.gemv(g.oOut, g.attnOut, layer.OW, qDim, h)
+				}
+
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "o", g.oOut.Data()[:h])
 				}
 
 				// Gemma3/4: post-attn norm before residual, separate pre-FFN norm
@@ -753,6 +767,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gpu.DevToBF16(g.gate, layerInter)
 					gpu.DevToBF16(g.up, layerInter)
 				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "gate_pre", g.gate.Data()[:layerInter])
+					debugOpHook("gpu", step, l, "up", g.up.Data()[:layerInter])
+				}
 
 				// Activation(gate) * up
 				if cfg.HiddenAct == "gelu_pytorch_tanh" {
@@ -792,6 +810,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 				if cfg.ModelType == "gemma4_text" {
 					gpu.DevToBF16(g.down, h)
+				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "down", g.down.Data()[:h])
 				}
 
 				// Post-FFN norm (Gemma3/4)
