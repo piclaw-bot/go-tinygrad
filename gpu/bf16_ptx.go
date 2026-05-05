@@ -4,7 +4,7 @@ package gpu
 //
 // On Ampere+, BF16 is natively supported:
 //   - ld.global.b16 / st.global.b16 for BF16 load/store
-//   - cvt.f32.bf16 / cvt.bf16.f32 for conversion  
+//   - cvt.f32.bf16 / cvt.bf16.f32 for conversion
 //   - FMA in F32 with BF16 inputs
 //
 // These kernels accept BF16 (uint16) buffers directly,
@@ -13,6 +13,7 @@ package gpu
 import "unsafe"
 
 var fnBF16RMSNorm CUfunction
+var fnBF16RMSNormNoScale CUfunction
 var fnBF16VecAdd CUfunction
 var fnBF16Gemv CUfunction
 
@@ -26,6 +27,19 @@ func DevBF16RMSNorm(x, w *Buffer, n int, eps float32) {
 	LaunchKernel(fnBF16RMSNorm, 1, 1, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&x.Ptr),
 		unsafe.Pointer(&w.Ptr),
+		unsafe.Pointer(&nn),
+		unsafe.Pointer(&eps))
+}
+
+// DevBF16RMSNormNoScale applies RMSNormNoScale on BF16 data: x[i] = BF16(F32(x[i]) * invRMS).
+func DevBF16RMSNormNoScale(x *Buffer, n int, eps float32) {
+	if fnBF16RMSNormNoScale == 0 {
+		return
+	}
+	EnsureContext()
+	nn := uint32(n)
+	LaunchKernel(fnBF16RMSNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
+		unsafe.Pointer(&x.Ptr),
 		unsafe.Pointer(&nn),
 		unsafe.Pointer(&eps))
 }
@@ -146,6 +160,108 @@ apply_loop:
     mov.b32 %f2, %r5;
     mul.f32 %f1, %f1, %f3;
     mul.f32 %f1, %f1, %f2;
+    mov.b32 %r4, %f1;
+    shr.u32 %r4, %r4, 16;
+    st.global.u16 [%rd3], %r4;
+    add.u32 %r2, %r2, 256;
+    bra apply_loop;
+
+done:
+    ret;
+}
+`
+
+// BF16RMSNormNoScalePTX: RMSNormNoScale on BF16 data.
+// x[i] = BF16(F32(x[i]) * invRMS), no learned weight.
+var BF16RMSNormNoScalePTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry bf16_rms_norm_no_scale(
+    .param .u64 x,
+    .param .u32 N,
+    .param .f32 eps
+) {
+    .reg .u32 %r<8>;
+    .reg .u64 %rd<8>;
+    .reg .f32 %f<8>;
+    .reg .pred %p;
+    .shared .align 4 .f32 sdata[256];
+
+    mov.u32 %r0, %tid.x;
+    ld.param.u32 %r1, [N];
+    ld.param.u64 %rd0, [x];
+    ld.param.f32 %f5, [eps];
+
+    mov.f32 %f0, 0f00000000;
+    mov.u32 %r2, %r0;
+ss_loop:
+    setp.ge.u32 %p, %r2, %r1;
+    @%p bra ss_reduce;
+    mul.wide.u32 %rd2, %r2, 2;
+    add.u64 %rd3, %rd0, %rd2;
+    ld.global.u16 %r4, [%rd3];
+    shl.b32 %r4, %r4, 16;
+    mov.b32 %f1, %r4;
+    fma.rn.f32 %f0, %f1, %f1, %f0;
+    add.u32 %r2, %r2, 256;
+    bra ss_loop;
+
+ss_reduce:
+    mov.u64 %rd4, sdata;
+    mul.wide.u32 %rd5, %r0, 4;
+    add.u64 %rd4, %rd4, %rd5;
+    st.shared.f32 [%rd4], %f0;
+    bar.sync 0;
+
+    mov.u32 %r3, 128;
+red_loop:
+    setp.lt.u32 %p, %r3, 1;
+    @%p bra red_done;
+    setp.ge.u32 %p, %r0, %r3;
+    @%p bra red_skip;
+    add.u32 %r5, %r0, %r3;
+    mul.wide.u32 %rd5, %r5, 4;
+    mov.u64 %rd6, sdata;
+    add.u64 %rd6, %rd6, %rd5;
+    ld.shared.f32 %f1, [%rd6];
+    ld.shared.f32 %f2, [%rd4];
+    add.f32 %f2, %f2, %f1;
+    st.shared.f32 [%rd4], %f2;
+red_skip:
+    bar.sync 0;
+    shr.u32 %r3, %r3, 1;
+    bra red_loop;
+
+red_done:
+    setp.ne.u32 %p, %r0, 0;
+    @%p bra apply_wait;
+    ld.shared.f32 %f0, [sdata];
+    cvt.rn.f32.u32 %f1, %r1;
+    div.rn.f32 %f0, %f0, %f1;
+    add.f32 %f0, %f0, %f5;
+    rsqrt.approx.f32 %f0, %f0;
+    mul.f32 %f1, %f0, %f0;
+    mul.f32 %f1, %f1, %f0;
+    neg.f32 %f1, %f1;
+    fma.rn.f32 %f0, %f0, 0f40400000, %f1;
+    mul.f32 %f0, %f0, 0f3F000000;
+    st.shared.f32 [sdata], %f0;
+
+apply_wait:
+    bar.sync 0;
+    ld.shared.f32 %f3, [sdata];
+
+    mov.u32 %r2, %r0;
+apply_loop:
+    setp.ge.u32 %p, %r2, %r1;
+    @%p bra done;
+    mul.wide.u32 %rd2, %r2, 2;
+    add.u64 %rd3, %rd0, %rd2;
+    ld.global.u16 %r4, [%rd3];
+    shl.b32 %r4, %r4, 16;
+    mov.b32 %f1, %r4;
+    mul.f32 %f1, %f1, %f3;
     mov.b32 %r4, %f1;
     shr.u32 %r4, %r4, 16;
     st.global.u16 [%rd3], %r4;
