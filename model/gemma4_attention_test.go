@@ -38,11 +38,11 @@ func TestGemma4Layer0AttentionKernelVsCPU(t *testing.T) {
 			return
 		}
 		switch op {
-		case "k":
+		case "k_attn":
 			kvK = append(kvK, append([]float32(nil), vec...)...)
-		case "v":
+		case "v_attn":
 			kvV = append(kvV, append([]float32(nil), vec...)...)
-		case "q":
+		case "q_attn":
 			if step == traceStep {
 				finalQ = append([]float32(nil), vec...)
 			}
@@ -89,9 +89,9 @@ func TestGemma4Layer0AttentionKernelVsCPU(t *testing.T) {
 	got := append([]float32(nil), outBuf.Data()[:len(finalAttn)]...)
 	maxAbs, meanAbs := diffStats(finalAttn, got)
 	t.Logf("layer0 attention kernel vs cpu: maxAbs=%.6g meanAbs=%.6g", maxAbs, meanAbs)
-	// Current known bug: the CUDA attention path diverges badly from CPU even when
-	// fed CPU-captured q/k/v tensors for the same final prompt token.
-	if maxAbs < 1e-3 {
-		t.Fatalf("expected non-trivial attention divergence for current Gemma4 debug case, got maxAbs=%.6g meanAbs=%.6g", maxAbs, meanAbs)
+	// With corrected post-VNorm/post-QKNorm/post-RoPE traces, the CUDA attention
+	// kernel now matches CPU closely for the captured layer-0 Gemma4 case.
+	if maxAbs > 1e-4 {
+		t.Fatalf("expected close attention match, got maxAbs=%.6g meanAbs=%.6g", maxAbs, meanAbs)
 	}
 }

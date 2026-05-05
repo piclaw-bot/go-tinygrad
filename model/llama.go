@@ -993,6 +993,14 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "q_attn", q)
+				if k != nil {
+					debugOpHook("cpu", step, l, "k_attn", k)
+					debugOpHook("cpu", step, l, "v_attn", v)
+				}
+			}
+
 			// KV cache: append for HasKV layers, reuse source for shared layers
 			kvLayer := l
 			if !layer.HasKV {

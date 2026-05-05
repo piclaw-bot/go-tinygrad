@@ -66,6 +66,8 @@ func loadMegaModule() {
 			{"rms_norm", RmsNormPTX},
 			{"rope_apply", RoPEPTX},
 			{"rope_partial", RoPEPartialPTX},
+			{"gqa_attention_scores", AttentionScoresPTX},
+			{"row_softmax_debug", SoftmaxRowsPTX},
 			{"gqa_attention", AttentionPTX},
 			{"gelu_tanh_mul", GELUTanhMulPTX},
 			{"gemv_q4sym", GemvQ4OptPTX},
@@ -120,6 +122,8 @@ func loadMegaModule() {
 		fnRmsNorm = extractFn("rms_norm")
 		ropeFn = extractFn("rope_apply")
 		ropePartialFn = extractFn("rope_partial")
+		attnScoreFn = extractFn("gqa_attention_scores")
+		softmaxRowsFn = extractFn("row_softmax_debug")
 		attnFn = extractFn("gqa_attention")
 		q4Fn = extractFn("gemv_q4sym")
 		fnFusedSiLUMul = extractFn("fused_silu_mul")
@@ -144,6 +148,8 @@ func loadMegaModule() {
 			kernelsLoaded = true
 			ropeReady = true
 			ropePartialReady = true
+			attnScoreReady = true
+			softmaxRowsReady = true
 			attnReady = true
 			q4Ready = true
 			fusedSiLUMulOK = true

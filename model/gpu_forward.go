@@ -671,6 +671,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					}
 				}
 
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "q_attn", g.q.Data()[:qDim])
+					if cpuLayer.HasKV {
+						debugOpHook("gpu", step, l, "k_attn", g.k.Data()[:layerKVDim])
+						debugOpHook("gpu", step, l, "v_attn", g.v.Data()[:layerKVDim])
+					}
+				}
+
 				// KV cache: HasKV layers append, shared layers reuse source
 				kvLayer := l
 				if !cpuLayer.HasKV {

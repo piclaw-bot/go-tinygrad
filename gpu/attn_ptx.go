@@ -150,6 +150,205 @@ done:
 }
 `
 
+// AttentionScores: debug helper to expose raw Q·K scores before softmax.
+// out[nHeads*seqLen] stores one score row per query head.
+const AttentionScoresPTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry gqa_attention_scores(
+    .param .u64 param_q,
+    .param .u64 param_k,
+    .param .u64 param_out,
+    .param .u32 param_seqLen,
+    .param .u32 param_nHeads,
+    .param .u32 param_nKVHeads,
+    .param .u32 param_headDim,
+    .param .f32 param_scale
+) {
+    .reg .u32 %r<22>;
+    .reg .u64 %rd<12>;
+    .reg .f32 %f<12>;
+    .reg .pred %p<3>;
+
+    mov.u32 %r0, %ctaid.x;   // query head index
+    mov.u32 %r1, %tid.x;     // thread within block
+
+    ld.param.u32 %r2, [param_seqLen];
+    ld.param.u32 %r3, [param_nHeads];
+    ld.param.u32 %r4, [param_nKVHeads];
+    ld.param.u32 %r5, [param_headDim];
+
+    div.u32 %r6, %r3, %r4;   // heads per KV head
+    div.u32 %r7, %r0, %r6;   // kv head index
+
+    ld.param.f32 %f1, [param_scale];
+    ld.param.u64 %rd0, [param_q];
+    ld.param.u64 %rd1, [param_k];
+    ld.param.u64 %rd2, [param_out];
+
+    mul.lo.u32 %r8, %r0, %r5; // q offset
+
+    mov.u32 %r9, %r1; // seq pos
+score_loop_dbg:
+    setp.ge.u32 %p0, %r9, %r2;
+    @%p0 bra score_done_dbg;
+
+    mul.lo.u32 %r10, %r4, %r5;   // kvDim
+    mul.lo.u32 %r11, %r9, %r10;  // seq * kvDim
+    mul.lo.u32 %r12, %r7, %r5;   // kvHead * headDim
+    add.u32 %r11, %r11, %r12;    // k offset
+
+    mov.f32 %f2, 0f00000000;
+    mov.u32 %r13, 0;
+dot_loop_dbg:
+    setp.ge.u32 %p1, %r13, %r5;
+    @%p1 bra dot_done_dbg;
+
+    add.u32 %r14, %r8, %r13;
+    mul.wide.u32 %rd3, %r14, 4;
+    add.u64 %rd4, %rd0, %rd3;
+    ld.global.f32 %f3, [%rd4];
+
+    add.u32 %r15, %r11, %r13;
+    mul.wide.u32 %rd5, %r15, 4;
+    add.u64 %rd6, %rd1, %rd5;
+    ld.global.f32 %f4, [%rd6];
+
+    mul.f32 %f5, %f3, %f4;
+    add.f32 %f2, %f2, %f5;
+    add.u32 %r13, %r13, 1;
+    bra dot_loop_dbg;
+dot_done_dbg:
+
+    mul.f32 %f2, %f2, %f1;
+
+    mul.lo.u32 %r16, %r0, %r2;
+    add.u32 %r16, %r16, %r9;
+    mul.wide.u32 %rd7, %r16, 4;
+    add.u64 %rd8, %rd2, %rd7;
+    st.global.f32 [%rd8], %f2;
+
+    add.u32 %r9, %r9, 256;
+    bra score_loop_dbg;
+score_done_dbg:
+    ret;
+}
+`
+
+// SoftmaxRows: debug helper to expose the softmax phase on score rows.
+// in/out[nRows*seqLen], one block per row.
+const SoftmaxRowsPTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry row_softmax_debug(
+    .param .u64 param_in,
+    .param .u64 param_out,
+    .param .u32 param_seqLen
+) {
+    .reg .u32 %r<16>;
+    .reg .u64 %rd<10>;
+    .reg .f32 %f<10>;
+    .reg .pred %p<3>;
+
+    .shared .align 4 .f32 scores[2048];
+
+    mov.u32 %r0, %ctaid.x;   // row index
+    mov.u32 %r1, %tid.x;     // thread index
+    ld.param.u32 %r2, [param_seqLen];
+    ld.param.u64 %rd0, [param_in];
+    ld.param.u64 %rd1, [param_out];
+    mov.u64 %rd2, scores;
+
+    // Load row into shared memory
+    mov.u32 %r3, %r1;
+load_loop_dbg:
+    setp.ge.u32 %p0, %r3, %r2;
+    @%p0 bra load_done_dbg;
+    mul.lo.u32 %r4, %r0, %r2;
+    add.u32 %r4, %r4, %r3;
+    mul.wide.u32 %rd3, %r4, 4;
+    add.u64 %rd4, %rd0, %rd3;
+    ld.global.f32 %f0, [%rd4];
+    mul.wide.u32 %rd5, %r3, 4;
+    add.u64 %rd6, %rd2, %rd5;
+    st.shared.f32 [%rd6], %f0;
+    add.u32 %r3, %r3, 256;
+    bra load_loop_dbg;
+load_done_dbg:
+    bar.sync 0;
+
+    setp.ne.u32 %p0, %r1, 0;
+    @%p0 bra softmax_done_dbg;
+
+    mov.f32 %f1, 0fFF800000;
+    mov.u32 %r3, 0;
+max_loop_dbg:
+    setp.ge.u32 %p1, %r3, %r2;
+    @%p1 bra max_done_dbg;
+    mul.wide.u32 %rd5, %r3, 4;
+    add.u64 %rd6, %rd2, %rd5;
+    ld.shared.f32 %f2, [%rd6];
+    max.f32 %f1, %f1, %f2;
+    add.u32 %r3, %r3, 1;
+    bra max_loop_dbg;
+max_done_dbg:
+
+    mov.f32 %f3, 0f00000000;
+    mov.u32 %r3, 0;
+exp_loop_dbg:
+    setp.ge.u32 %p1, %r3, %r2;
+    @%p1 bra exp_done_dbg;
+    mul.wide.u32 %rd5, %r3, 4;
+    add.u64 %rd6, %rd2, %rd5;
+    ld.shared.f32 %f2, [%rd6];
+    sub.f32 %f2, %f2, %f1;
+    mul.f32 %f2, %f2, 0f3FB8AA3B;
+    ex2.approx.f32 %f2, %f2;
+    add.f32 %f3, %f3, %f2;
+    st.shared.f32 [%rd6], %f2;
+    add.u32 %r3, %r3, 1;
+    bra exp_loop_dbg;
+exp_done_dbg:
+
+    mov.f32 %f4, 0f3F800000;
+    div.rn.f32 %f3, %f4, %f3;
+    mov.u32 %r3, 0;
+norm_loop_dbg:
+    setp.ge.u32 %p1, %r3, %r2;
+    @%p1 bra norm_done_dbg;
+    mul.wide.u32 %rd5, %r3, 4;
+    add.u64 %rd6, %rd2, %rd5;
+    ld.shared.f32 %f2, [%rd6];
+    mul.f32 %f2, %f2, %f3;
+    st.shared.f32 [%rd6], %f2;
+    add.u32 %r3, %r3, 1;
+    bra norm_loop_dbg;
+norm_done_dbg:
+
+softmax_done_dbg:
+    bar.sync 0;
+
+    mov.u32 %r3, %r1;
+store_loop_dbg:
+    setp.ge.u32 %p0, %r3, %r2;
+    @%p0 bra store_done_dbg;
+    mul.wide.u32 %rd5, %r3, 4;
+    add.u64 %rd6, %rd2, %rd5;
+    ld.shared.f32 %f2, [%rd6];
+    mul.lo.u32 %r4, %r0, %r2;
+    add.u32 %r4, %r4, %r3;
+    mul.wide.u32 %rd7, %r4, 4;
+    add.u64 %rd8, %rd1, %rd7;
+    st.global.f32 [%rd8], %f2;
+    add.u32 %r3, %r3, 256;
+    bra store_loop_dbg;
+store_done_dbg:
+    ret;
+}
+`
+
 // Attention: single-query attention against KV cache.
 // For each head: score = softmax(Q*K^T / sqrt(d)) * V
 // Launches one block per head, threads cooperate on the sequence dimension.

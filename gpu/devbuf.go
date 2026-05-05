@@ -398,9 +398,13 @@ var (
 	ropeOnce         sync.Once
 	ropeFn           CUfunction
 	ropePartialFn    CUfunction
+	attnScoreFn      CUfunction
+	softmaxRowsFn    CUfunction
 	attnFn           CUfunction
 	ropeReady        bool
 	ropePartialReady bool
+	attnScoreReady   bool
+	softmaxRowsReady bool
 	attnReady        bool
 )
 
@@ -443,6 +447,46 @@ func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&hd),
 			unsafe.Pointer(&rh))
+		return true
+	}
+	return false
+}
+
+// DevAttentionScores runs the score phase of GQA attention on GPU.
+// out[nHeads*seqLen], q[nHeads*headDim], kCache[seqLen*kvDim]
+func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int, scale float32) bool {
+	initRoPEAttn()
+	if attnScoreReady && seqLen <= 2048 && tryGPU(out, q, kCache) {
+		sl := uint32(seqLen)
+		nh := uint32(nHeads)
+		nkv := uint32(nKVHeads)
+		hd := uint32(headDim)
+		LaunchKernel(attnScoreFn, uint32(nHeads), 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&q.gpu.Ptr),
+			unsafe.Pointer(&kCache.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&sl),
+			unsafe.Pointer(&nh),
+			unsafe.Pointer(&nkv),
+			unsafe.Pointer(&hd),
+			unsafe.Pointer(&scale))
+		out.dev = GPU_DEVICE
+		return true
+	}
+	return false
+}
+
+// DevSoftmaxRows runs the softmax phase over contiguous score rows.
+// in/out[nRows*seqLen], one block per row.
+func DevSoftmaxRows(out, in *DevBuf, nRows, seqLen int) bool {
+	initRoPEAttn()
+	if softmaxRowsReady && seqLen <= 2048 && tryGPU(out, in) {
+		sl := uint32(seqLen)
+		LaunchKernel(softmaxRowsFn, uint32(nRows), 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&in.gpu.Ptr),
+			unsafe.Pointer(&out.gpu.Ptr),
+			unsafe.Pointer(&sl))
+		out.dev = GPU_DEVICE
 		return true
 	}
 	return false
