@@ -540,7 +540,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if cfg.ModelType == "gemma4_text" { attnScale = 1.0 }
 
 			if g.kvGPU_K[kvLayer] != nil && g.kvGPU_K[kvLayer].GPUPtr() != nil {
-				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim)
+				gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
 			} else {
 				qd := g.q.Data()
 				attnCPU := gqaAttentionScale(qd[:qDim], g.kvCacheK[kvLayer], g.kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
@@ -592,26 +592,15 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
-				// GELU (Gemma3/4) — CPU fallback, re-upload
-				gpu.Sync()
-				gd := g.gate.Data()
-				ud := g.up.Data()
-				for i := range gd { gd[i] = geluTanh(gd[i]) * ud[i] }
-				g.gate.MarkDirty()
-				g.gate.ToGPU()
-				gpu.Sync()
+				// GELU (Gemma3/4) — GPU kernel
+				gpu.DevGELUTanhMul(g.gate, g.up, layerInter)
 			} else {
 				gpu.DevSiLUMul(g.gate, g.gate, g.up)
 			}
 
 			// Down projection
-			if cfg.ModelType == "gemma4_text" && cpuLayer.DownWm != nil {
-				// Gemma4: CPU fallback for down (GELU gate is on CPU)
-				gpu.Sync()
-				gd := g.gate.Data()
-				dd := g.down.Data()
-				GemvMLQ(dd, gd[:layerInter], cpuLayer.DownWm)
-				g.down.MarkDirty()
+			if layer.DownWmg != nil {
+				gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
 			} else if layer.DownWg != nil {
 				g.gate.ToGPU()
 				gpu.GemvQ4(g.down, g.gate, layer.DownWg)

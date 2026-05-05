@@ -65,6 +65,7 @@ func loadMegaModule() {
 			{"rms_norm", RmsNormPTX},
 			{"rope_apply", RoPEPTX},
 			{"gqa_attention", AttentionPTX},
+			{"gelu_tanh_mul", GELUTanhMulPTX},
 			{"gemv_q4sym", GemvQ4OptPTX},
 			{"fused_silu_mul", FusedSiLUMulPTX},
 			{"prefetch_l2", PrefetchPTX},
@@ -124,6 +125,7 @@ func loadMegaModule() {
 		fnBF16RMSNorm = extractFn("bf16_rms_norm")
 		fnBF16VecAdd = extractFn("bf16_vec_add")
 		fnRmsNormNoScale = extractFn("rms_norm_no_scale")
+		fnGELUTanhMul = extractFn("gelu_tanh_mul")
 
 		if allOK {
 			megaModuleOK = true

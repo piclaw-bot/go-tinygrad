@@ -9,6 +9,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/rcarmo/go-pherence/gpu"
 )
@@ -21,6 +22,7 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
 	headDim := h / numHeads
+	defaultScale := float32(1.0 / math.Sqrt(float64(headDim)))
 	kvDim := headDim * numKVHeads
 	B := len(tokenIDs)
 	m := g.CPU
@@ -126,7 +128,7 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 			// Attention
 			aSlice := bAttnOut.Slice(b*h, h)
 			if g.kvGPU_K[l] != nil {
-				gpu.DevAttention(aSlice, qSlice, g.kvGPU_K[l], g.kvGPU_V[l], seqLen, numHeads, numKVHeads, headDim)
+				gpu.DevAttention(aSlice, qSlice, g.kvGPU_K[l], g.kvGPU_V[l], seqLen, numHeads, numKVHeads, headDim, defaultScale)
 			}
 		}
 

@@ -154,6 +154,7 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 	// Note: this gives (val-8)*scale instead of val*scale+bias
 	// The 8*scale+bias correction is small and applied separately
 	if w.AsGPTQ != nil && q4Ready {
+		x.ToGPU() // ensure CPU-modified data is uploaded
 		GemvQ4(out, x, w.AsGPTQ); // GPTQ path
 		// Apply bias correction: out += sum_g(group_sum_x * (8*scale+bias))
 		if w.Correction != nil && fnMLXCorrect != 0 {

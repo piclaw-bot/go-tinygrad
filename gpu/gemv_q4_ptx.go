@@ -147,48 +147,48 @@ compute_tile:
     add.u64 %rd16, %rd2, %rd15;
     ld.global.f32 %f11, [%rd16];       // scale
 
-    // x values from shared memory
+    // x values from global memory (L1/L2 cached)
     mul.wide.u32 %rd17, %r11, 4;
-    add.u64 %rd18, %rd6, %rd17;
+    add.u64 %rd18, %rd0, %rd17;
 
     // Unrolled 8 values from the packed int32
     and.b32 %r14, %r10, 0xF;       add.s32 %r14, %r14, -8;
     cvt.rn.f32.s32 %f1, %r14;      mul.f32 %f1, %f11, %f1;
-    ld.shared.f32 %f2, [%rd18];     fma.rn.f32 %f10, %f2, %f1, %f10;
+    ld.global.f32 %f2, [%rd18];     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 4;         and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+4];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+4];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 8;         and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+8];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+8];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 12;        and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+12];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+12];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 16;        and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+16];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+16];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 20;        and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+20];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+20];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 24;        and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+24];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+24];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     shr.u32 %r14, %r10, 28;        and.b32 %r14, %r14, 0xF;
     add.s32 %r14, %r14, -8;        cvt.rn.f32.s32 %f1, %r14;
-    mul.f32 %f1, %f11, %f1;        ld.shared.f32 %f2, [%rd18+28];
+    mul.f32 %f1, %f11, %f1;        ld.global.f32 %f2, [%rd18+28];
     fma.rn.f32 %f10, %f2, %f1, %f10;
 
     add.u32 %r15, %r15, 1;

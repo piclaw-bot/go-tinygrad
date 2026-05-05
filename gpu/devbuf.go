@@ -37,6 +37,7 @@ var (
 	fnVecSilu     CUfunction
 	fnRmsNorm     CUfunction
 	fnRmsNormNoScale CUfunction
+	fnGELUTanhMul    CUfunction
 )
 
 func initKernels() { loadMegaModule() }
@@ -206,7 +207,8 @@ func DevSiLU(out, a *DevBuf) {
 // RMSNorm: out = x * weight * rsqrt(mean(x^2) + eps)
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
-	n := x.n
+	n := weight.n // use weight size as canonical dimension (handles oversized buffers)
+	if n > x.n { n = x.n }
 	if kernelsLoaded && n <= 256*8192 {
 		x.ToGPU(); weight.ToGPU(); out.ToGPU()
 		nn := uint32(n)
@@ -368,7 +370,7 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 
 // DevAttention runs GQA attention on GPU.
 // q[nHeads*headDim], kCache/vCache[seqLen*kvDim], out[nHeads*headDim]
-func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int) {
+func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int, scale float32) {
 	initRoPEAttn()
 	if attnReady && seqLen <= 2048 && tryGPU(out, q, kCache, vCache) {
 		sl := uint32(seqLen)
@@ -384,7 +386,8 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 			unsafe.Pointer(&sl),
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&nkv),
-			unsafe.Pointer(&hd))
+			unsafe.Pointer(&hd),
+			unsafe.Pointer(&scale))
 		out.dev = GPU_DEVICE
 		return
 	}
@@ -432,7 +435,28 @@ func DevSiLUMul(out, a, b *DevBuf) {
 	}
 }
 
-// Pre-compiled JIT kernels
+// DevGELUTanhMul: gate[i] = gelu_tanh(gate[i]) * up[i] in-place
+func DevGELUTanhMul(gate, up *DevBuf, n int) {
+	initKernels()
+	if kernelsLoaded && fnGELUTanhMul != 0 && tryGPU(gate, up) {
+		nn := uint32(n)
+		LaunchKernel(fnGELUTanhMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&gate.gpu.Ptr), unsafe.Pointer(&up.gpu.Ptr),
+			unsafe.Pointer(&nn))
+		gate.dev = GPU_DEVICE
+		return
+	}
+	// CPU fallback
+	gate.ToCPU(); up.ToCPU()
+	for i := 0; i < n; i++ {
+		x := gate.cpu[i]
+		// gelu_tanh(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715*x^3)))
+		x3 := x * x * x
+		z := 0.7978845608 * (x + 0.044715*x3)
+		tanh_z := float32(math.Tanh(float64(z)))
+		gate.cpu[i] = 0.5 * x * (1 + tanh_z) * up.cpu[i]
+	}
+}
 var (
 	jitSiLUMul *CompiledKernel
 	jitAdd     *CompiledKernel

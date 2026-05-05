@@ -88,6 +88,7 @@ const AttentionPTX = `.version 7.0
 // q[nHeads*headDim], kCache[seqLen*kvDim], vCache[seqLen*kvDim]
 // One block per query head. Threads sweep the sequence.
 // GQA: multiple query heads share one KV head (nHeads/nKVHeads ratio).
+// scale: QK scaling factor (typically 1/sqrt(headDim), but 1.0 for Gemma4)
 .visible .entry gqa_attention(
     .param .u64 param_q,
     .param .u64 param_k,
@@ -96,7 +97,8 @@ const AttentionPTX = `.version 7.0
     .param .u32 param_seqLen,
     .param .u32 param_nHeads,
     .param .u32 param_nKVHeads,
-    .param .u32 param_headDim
+    .param .u32 param_headDim,
+    .param .f32 param_scale
 ) {
     .reg .u32 %r<24>;
     .reg .u64 %rd<16>;
@@ -119,9 +121,8 @@ const AttentionPTX = `.version 7.0
     div.u32 %r6, %r3, %r4;   // heads per KV head
     div.u32 %r7, %r0, %r6;   // kv head index
 
-    // scale = 1/sqrt(headDim)
-    cvt.rn.f32.u32 %f0, %r5;
-    rsqrt.approx.f32 %f1, %f0; // 1/sqrt(headDim)
+    // scale from parameter (caller passes 1/sqrt(headDim) or 1.0 for Gemma4)
+    ld.param.f32 %f1, [param_scale];
 
     ld.param.u64 %rd0, [param_q];
     ld.param.u64 %rd1, [param_k];
