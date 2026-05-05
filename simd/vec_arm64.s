@@ -334,9 +334,9 @@ TEXT ·RMSNormBF16(SB), NOSPLIT, $0-52
     BL      ·RMSNorm(SB)
 
     // Then truncate to BF16
-    MOVD    x_base+0(FP), R0
-    MOVD    x_len+8(FP), R2
-    B       tobf16_entry
+    // Reuse the standalone ToBF16 entry instead of branching into another TEXT body.
+    BL      ·ToBF16(SB)
+    RET
 
 // func ToBF16(x []float32)
 TEXT ·ToBF16(SB), NOSPLIT, $0-24
@@ -408,8 +408,8 @@ TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
 
     VEOR    V1.B16, V1.B16, V1.B16  // acc1 for 8-wide
 
-    CMP     $8, R2
-    BLT     bf16dot_arm_tail4
+    CMP     $4, R2
+    BLT     bf16dot_arm_scalar
 
 bf16dot_arm_loop8:
     // Load 4× BF16
@@ -426,7 +426,7 @@ bf16dot_arm_loop8:
     ADD     $8, R1
     SUB     $4, R2, R2
     CMP     $4, R2
-    BGE     bf16dot_arm_loop4
+    BGE     bf16dot_arm_loop8
 
 bf16dot_arm_scalar:
     // Horizontal reduce V0
@@ -470,8 +470,8 @@ TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
     MOVD    a_len+32(FP), R2
     MOVD    b_base+48(FP), R1
 
-    CMP     $8, R2
-    BLT     bf16add_arm_tail4
+    CMP     $4, R2
+    BLT     bf16add_arm_scalar
 
 bf16add_arm_loop8:
     // Load 4× BF16 from a and b
@@ -493,7 +493,7 @@ bf16add_arm_loop8:
     ADD     $8, R3
     SUB     $4, R2, R2
     CMP     $4, R2
-    BGE     bf16add_arm_loop4
+    BGE     bf16add_arm_loop8
 
 bf16add_arm_scalar:
     CMP     $0, R2
@@ -534,8 +534,8 @@ TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
 
     VEOR    V1.B16, V1.B16, V1.B16
 
-    CMP     $8, R2
-    BLT     bf16rn_arm_ss_tail4
+    CMP     $4, R2
+    BLT     bf16rn_arm_ss_scalar
 
 bf16rn_arm_ss_loop8:
     VLD1    (R0), [V2.H4]
@@ -545,7 +545,7 @@ bf16rn_arm_ss_loop8:
     ADD     $8, R0
     SUB     $4, R2, R2
     CMP     $4, R2
-    BGE     bf16rn_arm_ss_loop4
+    BGE     bf16rn_arm_ss_loop8
 
 bf16rn_arm_ss_scalar:
     // Horizontal reduce V0
@@ -804,7 +804,9 @@ rnns_arm_compute:
     FSQRTS  F4, F4
     FMOVS   $1.0, F5
     FDIVS   F4, F5, F4      // invRMS
-    VDUP    F4, V6.S4       // broadcast
+    FMOVS   F4, R3
+    VMOV    R3, V6.S[0]
+    VDUP    V6.S[0], V6.S4  // broadcast
 
     // Phase 2: x[i] *= invRMS
     MOVD    R4, R0
