@@ -7,6 +7,7 @@ package model
 import (
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"time"
 
@@ -406,6 +407,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
 	copy(output, tokenIDs)
+	forceCPUAttn := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_CPU_ATTN") == "1"
 
 	// Temp CPU buffers for RoPE + attention (sequential ops)
 	var kd, vd []float32
@@ -523,6 +525,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				gpu.DevRMSNorm(g.normed, g.hidden, layer.InputNorm, float32(cfg.RMSNormEps))
 				if cfg.ModelType == "gemma4_text" {
 					gpu.DevToBF16(g.normed, h)
+				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "normed", g.normed.Data()[:h])
 				}
 
 				if l == 0 && step == 0 {
@@ -679,6 +684,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					kOff := gpu.CUdeviceptr(uint64(pos) * uint64(layerKVDim) * 4)
 					gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(layerKVDim*4))
 					gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(layerKVDim*4))
+					if forceCPUAttn {
+						kd = g.k.Data()
+						vd = g.v.Data()
+						g.kvCacheK[l] = append(g.kvCacheK[l], kd[:layerKVDim]...)
+						g.kvCacheV[l] = append(g.kvCacheV[l], vd[:layerKVDim]...)
+					}
 				} else if cpuLayer.HasKV {
 					kd = g.k.Data()
 					vd = g.v.Data()
@@ -692,7 +703,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					attnScale = 1.0
 				}
 
-				if g.kvGPU_K[kvLayer] != nil && g.kvGPU_K[kvLayer].GPUPtr() != nil {
+				if !forceCPUAttn && g.kvGPU_K[kvLayer] != nil && g.kvGPU_K[kvLayer].GPUPtr() != nil {
 					gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
 				} else {
 					qd := g.q.Data()
@@ -781,6 +792,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					}
 				} else {
 					gpu.DevSiLUMul(g.gate, g.gate, g.up)
+				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "gate_act", g.gate.Data()[:layerInter])
 				}
 
 				// Down projection

@@ -858,6 +858,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else {
 				rmsNormInPlace(hidden, layer.InputNorm.Data(), float32(cfg.RMSNormEps))
 			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "normed", hidden)
+			}
 
 			// BF16 embed scaling was already applied above
 
@@ -1081,6 +1084,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				simd.ToBF16(gate)
 			} else {
 				simd.VecSiLUMul(gate, gate, up)
+			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "gate_act", gate)
 			}
 
 			// Down projection

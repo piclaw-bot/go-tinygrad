@@ -237,7 +237,8 @@ dot_loop:
     add.u64 %rd6, %rd1, %rd5;
     ld.global.f32 %f4, [%rd6];
 
-    fma.rn.f32 %f2, %f3, %f4, %f2;
+    mul.f32 %f11, %f3, %f4;
+    add.f32 %f2, %f2, %f11;
     add.u32 %r13, %r13, 1;
     bra dot_loop;
 dot_done:
@@ -293,7 +294,8 @@ exp_loop:
 exp_done:
 
     // Normalize
-    rcp.rn.f32 %f7, %f7;         // 1/sum
+    mov.f32 %f11, 0f3F800000;    // 1.0
+    div.rn.f32 %f7, %f11, %f7;   // 1/sum
     mov.u32 %r9, 0;
 norm_loop:
     setp.ge.u32 %p1, %r9, %r2;
@@ -341,7 +343,8 @@ vs_inner:
     add.u64 %rd11, %rd2, %rd10;
     ld.global.f32 %f10, [%rd11];
 
-    fma.rn.f32 %f8, %f9, %f10, %f8;
+    mul.f32 %f11, %f9, %f10;
+    add.f32 %f8, %f8, %f11;
     add.u32 %r9, %r9, 1;
     bra vs_inner;
 vs_inner_done:
