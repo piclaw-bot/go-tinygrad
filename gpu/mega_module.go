@@ -79,6 +79,7 @@ func loadMegaModule() {
 			{"bf16_rms_norm_no_scale", BF16RMSNormNoScalePTX},
 			{"bf16_vec_add", BF16VecAddPTX},
 			{"bf16_silu_mul", BF16SiLUMulPTX},
+			{"bf16_gelu_tanh_mul", BF16GELUTanhMulPTX},
 			{"rms_norm_no_scale", RmsNormNoScalePTX},
 		}
 
@@ -130,6 +131,7 @@ func loadMegaModule() {
 		fnBF16RMSNormNoScale = extractFn("bf16_rms_norm_no_scale")
 		fnBF16VecAdd = extractFn("bf16_vec_add")
 		fnBF16SiLUMul = extractFn("bf16_silu_mul")
+		fnBF16GELUTanhMul = extractFn("bf16_gelu_tanh_mul")
 		fnRmsNormNoScale = extractFn("rms_norm_no_scale")
 		fnGELUTanhMul = extractFn("gelu_tanh_mul")
 

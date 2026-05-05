@@ -16,6 +16,7 @@ var fnBF16RMSNorm CUfunction
 var fnBF16RMSNormNoScale CUfunction
 var fnBF16VecAdd CUfunction
 var fnBF16SiLUMul CUfunction
+var fnBF16GELUTanhMul CUfunction
 var fnBF16Gemv CUfunction
 
 // DevBF16RMSNorm applies RMSNorm on BF16 data: x[i] = BF16(F32(x[i]) * invRMS * F32(w[i]))
@@ -70,6 +71,19 @@ func DevBF16SiLUMul(dst, gate, up *Buffer, n int) {
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&dst.Ptr),
+		unsafe.Pointer(&nn))
+}
+
+// DevBF16GELUTanhMul computes gate[i] = BF16(GELUTanh(F32(gate[i])) * F32(up[i])) in-place.
+func DevBF16GELUTanhMul(gate, up *Buffer, n int) {
+	if fnBF16GELUTanhMul == 0 {
+		return
+	}
+	EnsureContext()
+	nn := uint32(n)
+	LaunchKernel(fnBF16GELUTanhMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+		unsafe.Pointer(&gate.Ptr),
+		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&nn))
 }
 
@@ -338,6 +352,73 @@ var BF16SiLUMulPTX = `.version 7.0
     mov.b32 %r5, %f6;
     shr.u32 %r5, %r5, 16;
     st.global.u16 [%rd6], %r5;
+
+done:
+    ret;
+}
+`
+
+// BF16GELUTanhMulPTX: gate[i] = BF16(GELUTanh(F32(gate[i])) * F32(up[i])).
+var BF16GELUTanhMulPTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry bf16_gelu_tanh_mul(
+    .param .u64 param_gate,
+    .param .u64 param_up,
+    .param .u32 param_n
+) {
+    .reg .u32 %r<8>;
+    .reg .u64 %rd<6>;
+    .reg .f32 %f<16>;
+    .reg .pred %p;
+
+    mov.u32 %r0, %ctaid.x;
+    mov.u32 %r1, %tid.x;
+    mov.u32 %r2, %ntid.x;
+    mad.lo.u32 %r0, %r0, %r2, %r1;
+
+    ld.param.u32 %r3, [param_n];
+    setp.ge.u32 %p, %r0, %r3;
+    @%p bra done;
+
+    ld.param.u64 %rd0, [param_gate];
+    ld.param.u64 %rd1, [param_up];
+    mul.wide.u32 %rd2, %r0, 2;
+    add.u64 %rd3, %rd0, %rd2;
+    add.u64 %rd4, %rd1, %rd2;
+
+    ld.global.u16 %r4, [%rd3];
+    shl.b32 %r4, %r4, 16;
+    mov.b32 %f0, %r4;
+    ld.global.u16 %r5, [%rd4];
+    shl.b32 %r5, %r5, 16;
+    mov.b32 %f1, %r5;
+
+    // gelu_tanh(x) = 0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x^3)))
+    mul.f32 %f2, %f0, %f0;
+    mul.f32 %f3, %f2, %f0;
+    mul.f32 %f3, %f3, 0f3D372713;
+    add.f32 %f3, %f0, %f3;
+    mul.f32 %f3, %f3, 0f3F4C422A;
+
+    // tanh(z) = 1 - 2/(1+exp(2z)); exp via ex2(2z*log2(e))
+    mul.f32 %f4, %f3, 0f4038AA3B;
+    ex2.approx.f32 %f4, %f4;
+    add.f32 %f5, %f4, 0f3F800000;
+    mov.f32 %f6, 0f40000000;
+    div.approx.f32 %f6, %f6, %f5;
+    mov.f32 %f7, 0f3F800000;
+    sub.f32 %f7, %f7, %f6;
+
+    add.f32 %f7, %f7, 0f3F800000;
+    mul.f32 %f7, %f7, 0f3F000000;
+    mul.f32 %f7, %f0, %f7;
+    mul.f32 %f7, %f7, %f1;
+
+    mov.b32 %r4, %f7;
+    shr.u32 %r4, %r4, 16;
+    st.global.u16 [%rd3], %r4;
 
 done:
     ret;
