@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/gpu"
 )
 
 func smolLMPath() string {
@@ -165,5 +167,123 @@ func TestGemma4ChatTemplate(t *testing.T) {
 	want := "<bos><|turn>user\nHello<turn|>\n<|turn>model\n"
 	if decoded != want {
 		t.Fatalf("template decode mismatch\n got: %q\nwant: %q", decoded, want)
+	}
+}
+
+func TestGemma4KVSharingCPU(t *testing.T) {
+	dir := gemma4Path()
+	if _, err := os.Stat(dir + "/config.json"); err != nil {
+		t.Skipf("model not found: %s", dir)
+	}
+
+	m, err := LoadLlama(dir)
+	if err != nil {
+		t.Fatalf("load gemma4: %v", err)
+	}
+	if m.Config.ModelType != "gemma4_text" {
+		t.Skipf("not gemma4_text: %s", m.Config.ModelType)
+	}
+
+	firstKVShared := m.Config.NumLayers - m.Config.NumKVSharedLayers
+	if firstKVShared != 15 {
+		t.Fatalf("firstKVShared=%d want 15", firstKVShared)
+	}
+
+	for l, layer := range m.Layers {
+		if l < firstKVShared {
+			if !layer.HasKV {
+				t.Fatalf("layer %d should own KV", l)
+			}
+			continue
+		}
+		if layer.HasKV {
+			t.Fatalf("layer %d should share KV", l)
+		}
+		expectSrc := 13
+		if m.Config.LayerTypes[l] == "full_attention" {
+			expectSrc = 14
+		}
+		if layer.KVSourceLayer != expectSrc {
+			t.Fatalf("layer %d type=%s source=%d want %d", l, m.Config.LayerTypes[l], layer.KVSourceLayer, expectSrc)
+		}
+		if m.Config.LayerTypes[layer.KVSourceLayer] != m.Config.LayerTypes[l] {
+			t.Fatalf("layer %d type=%s source type mismatch: src=%d type=%s", l, m.Config.LayerTypes[l], layer.KVSourceLayer, m.Config.LayerTypes[layer.KVSourceLayer])
+		}
+	}
+
+	kvCacheK := make([][]float32, len(m.Layers))
+	for step := 0; step < 2; step++ {
+		for l, layer := range m.Layers {
+			layerKVDim := m.Config.NumKVHeads * layer.HeadDimLocal
+			if layer.HasKV {
+				kvCacheK[l] = append(kvCacheK[l], make([]float32, layerKVDim)...)
+			}
+			kvLayer := l
+			if !layer.HasKV {
+				kvLayer = layer.KVSourceLayer
+			}
+			wantLen := (step + 1) * layerKVDim
+			if got := len(kvCacheK[kvLayer]); got != wantLen {
+				t.Fatalf("step=%d layer=%d kvLayer=%d len=%d want=%d", step, l, kvLayer, got, wantLen)
+			}
+			if !layer.HasKV && len(kvCacheK[l]) != 0 {
+				t.Fatalf("shared layer %d should not append its own KV cache", l)
+			}
+		}
+	}
+}
+
+func TestGemma4KVSharingGPU(t *testing.T) {
+	dir := gemma4Path()
+	if _, err := os.Stat(dir + "/config.json"); err != nil {
+		t.Skipf("model not found: %s", dir)
+	}
+	if !gpu.Available() {
+		t.Skip("GPU not available")
+	}
+
+	oldForce := ForceOnTheFly
+	ForceOnTheFly = true
+	defer func() { ForceOnTheFly = oldForce }()
+
+	m, err := LoadLlama(dir)
+	if err != nil {
+		t.Fatalf("load gemma4: %v", err)
+	}
+	if m.Config.ModelType != "gemma4_text" {
+		t.Skipf("not gemma4_text: %s", m.Config.ModelType)
+	}
+
+	g, err := LoadGPUModel(m)
+	if err != nil {
+		t.Fatalf("LoadGPUModel: %v", err)
+	}
+
+	firstKVShared := m.Config.NumLayers - m.Config.NumKVSharedLayers
+	for l, layer := range m.Layers {
+		if l < firstKVShared || layer.HasKV {
+			continue
+		}
+		src := layer.KVSourceLayer
+		if src < 0 || src >= firstKVShared {
+			t.Fatalf("layer %d invalid source %d", l, src)
+		}
+		selected := g.kvGPU_K[src]
+		if selected == nil || selected.GPUPtr() == nil {
+			t.Fatalf("layer %d source buffer missing for src=%d", l, src)
+		}
+		if g.kvGPU_K[l] == nil || g.kvGPU_K[l].GPUPtr() == nil {
+			t.Fatalf("layer %d own GPU KV buffer missing", l)
+		}
+		if selected.GPUPtr().Ptr == g.kvGPU_K[l].GPUPtr().Ptr {
+			t.Fatalf("layer %d unexpectedly uses its own KV buffer instead of source %d", l, src)
+		}
+		expectSrc := 13
+		if m.Config.LayerTypes[l] == "full_attention" {
+			expectSrc = 14
+		}
+		if src != expectSrc {
+			t.Fatalf("layer %d type=%s source=%d want=%d", l, m.Config.LayerTypes[l], src, expectSrc)
+		}
 	}
 }
