@@ -388,6 +388,10 @@ bf16_done:
 TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
     B       ·vecSiLUMulGo(SB)
 
+// func GELUTanhMul(dst, a, b []float32)
+TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
+    B       ·geluTanhMulGo(SB)
+
 // ============================================================
 // BF16 SIMD operations (ARM64 NEON)
 // Widen: USHLL (zero-extend u16→u32) + SHL $16

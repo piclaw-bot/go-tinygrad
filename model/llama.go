@@ -1023,7 +1023,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			// Activation(gate) * up
 			if cfg.HiddenAct == "gelu_pytorch_tanh" {
-				for i := range gate { gate[i] = toBF16(geluTanh(gate[i]) * up[i]) }
+				simd.GELUTanhMul(gate, gate, up)
+				simd.ToBF16(gate)
 			} else {
 				simd.VecSiLUMul(gate, gate, up)
 			}

@@ -517,6 +517,11 @@ TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
     JMP ·vecSiLUMulGo(SB)
 
 
+// GELUTanhMul: dst[i] = gelu_tanh(a[i]) * b[i]
+// func GELUTanhMul(dst, a, b []float32)
+TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
+    JMP ·geluTanhMulGo(SB)
+
 // ============================================================
 // BF16 SIMD operations (AVX2)
 // BF16 values are uint16 with the same exponent+sign as F32.

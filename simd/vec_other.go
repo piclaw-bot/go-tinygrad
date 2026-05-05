@@ -35,6 +35,10 @@ func RMSNormNoScale(x []float32, eps float32) {
 	for i := range x { x[i] *= ss }
 }
 
+func GELUTanhMul(dst, a, b []float32) {
+	geluTanhMulGo(dst, a, b)
+}
+
 func RMSNormBF16(x, w []float32, eps float32) {
 	rmsNormGo(x, w, eps)
 	ToBF16(x)

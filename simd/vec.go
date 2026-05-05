@@ -4,7 +4,10 @@ package simd
 // Each has Go declaration here, assembly in vec_amd64.s / vec_arm64.s,
 // and scalar fallback in vec_other.go.
 
-import "unsafe"
+import (
+	"math"
+	"unsafe"
+)
 
 // Snrm2 returns sqrt(sum(x[i]*x[i])). NOT the RMS — caller divides by sqrt(n).
 func Snrm2(x []float32) float32
@@ -20,6 +23,10 @@ func VecScaleAdd(dst, a, b []float32, scale float32)
 
 // VecSiLUMul computes dst[i] = silu(a[i]) * b[i] where silu(x) = x/(1+exp(-x)).
 func VecSiLUMul(dst, a, b []float32)
+
+// GELUTanhMul computes dst[i] = gelu_tanh(a[i]) * b[i]
+// where gelu_tanh(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715*x^3)))
+func GELUTanhMul(dst, a, b []float32)
 
 // RMSNorm computes x[i] = w[i] * x[i] / rms(x) in-place.
 // eps is added inside the sqrt for numerical stability.
@@ -48,6 +55,16 @@ func vecAddGo(dst, a, b []float32) {
 func vecMulGo(dst, a, b []float32) {
 	for i := range a {
 		dst[i] = a[i] * b[i]
+	}
+}
+
+func geluTanhMulGo(dst, a, b []float32) {
+	for i := range a {
+		x := a[i]
+		x3 := x * x * x
+		inner := float32(0.7978845608) * (x + 0.044715*x3)
+		tanh := float32(math.Tanh(float64(inner)))
+		dst[i] = 0.5 * x * (1.0 + tanh) * b[i]
 	}
 }
 
