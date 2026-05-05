@@ -287,3 +287,57 @@ func TestGemma4KVSharingGPU(t *testing.T) {
 		}
 	}
 }
+
+func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
+	dir := gemma4Path()
+	if _, err := os.Stat(dir + "/config.json"); err != nil {
+		t.Skipf("model not found: %s", dir)
+	}
+	if !gpu.Available() {
+		t.Skip("GPU not available")
+	}
+
+	oldForce := ForceOnTheFly
+	ForceOnTheFly = true
+	defer func() { ForceOnTheFly = oldForce }()
+
+	m, err := LoadLlama(dir)
+	if err != nil {
+		t.Fatalf("load gemma4: %v", err)
+	}
+	g, err := LoadGPUModel(m)
+	if err != nil {
+		t.Fatalf("LoadGPUModel: %v", err)
+	}
+
+	if g.perLayerModelProj == nil || g.perLayerModelProj.GPUPtr() == nil {
+		t.Fatal("perLayerModelProj not uploaded to GPU")
+	}
+	if g.perLayerProjNorm == nil || g.perLayerProjNorm.GPUPtr() == nil {
+		t.Fatal("perLayerProjNorm not uploaded to GPU")
+	}
+	if g.perLayerProjBuf == nil || g.perLayerProjBuf.GPUPtr() == nil {
+		t.Fatal("perLayerProjBuf work buffer not on GPU")
+	}
+	if g.pliGateBuf == nil || g.pliGateBuf.GPUPtr() == nil {
+		t.Fatal("pliGateBuf work buffer not on GPU")
+	}
+	if g.pliProjBuf == nil || g.pliProjBuf.GPUPtr() == nil {
+		t.Fatal("pliProjBuf work buffer not on GPU")
+	}
+	for i, layer := range g.Layers {
+		if m.Layers[i].PLIGate == nil {
+			continue
+		}
+		if layer.PLIGate == nil || layer.PLIGate.GPUPtr() == nil {
+			t.Fatalf("layer %d PLIGate not uploaded to GPU", i)
+		}
+		if layer.PLIProj == nil || layer.PLIProj.GPUPtr() == nil {
+			t.Fatalf("layer %d PLIProj not uploaded to GPU", i)
+		}
+		if layer.PLIPostNorm == nil || layer.PLIPostNorm.GPUPtr() == nil {
+			t.Fatalf("layer %d PLIPostNorm not uploaded to GPU", i)
+		}
+		break
+	}
+}

@@ -25,6 +25,13 @@ type GPUModel struct {
 	hidden, residual, normed *gpu.DevBuf
 	q, k, v, attnOut, oOut   *gpu.DevBuf
 	gate, up, down           *gpu.DevBuf
+	// Gemma4 per-layer input gating buffers
+	perLayerProjBuf   *gpu.DevBuf // [numLayers * hiddenPerLayer]
+	perLayerEmbedBuf  *gpu.DevBuf // scratch row upload, same shape as perLayerProjBuf
+	pliGateBuf        *gpu.DevBuf // [hiddenPerLayer]
+	pliProjBuf        *gpu.DevBuf // [hidden]
+	perLayerModelProj *gpu.DevBuf // [numLayers*hiddenPerLayer, hidden]
+	perLayerProjNorm  *gpu.DevBuf // [hiddenPerLayer]
 
 	// KV cache (GPU-resident for fast path, CPU for fallback)
 	kvCacheK, kvCacheV [][]float32   // CPU slices
@@ -67,6 +74,8 @@ type gpuLayerBufs struct {
 	// MLX on CPU
 	QWm, KWm, VWm, OWm   *MLXQuantWeight
 	GateWm, UpWm, DownWm *MLXQuantWeight
+	// Gemma4 per-layer input gating on GPU (raw row-major F32 weights)
+	PLIGate, PLIProj, PLIPostNorm *gpu.DevBuf
 }
 
 // LoadGPUModel uploads model weights to GPU using DevBuf.
@@ -118,9 +127,21 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	g.up = gpu.NewDevBuf(maxInter)
 	g.down = gpu.NewDevBuf(h)
 
+	// Gemma4 per-layer work buffers
+	if cfg.ModelType == "gemma4_text" && cfg.HiddenPerLayer > 0 {
+		totalDim := cfg.NumLayers * cfg.HiddenPerLayer
+		g.perLayerProjBuf = gpu.NewDevBuf(totalDim)
+		g.perLayerEmbedBuf = gpu.NewDevBuf(totalDim)
+		g.pliGateBuf = gpu.NewDevBuf(cfg.HiddenPerLayer)
+		g.pliProjBuf = gpu.NewDevBuf(h)
+	}
+
 	// Try to move work buffers to GPU
 	useGPU := true
-	for _, buf := range []*gpu.DevBuf{g.hidden, g.residual, g.normed, g.q, g.k, g.v, g.attnOut, g.oOut, g.gate, g.up, g.down} {
+	for _, buf := range []*gpu.DevBuf{g.hidden, g.residual, g.normed, g.q, g.k, g.v, g.attnOut, g.oOut, g.gate, g.up, g.down, g.perLayerProjBuf, g.perLayerEmbedBuf, g.pliGateBuf, g.pliProjBuf} {
+		if buf == nil {
+			continue
+		}
 		if err := buf.ToGPU(); err != nil {
 			useGPU = false
 			break
@@ -133,6 +154,16 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			return nil
 		}
 		b := gpu.NewDevBufFrom(t.Data())
+		if useGPU {
+			b.ToGPU()
+		}
+		return b
+	}
+	wrapSlice := func(x []float32) *gpu.DevBuf {
+		if x == nil {
+			return nil
+		}
+		b := gpu.NewDevBufFrom(x)
 		if useGPU {
 			b.ToGPU()
 		}
@@ -206,9 +237,16 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		gl.VB = wrapTensor(layer.VB)
 		gl.QNorm = wrapTensor(layer.QNorm)
 		gl.KNorm = wrapTensor(layer.KNorm)
+		gl.PLIGate = wrapSlice(layer.PLIGate)
+		gl.PLIProj = wrapSlice(layer.PLIProj)
+		gl.PLIPostNorm = wrapSlice(layer.PLIPostNorm)
 
 		g.Layers[i] = gl
 	}
+
+	// Gemma4 model-level per-layer input gating weights
+	g.perLayerModelProj = wrapSlice(m.PerLayerModelProj)
+	g.perLayerProjNorm = wrapSlice(m.PerLayerProjNorm)
 
 	// KV cache (per-layer kvDim for Gemma4)
 	g.kvCacheK = make([][]float32, len(m.Layers))
@@ -412,31 +450,49 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				g.hidden.MarkDirty()
 			}
 
-			// Gemma4: per-layer input gating (CPU path)
+			// Gemma4: per-layer input gating (GPU path with CPU fallback)
 			var perLayerInputs [][]float32
+			usePLIGPU := cfg.ModelType == "gemma4_text" && g.perLayerModelProj != nil && g.perLayerProjNorm != nil && g.perLayerProjBuf != nil && g.perLayerProjBuf.GPUPtr() != nil
 			if cfg.ModelType == "gemma4_text" && m.PerLayerModelProj != nil && cfg.HiddenPerLayer > 0 {
 				hpl := cfg.HiddenPerLayer
 				nl := cfg.NumLayers
 				totalDim := nl * hpl
-				proj := make([]float32, totalDim)
-				hd2 := g.hidden.Data()
-				gemvNT(proj, hd2, m.PerLayerModelProj, h, totalDim)
-				for i := range proj {
-					proj[i] *= m.PerLayerProjScale
-				}
-				for ll := 0; ll < nl; ll++ {
-					sl := proj[ll*hpl : (ll+1)*hpl]
-					rmsNormInPlace(sl, m.PerLayerProjNorm, float32(cfg.RMSNormEps))
-				}
-				if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
-					embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
-					for i := range proj {
-						proj[i] = (proj[i] + embRow[i]*m.EmbedPerLayerScale) * m.PerLayerInputScale
+				if usePLIGPU {
+					gpu.DevGemv(g.perLayerProjBuf, g.hidden, g.perLayerModelProj, totalDim, h)
+					gpu.DevScale(g.perLayerProjBuf, g.perLayerProjBuf, m.PerLayerProjScale)
+					for ll := 0; ll < nl; ll++ {
+						sl := g.perLayerProjBuf.Slice(ll*hpl, hpl)
+						gpu.DevRMSNorm(sl, sl, g.perLayerProjNorm, float32(cfg.RMSNormEps))
 					}
-				}
-				perLayerInputs = make([][]float32, nl)
-				for ll := 0; ll < nl; ll++ {
-					perLayerInputs[ll] = proj[ll*hpl : (ll+1)*hpl]
+					if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
+						embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
+						copy(g.perLayerEmbedBuf.Data(), embRow)
+						g.perLayerEmbedBuf.MarkDirty()
+						gpu.DevScale(g.perLayerEmbedBuf, g.perLayerEmbedBuf, m.EmbedPerLayerScale)
+						gpu.DevAdd(g.perLayerProjBuf, g.perLayerProjBuf, g.perLayerEmbedBuf)
+						gpu.DevScale(g.perLayerProjBuf, g.perLayerProjBuf, m.PerLayerInputScale)
+					}
+				} else {
+					proj := make([]float32, totalDim)
+					hd2 := g.hidden.Data()
+					gemvNT(proj, hd2, m.PerLayerModelProj, h, totalDim)
+					for i := range proj {
+						proj[i] *= m.PerLayerProjScale
+					}
+					for ll := 0; ll < nl; ll++ {
+						sl := proj[ll*hpl : (ll+1)*hpl]
+						rmsNormInPlace(sl, m.PerLayerProjNorm, float32(cfg.RMSNormEps))
+					}
+					if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
+						embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
+						for i := range proj {
+							proj[i] = (proj[i] + embRow[i]*m.EmbedPerLayerScale) * m.PerLayerInputScale
+						}
+					}
+					perLayerInputs = make([][]float32, nl)
+					for ll := 0; ll < nl; ll++ {
+						perLayerInputs[ll] = proj[ll*hpl : (ll+1)*hpl]
+					}
 				}
 			}
 
@@ -713,8 +769,16 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				// Residual add
 				gpu.DevAdd(g.hidden, g.residual, g.down)
 
-				// Per-layer input gating (Gemma4, CPU path)
-				if cpuLayer.PLIGate != nil && perLayerInputs != nil && l < len(perLayerInputs) {
+				// Per-layer input gating (Gemma4, GPU path with CPU fallback)
+				if layer.PLIGate != nil && usePLIGPU {
+					hpl := cfg.HiddenPerLayer
+					pliSlice := g.perLayerProjBuf.Slice(l*hpl, hpl)
+					gpu.DevGemv(g.pliGateBuf, g.hidden, layer.PLIGate, hpl, h)
+					gpu.DevGELUTanhMul(g.pliGateBuf, pliSlice, hpl)
+					gpu.DevGemv(g.pliProjBuf, g.pliGateBuf, layer.PLIProj, h, hpl)
+					gpu.DevRMSNorm(g.pliProjBuf, g.pliProjBuf, layer.PLIPostNorm, float32(cfg.RMSNormEps))
+					gpu.DevAdd(g.hidden, g.hidden, g.pliProjBuf)
+				} else if cpuLayer.PLIGate != nil && perLayerInputs != nil && l < len(perLayerInputs) {
 					hpl := cfg.HiddenPerLayer
 					pli := perLayerInputs[l]
 					hd3 := g.hidden.Data()
