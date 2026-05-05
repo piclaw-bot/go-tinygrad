@@ -15,6 +15,7 @@ import "unsafe"
 var fnBF16RMSNorm CUfunction
 var fnBF16RMSNormNoScale CUfunction
 var fnBF16VecAdd CUfunction
+var fnBF16SiLUMul CUfunction
 var fnBF16Gemv CUfunction
 
 // DevBF16RMSNorm applies RMSNorm on BF16 data: x[i] = BF16(F32(x[i]) * invRMS * F32(w[i]))
@@ -54,6 +55,20 @@ func DevBF16VecAdd(dst, a, b *Buffer, n int) {
 	LaunchKernel(fnBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&a.Ptr),
 		unsafe.Pointer(&b.Ptr),
+		unsafe.Pointer(&dst.Ptr),
+		unsafe.Pointer(&nn))
+}
+
+// DevBF16SiLUMul computes dst[i] = BF16(SiLU(F32(gate[i])) * F32(up[i])).
+func DevBF16SiLUMul(dst, gate, up *Buffer, n int) {
+	if fnBF16SiLUMul == 0 {
+		return
+	}
+	EnsureContext()
+	nn := uint32(n)
+	LaunchKernel(fnBF16SiLUMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+		unsafe.Pointer(&gate.Ptr),
+		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&dst.Ptr),
 		unsafe.Pointer(&nn))
 }
@@ -267,6 +282,62 @@ apply_loop:
     st.global.u16 [%rd3], %r4;
     add.u32 %r2, %r2, 256;
     bra apply_loop;
+
+done:
+    ret;
+}
+`
+
+// BF16SiLUMulPTX: dst[i] = BF16(SiLU(F32(gate[i])) * F32(up[i])).
+var BF16SiLUMulPTX = `.version 7.0
+.target sm_80
+.address_size 64
+
+.visible .entry bf16_silu_mul(
+    .param .u64 gate,
+    .param .u64 up,
+    .param .u64 dst,
+    .param .u32 N
+) {
+    .reg .u32 %r<8>;
+    .reg .u64 %rd<8>;
+    .reg .f32 %f<8>;
+    .reg .pred %p;
+
+    mov.u32 %r0, %ctaid.x;
+    mov.u32 %r1, %ntid.x;
+    mov.u32 %r2, %tid.x;
+    mad.lo.u32 %r3, %r0, %r1, %r2;
+    ld.param.u32 %r4, [N];
+    setp.ge.u32 %p, %r3, %r4;
+    @%p bra done;
+
+    ld.param.u64 %rd0, [gate];
+    ld.param.u64 %rd1, [up];
+    ld.param.u64 %rd2, [dst];
+    mul.wide.u32 %rd3, %r3, 2;
+    add.u64 %rd4, %rd0, %rd3;
+    add.u64 %rd5, %rd1, %rd3;
+    add.u64 %rd6, %rd2, %rd3;
+
+    ld.global.u16 %r5, [%rd4];
+    shl.b32 %r5, %r5, 16;
+    mov.b32 %f0, %r5;
+    ld.global.u16 %r6, [%rd5];
+    shl.b32 %r6, %r6, 16;
+    mov.b32 %f1, %r6;
+
+    // silu(x) = x / (1 + exp(-x)); exp via ex2(-x * log2(e))
+    neg.f32 %f2, %f0;
+    mul.f32 %f2, %f2, 0f3FB8AA3B;
+    ex2.approx.f32 %f3, %f2;
+    add.f32 %f4, %f3, 0f3F800000;
+    div.rn.f32 %f5, %f0, %f4;
+    mul.f32 %f6, %f5, %f1;
+
+    mov.b32 %r5, %f6;
+    shr.u32 %r5, %r5, 16;
+    st.global.u16 [%rd6], %r5;
 
 done:
     ret;
