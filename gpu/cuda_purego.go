@@ -10,8 +10,8 @@ package gpu
 
 import (
 	"fmt"
-	"sync"
 	"runtime"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -31,25 +31,27 @@ const (
 
 // Function pointers (populated by dlopen)
 var (
-	cuInit               func(uint32) CUresult
-	cuDeviceGet          func(*CUdevice, int32) CUresult
-	cuDeviceGetName      func(unsafe.Pointer, int32, CUdevice) CUresult
-	cuDeviceGetAttribute func(*int32, int32, CUdevice) CUresult
+	cuInit                   func(uint32) CUresult
+	cuDeviceGet              func(*CUdevice, int32) CUresult
+	cuDeviceGetName          func(unsafe.Pointer, int32, CUdevice) CUresult
+	cuDeviceGetAttribute     func(*int32, int32, CUdevice) CUresult
 	cuCtxCreate              func(*CUcontext, uint32, CUdevice) CUresult
+	cuCtxDestroy             func(CUcontext) CUresult
 	cuDevicePrimaryCtxRetain func(*CUcontext, CUdevice) CUresult
-	cuMemAlloc           func(*CUdeviceptr, uint64) CUresult
-	cuMemFree            func(CUdeviceptr) CUresult
-	cuMemcpyHtoD         func(CUdeviceptr, unsafe.Pointer, uint64) CUresult
-	cuMemcpyDtoH         func(unsafe.Pointer, CUdeviceptr, uint64) CUresult
-	cuMemcpyHtoDAsync    func(CUdeviceptr, unsafe.Pointer, uint64, uintptr) CUresult
-	cuMemcpyDtoHAsync    func(unsafe.Pointer, CUdeviceptr, uint64, uintptr) CUresult
-	cuModuleLoadData     func(*CUmodule, unsafe.Pointer) CUresult
-	cuModuleGetFunction  func(*CUfunction, CUmodule, unsafe.Pointer) CUresult
-	cuLaunchKernel       func(CUfunction, uint32, uint32, uint32, uint32, uint32, uint32, uint32, uintptr, unsafe.Pointer, unsafe.Pointer) CUresult
-	cuCtxSynchronize     func() CUresult
-	cuCtxSetCurrent      func(CUcontext) CUresult
-	cuMemcpyDtoD         func(CUdeviceptr, CUdeviceptr, uint64) CUresult
-	cuMemcpyDtoDAsync    func(CUdeviceptr, CUdeviceptr, uint64, uintptr) CUresult
+	cuMemAlloc               func(*CUdeviceptr, uint64) CUresult
+	cuMemFree                func(CUdeviceptr) CUresult
+	cuMemcpyHtoD             func(CUdeviceptr, unsafe.Pointer, uint64) CUresult
+	cuMemcpyDtoH             func(unsafe.Pointer, CUdeviceptr, uint64) CUresult
+	cuMemcpyHtoDAsync        func(CUdeviceptr, unsafe.Pointer, uint64, uintptr) CUresult
+	cuMemcpyDtoHAsync        func(unsafe.Pointer, CUdeviceptr, uint64, uintptr) CUresult
+	cuModuleLoadData         func(*CUmodule, unsafe.Pointer) CUresult
+	cuModuleUnload           func(CUmodule) CUresult
+	cuModuleGetFunction      func(*CUfunction, CUmodule, unsafe.Pointer) CUresult
+	cuLaunchKernel           func(CUfunction, uint32, uint32, uint32, uint32, uint32, uint32, uint32, uintptr, unsafe.Pointer, unsafe.Pointer) CUresult
+	cuCtxSynchronize         func() CUresult
+	cuCtxSetCurrent          func(CUcontext) CUresult
+	cuMemcpyDtoD             func(CUdeviceptr, CUdeviceptr, uint64) CUresult
+	cuMemcpyDtoDAsync        func(CUdeviceptr, CUdeviceptr, uint64, uintptr) CUresult
 )
 
 var (
@@ -96,6 +98,7 @@ func Init() bool {
 		regFn(&cuDeviceGetName, lib, "cuDeviceGetName_v2", "cuDeviceGetName")
 		regFn(&cuDeviceGetAttribute, lib, "cuDeviceGetAttribute")
 		regFn(&cuCtxCreate, lib, "cuCtxCreate_v2", "cuCtxCreate")
+		regFn(&cuCtxDestroy, lib, "cuCtxDestroy_v2", "cuCtxDestroy")
 		regFn(&cuDevicePrimaryCtxRetain, lib, "cuDevicePrimaryCtxRetain")
 		regFn(&cuMemAlloc, lib, "cuMemAlloc_v2", "cuMemAlloc")
 		regFn(&cuMemFree, lib, "cuMemFree_v2", "cuMemFree")
@@ -104,6 +107,7 @@ func Init() bool {
 		regFn(&cuMemcpyHtoDAsync, lib, "cuMemcpyHtoDAsync_v2", "cuMemcpyHtoDAsync")
 		regFn(&cuMemcpyDtoHAsync, lib, "cuMemcpyDtoHAsync_v2", "cuMemcpyDtoHAsync")
 		regFn(&cuModuleLoadData, lib, "cuModuleLoadData")
+		regFn(&cuModuleUnload, lib, "cuModuleUnload")
 		regFn(&cuModuleGetFunction, lib, "cuModuleGetFunction")
 		regFn(&cuLaunchKernel, lib, "cuLaunchKernel")
 		regFn(&cuCtxSynchronize, lib, "cuCtxSynchronize")
@@ -160,8 +164,6 @@ func Init() bool {
 			return
 		}
 
-
-
 		gpuOK = true
 		fmt.Printf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
 	})
@@ -206,6 +208,7 @@ func Malloc(n int) (*Buffer, error) {
 // Free releases GPU memory.
 func (b *Buffer) Free() {
 	if b.Ptr != 0 {
+		EnsureContext()
 		cuMemFree(b.Ptr)
 		b.Ptr = 0
 	}
@@ -239,18 +242,33 @@ func Sync() {
 	cuCtxSynchronize()
 }
 
-// LoadPTX loads a PTX module and returns a kernel function by name.
-func LoadPTX(ptx string, kernelName string) (CUfunction, error) {
+var extraModules []CUmodule
+
+func loadPTXModule(ptx string, kernelName string) (CUmodule, CUfunction, error) {
 	ptxBytes := append([]byte(ptx), 0) // null-terminate
 	var mod CUmodule
 	if r := cuModuleLoadData(&mod, unsafe.Pointer(&ptxBytes[0])); r != CUDA_SUCCESS {
-		return 0, fmt.Errorf("cuModuleLoadData: error %d", r)
+		return 0, 0, fmt.Errorf("cuModuleLoadData: error %d", r)
 	}
 	nameBytes := append([]byte(kernelName), 0)
 	var fn CUfunction
 	if r := cuModuleGetFunction(&fn, mod, unsafe.Pointer(&nameBytes[0])); r != CUDA_SUCCESS {
-		return 0, fmt.Errorf("cuModuleGetFunction(%s): error %d", kernelName, r)
+		if cuModuleUnload != nil {
+			cuModuleUnload(mod)
+		}
+		return 0, 0, fmt.Errorf("cuModuleGetFunction(%s): error %d", kernelName, r)
 	}
+	return mod, fn, nil
+}
+
+// LoadPTX loads a PTX module and returns a kernel function by name.
+// The backing module is retained until Shutdown() so the function pointer stays valid.
+func LoadPTX(ptx string, kernelName string) (CUfunction, error) {
+	mod, fn, err := loadPTXModule(ptx, kernelName)
+	if err != nil {
+		return 0, err
+	}
+	extraModules = append(extraModules, mod)
 	return fn, nil
 }
 
@@ -281,4 +299,34 @@ func MemInfo() (uint64, uint64) {
 	}
 	cuMemGetInfo(&free, &total)
 	return free, total
+}
+
+// Shutdown releases global CUDA-side resources so a fresh context can be created.
+// Intended primarily for tests and one-shot diagnostic processes.
+func Shutdown() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if gpuOK {
+		EnsureContext()
+		SyncAll()
+	}
+	shutdownCompiledKernels()
+	shutdownNativeBF16()
+	shutdownMegaModule()
+	shutdownStreams()
+	for _, mod := range extraModules {
+		if mod != 0 && cuModuleUnload != nil {
+			cuModuleUnload(mod)
+		}
+	}
+	extraModules = nil
+	if gpuCtx != 0 && cuCtxDestroy != nil {
+		cuCtxDestroy(gpuCtx)
+	}
+	gpuCtx = 0
+	gpuDev = 0
+	gpuOK = false
+	gpuName = ""
+	gpuSMs = 0
+	gpuOnce = sync.Once{}
 }

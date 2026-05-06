@@ -22,9 +22,9 @@ var (
 	fnNativeBF16RMSNorm CUfunction
 	fnNativeBF16VecAdd  CUfunction
 	fnNativeBF16Gemv    CUfunction
+	nativeBF16Mod       CUmodule
 	nativeBF16Ready     bool
 )
-
 
 // InitNativeBF16 loads native BF16 kernels. Call after mega module init.
 func InitNativeBF16() {
@@ -42,6 +42,7 @@ func InitNativeBF16() {
 	if r != CUDA_SUCCESS {
 		return
 	}
+	nativeBF16Mod = mod
 
 	extract := func(name string) CUfunction {
 		nameBytes := append([]byte(name), 0)
@@ -61,6 +62,18 @@ func InitNativeBF16() {
 }
 
 func NativeBF16Ready() bool { return nativeBF16Ready }
+
+func shutdownNativeBF16() {
+	if nativeBF16Mod != 0 && cuModuleUnload != nil {
+		EnsureContext()
+		cuModuleUnload(nativeBF16Mod)
+	}
+	nativeBF16Mod = 0
+	fnNativeBF16RMSNorm = 0
+	fnNativeBF16VecAdd = 0
+	fnNativeBF16Gemv = 0
+	nativeBF16Ready = false
+}
 
 // DevNativeBF16RMSNorm runs hardware BF16 RMSNorm on Ampere+.
 func DevNativeBF16RMSNorm(x, w *Buffer, n int, eps float32) {

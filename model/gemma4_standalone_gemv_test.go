@@ -18,6 +18,7 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
+	t.Cleanup(gpu.Shutdown)
 
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -45,12 +46,24 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true
 	defer func() { ForceOnTheFly = oldForce }()
-	g, err := LoadGPUModel(m)
+	mgpu, err := LoadLlama(dir)
+	if err != nil {
+		t.Fatalf("load gemma4 gpu model: %v", err)
+	}
+	mgpu.Tok = tok
+	g, err := LoadGPUModel(mgpu)
 	if err != nil {
 		t.Fatalf("LoadGPUModel: %v", err)
 	}
+	t.Cleanup(g.Close)
 
 	checkGemv := func(layerIdx int, op string, in []float32, w *gpu.GPUMLXWeight, want []float32) {
+		if w == nil {
+			t.Logf("standalone layer %d op %-4s paths: weight=nil", layerIdx, op)
+		} else {
+			t.Logf("standalone layer %d op %-4s paths: inDim=%d outDim=%d native=%v gptq=%v correction=%v", layerIdx, op, w.InDim, w.OutDim, w.QWeight != nil, w.AsGPTQ != nil, w.Correction != nil)
+		}
+
 		inBuf := gpu.NewDevBufFrom(append([]float32(nil), in...))
 		outBuf := gpu.NewDevBuf(len(want))
 		if err := inBuf.ToGPU(); err != nil {
@@ -63,7 +76,11 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 		gpu.Sync()
 		got := append([]float32(nil), outBuf.Data()[:len(want)]...)
 		maxAbs, meanAbs := diffStats(want, got)
-		t.Logf("standalone layer %d op %-4s: maxAbs=%.6g meanAbs=%.6g", layerIdx, op, maxAbs, meanAbs)
+		mode := "native"
+		if w != nil && w.QWeight == nil && w.AsGPTQ != nil {
+			mode = "fallback-gptq"
+		}
+		t.Logf("standalone layer %d op %-4s direct(%s): maxAbs=%.6g meanAbs=%.6g", layerIdx, op, mode, maxAbs, meanAbs)
 	}
 
 	// layer 0 q should match nearly exactly on standalone input

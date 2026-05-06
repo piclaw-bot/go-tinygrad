@@ -44,9 +44,9 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	// So: MLX_out = val*scale + bias = (val-8)*scale + 8*scale + bias
 	// Correction per output = sum_over_input(x[i] * (8*scale[g] + bias[g]))
 	// This is a constant bias added AFTER the GPTQ GEMV.
-	// Precompute: for each output row, bias_correction = sum(x * (8*s + b)) 
+	// Precompute: for each output row, bias_correction = sum(x * (8*s + b))
 	// But x changes each call! So we need to store per-group corrections.
-	
+
 	// Actually simpler: precompute bias_per_elem and store on GPU.
 	// bias_correction[row] = sum_{i=0}^{inDim-1} x[i] * (8*scale[row,g(i)] + bias[row,g(i)])
 	// This requires x at runtime. Can't precompute.
@@ -68,7 +68,7 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	//
 	// Best solution: use native MLX kernel with shared-mem optimization.
 	// Fall back to GPTQ kernel ONLY if biases are all zero.
-	
+
 	w := &GPUMLXWeight{
 		InDim:   inDim,
 		OutDim:  outDim,
@@ -105,8 +105,11 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 			}
 		}
 		if corrBuf, err := Malloc(len(correction)); err == nil {
-			corrBuf.Upload(correction)
-			w.Correction = corrBuf
+			if err := corrBuf.Upload(correction); err == nil {
+				w.Correction = corrBuf
+			} else {
+				corrBuf.Free()
+			}
 		}
 		return w, nil
 	}
@@ -116,28 +119,68 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	if err != nil {
 		return nil, err
 	}
-	qwBuf.Upload(reinterpretI32asF32(func() []int32 {
-		r := make([]int32, len(weight))
-		for i, v := range weight { r[i] = int32(v) }
-		return r
-	}()))
 	w.QWeight = qwBuf
+	if err := qwBuf.Upload(reinterpretI32asF32(func() []int32 {
+		r := make([]int32, len(weight))
+		for i, v := range weight {
+			r[i] = int32(v)
+		}
+		return r
+	}())); err != nil {
+		w.Free()
+		return nil, err
+	}
 
 	sBuf, err := Malloc(len(scales))
 	if err != nil {
+		w.Free()
 		return nil, err
 	}
-	sBuf.Upload(scales)
 	w.Scales = sBuf
+	if err := sBuf.Upload(scales); err != nil {
+		w.Free()
+		return nil, err
+	}
 
 	bBuf, err := Malloc(len(biases))
 	if err != nil {
+		w.Free()
 		return nil, err
 	}
-	bBuf.Upload(biases)
 	w.Biases = bBuf
+	if err := bBuf.Upload(biases); err != nil {
+		w.Free()
+		return nil, err
+	}
 
 	return w, nil
+}
+
+// Free releases GPU buffers owned by the MLX quantized weight.
+func (w *GPUMLXWeight) Free() {
+	if w == nil {
+		return
+	}
+	if w.QWeight != nil {
+		w.QWeight.Free()
+		w.QWeight = nil
+	}
+	if w.Scales != nil {
+		w.Scales.Free()
+		w.Scales = nil
+	}
+	if w.Biases != nil {
+		w.Biases.Free()
+		w.Biases = nil
+	}
+	if w.Correction != nil {
+		w.Correction.Free()
+		w.Correction = nil
+	}
+	if w.AsGPTQ != nil {
+		w.AsGPTQ.Free()
+		w.AsGPTQ = nil
+	}
 }
 
 // reinterpretI32asF32 reinterprets []int32 as []float32 (same bits).
@@ -154,8 +197,8 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 	// Note: this gives (val-8)*scale instead of val*scale+bias
 	// The 8*scale+bias correction is small and applied separately
 	if w.AsGPTQ != nil && q4Ready {
-		x.ToGPU() // ensure CPU-modified data is uploaded
-		GemvQ4(out, x, w.AsGPTQ); // GPTQ path
+		x.ToGPU()                // ensure CPU-modified data is uploaded
+		GemvQ4(out, x, w.AsGPTQ) // GPTQ path
 		// Apply bias correction: out += sum_g(group_sum_x * (8*scale+bias))
 		if w.Correction != nil && fnMLXCorrect != 0 {
 			x.ToGPU()
@@ -245,7 +288,6 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 var fnMLXGemv CUfunction
 var fnMLXCorrect CUfunction
 var fnMLXGemm CUfunction
-
 
 // MLXGemvPTX is the optimized MLX GEMV kernel.
 var MLXGemvPTX = `.version 7.0

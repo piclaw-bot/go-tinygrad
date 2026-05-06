@@ -25,21 +25,21 @@ import (
 type KernelOp int
 
 const (
-	KOpLoad    KernelOp = iota // load from global memory (input)
-	KOpStore                   // store to global memory (output)
-	KOpAdd                     // a + b
-	KOpMul                     // a * b
-	KOpNeg                     // -a
-	KOpSiLU                    // a * sigmoid(a)
-	KOpScale                   // a * scalar
-	KOpFMA                     // a*b + c
-	KOpRsqrt                   // 1/sqrt(a)
-	KOpSumReduce               // sum reduction
-	KOpMaxReduce               // max reduction
-	KOpExp                     // exp(a)
-	KOpDiv                     // a / b
-	KOpSub                     // a - b
-	KOpConst                   // constant value
+	KOpLoad      KernelOp = iota // load from global memory (input)
+	KOpStore                     // store to global memory (output)
+	KOpAdd                       // a + b
+	KOpMul                       // a * b
+	KOpNeg                       // -a
+	KOpSiLU                      // a * sigmoid(a)
+	KOpScale                     // a * scalar
+	KOpFMA                       // a*b + c
+	KOpRsqrt                     // 1/sqrt(a)
+	KOpSumReduce                 // sum reduction
+	KOpMaxReduce                 // max reduction
+	KOpExp                       // exp(a)
+	KOpDiv                       // a / b
+	KOpSub                       // a - b
+	KOpConst                     // constant value
 )
 
 // KNode represents a node in the kernel computation graph
@@ -53,19 +53,20 @@ type KNode struct {
 
 // KernelSpec defines a fused kernel to compile
 type KernelSpec struct {
-	Name     string
-	Nodes    []*KNode // computation graph in topological order
-	NumBufs  int      // number of input/output buffers
-	HasReduce bool    // needs shared memory for reduction
+	Name      string
+	Nodes     []*KNode // computation graph in topological order
+	NumBufs   int      // number of input/output buffers
+	HasReduce bool     // needs shared memory for reduction
 }
 
 // CompiledKernel is a cached compiled PTX kernel
 type CompiledKernel struct {
-	Fn       CUfunction
-	Name     string
-	NumBufs  int
-	GridDiv  int // grid = (N + GridDiv - 1) / GridDiv
-	BlockSz  int
+	Fn        CUfunction
+	Mod       CUmodule
+	Name      string
+	NumBufs   int
+	GridDiv   int // grid = (N + GridDiv - 1) / GridDiv
+	BlockSz   int
 	SharedMem int
 }
 
@@ -88,21 +89,24 @@ func Compile(spec *KernelSpec) (*CompiledKernel, error) {
 	// Generate PTX
 	// Pre-warm allocator before PTX compile
 	var warmPtr CUdeviceptr
-	if r := cuMemAlloc(&warmPtr, 64*1024*1024); r == CUDA_SUCCESS { cuMemFree(warmPtr) }
+	if r := cuMemAlloc(&warmPtr, 64*1024*1024); r == CUDA_SUCCESS {
+		cuMemFree(warmPtr)
+	}
 	ptx, blockSz, sharedMem := genPTX(spec)
 
 	// Compile via CUDA driver
-	fn, err := LoadPTX(ptx, spec.Name)
+	mod, fn, err := loadPTXModule(ptx, spec.Name)
 	if err != nil {
 		return nil, fmt.Errorf("compile %s: %w", spec.Name, err)
 	}
 
 	k := &CompiledKernel{
-		Fn:       fn,
-		Name:     spec.Name,
-		NumBufs:  spec.NumBufs,
-		GridDiv:  blockSz,
-		BlockSz:  blockSz,
+		Fn:        fn,
+		Mod:       mod,
+		Name:      spec.Name,
+		NumBufs:   spec.NumBufs,
+		GridDiv:   blockSz,
+		BlockSz:   blockSz,
 		SharedMem: sharedMem,
 	}
 
@@ -124,6 +128,31 @@ func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
 	nn := uint32(n)
 	args[len(bufs)] = unsafe.Pointer(&nn)
 	LaunchKernel(k.Fn, grid, 1, 1, uint32(k.BlockSz), 1, 1, uint32(k.SharedMem), args...)
+}
+
+func (k *CompiledKernel) Destroy() {
+	if k == nil {
+		return
+	}
+	if k.Mod != 0 && cuModuleUnload != nil {
+		EnsureContext()
+		cuModuleUnload(k.Mod)
+		k.Mod = 0
+	}
+	k.Fn = 0
+}
+
+func shutdownCompiledKernels() {
+	kernelCacheMu.Lock()
+	defer kernelCacheMu.Unlock()
+	for _, k := range kernelCache {
+		if k != nil {
+			k.Destroy()
+		}
+	}
+	kernelCache = map[string]*CompiledKernel{}
+	jitSiLUMul = nil
+	jitAdd = nil
 }
 
 // --- PTX code generation ---
@@ -249,7 +278,8 @@ func genPTX(spec *KernelSpec) (string, int, int) {
 			a := node.Inputs[0].RegName
 			b.WriteString(fmt.Sprintf("    rsqrt.approx.f32 %s, %s;\n", reg, a))
 			// Newton refinement: y = y * (1.5 - 0.5*x*y*y)
-			tmp := fmt.Sprintf("%%f%d", regCounter); regCounter++
+			tmp := fmt.Sprintf("%%f%d", regCounter)
+			regCounter++
 			b.WriteString(fmt.Sprintf("    mul.f32 %s, %s, %s;\n", tmp, a, reg))
 			b.WriteString(fmt.Sprintf("    mul.f32 %s, %s, %s;\n", tmp, tmp, reg))
 			b.WriteString(fmt.Sprintf("    mul.f32 %s, %s, 0fBF000000;\n", tmp, tmp))

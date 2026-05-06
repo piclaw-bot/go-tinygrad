@@ -180,3 +180,24 @@ func Q4Ready() bool {
 	loadMegaModule()
 	return q4Ready
 }
+
+func shutdownMegaModule() {
+	if megaModule != 0 && cuModuleUnload != nil {
+		EnsureContext()
+		cuModuleUnload(megaModule)
+	}
+	megaModule = 0
+	megaModuleOK = false
+	megaModuleOnce = sync.Once{}
+	sgemmReady = false
+	sgemmOK = false
+	kernelsLoaded = false
+	ropeReady = false
+	ropePartialReady = false
+	attnScoreReady = false
+	softmaxRowsReady = false
+	attnReady = false
+	q4Ready = false
+	fusedSiLUMulOK = false
+	fnPrefetch = 0
+}

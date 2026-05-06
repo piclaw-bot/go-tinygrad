@@ -815,6 +815,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				hidden[i] = toBF16(hidden[i] * scale)
 			}
 		}
+		if debugOpHook != nil {
+			debugOpHook("cpu", step, 0, "embed_scaled", hidden)
+		}
 
 		// Gemma4: compute per-layer inputs for this token
 		var perLayerInputs [][]float32
@@ -845,12 +848,18 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			for l := 0; l < nl; l++ {
 				perLayerInputs[l] = proj[l*hpl : (l+1)*hpl]
 			}
+			if debugOpHook != nil && len(perLayerInputs) > 0 {
+				debugOpHook("cpu", step, 0, "pli0_input", perLayerInputs[0])
+			}
 		}
 
 		for l := 0; l < cfg.NumLayers; l++ {
 			layer := &m.Layers[l]
 			residual := make([]float32, h)
 			copy(residual, hidden)
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "hidden_in", hidden)
+			}
 
 			// RMS Norm (BF16 for Gemma3)
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
@@ -963,6 +972,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					for head := 0; head < numKVHeads; head++ {
 						normFn(k[head*layerHeadDim:(head+1)*layerHeadDim], kNorm, float32(cfg.RMSNormEps))
 					}
+				}
+			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "q_qknorm", q)
+				if k != nil {
+					debugOpHook("cpu", step, l, "k_qknorm", k)
+					debugOpHook("cpu", step, l, "v_attn", v)
 				}
 			}
 

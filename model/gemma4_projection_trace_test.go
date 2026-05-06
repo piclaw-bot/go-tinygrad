@@ -39,6 +39,7 @@ func TestGemma4CPUvsGPUProjectionTrace(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
+	t.Cleanup(gpu.Shutdown)
 
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -73,10 +74,16 @@ func TestGemma4CPUvsGPUProjectionTrace(t *testing.T) {
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true
 	defer func() { ForceOnTheFly = oldForce }()
-	g, err := LoadGPUModel(m)
+	mgpu, err := LoadLlama(dir)
+	if err != nil {
+		t.Fatalf("load gemma4 gpu model: %v", err)
+	}
+	mgpu.Tok = tok
+	g, err := LoadGPUModel(mgpu)
 	if err != nil {
 		t.Fatalf("LoadGPUModel: %v", err)
 	}
+	t.Cleanup(g.Close)
 	g.CPU.Tok = tok
 	_ = g.Generate(tok.Encode("Hello"), 1)
 

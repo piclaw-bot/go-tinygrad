@@ -241,6 +241,7 @@ func TestGemma4KVSharingGPU(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
+	t.Cleanup(gpu.Shutdown)
 
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true
@@ -258,6 +259,7 @@ func TestGemma4KVSharingGPU(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGPUModel: %v", err)
 	}
+	t.Cleanup(g.Close)
 
 	firstKVShared := m.Config.NumLayers - m.Config.NumKVSharedLayers
 	for l, layer := range m.Layers {
@@ -296,6 +298,7 @@ func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
+	t.Cleanup(gpu.Shutdown)
 
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true
@@ -309,6 +312,7 @@ func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGPUModel: %v", err)
 	}
+	t.Cleanup(g.Close)
 
 	if g.perLayerModelProj == nil || g.perLayerModelProj.GPUPtr() == nil {
 		t.Fatal("perLayerModelProj not uploaded to GPU")

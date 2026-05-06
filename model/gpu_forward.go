@@ -79,6 +79,57 @@ type gpuLayerBufs struct {
 	PLIGate, PLIProj, PLIPostNorm *gpu.DevBuf
 }
 
+func freeDevBufs(bufs ...*gpu.DevBuf) {
+	for _, b := range bufs {
+		if b != nil {
+			b.Free()
+		}
+	}
+}
+
+func (gl *gpuLayerBufs) free() {
+	if gl == nil {
+		return
+	}
+	freeDevBufs(gl.QW, gl.KW, gl.VW, gl.OW, gl.QB, gl.KB, gl.VB, gl.QNorm, gl.KNorm,
+		gl.GateW, gl.UpW, gl.DownW, gl.InputNorm, gl.PostNorm, gl.PreFFNNorm, gl.PostFFNNorm,
+		gl.PLIGate, gl.PLIProj, gl.PLIPostNorm)
+	for _, qw := range []*gpu.GPUQuantWeight{gl.QWg, gl.KWg, gl.VWg, gl.OWg, gl.GateWg, gl.UpWg, gl.DownWg} {
+		if qw != nil {
+			qw.Free()
+		}
+	}
+	for _, mw := range []*gpu.GPUMLXWeight{gl.QWmg, gl.KWmg, gl.VWmg, gl.OWmg, gl.GateWmg, gl.UpWmg, gl.DownWmg} {
+		if mw != nil {
+			mw.Free()
+		}
+	}
+}
+
+// Close releases GPU-side resources owned by the model.
+// CPU-side weights/tensors remain owned by Go.
+func (g *GPUModel) Close() {
+	if g == nil {
+		return
+	}
+	freeDevBufs(g.hidden, g.residual, g.normed, g.q, g.k, g.v, g.attnOut, g.oOut, g.gate, g.up, g.down,
+		g.perLayerProjBuf, g.perLayerEmbedBuf, g.pliGateBuf, g.pliProjBuf, g.perLayerModelProj, g.perLayerProjNorm,
+		g.ropeCosSin, g.ropeCosSinSWA, g.ropeCosSinFull, g.lmHeadGPU, g.normGPU, g.logitsGPU)
+	for _, b := range g.kvGPU_K {
+		if b != nil {
+			b.Free()
+		}
+	}
+	for _, b := range g.kvGPU_V {
+		if b != nil {
+			b.Free()
+		}
+	}
+	for i := range g.Layers {
+		g.Layers[i].free()
+	}
+}
+
 // LoadGPUModel uploads model weights to GPU using DevBuf.
 func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	runtime.LockOSThread()
@@ -505,6 +556,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			for l := 0; l < len(g.Layers); l++ {
 				layer := &g.Layers[l]
 				cpuLayer := &m.Layers[l]
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "hidden_in", g.hidden.Data()[:h])
+				}
 
 				// Per-layer dims
 				layerHeadDim := headDim
@@ -600,6 +654,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						gpu.DevRMSNormNoScale(vSlice, vSlice, eps)
 						gpu.DevToBF16(vSlice, layerHeadDim)
 					}
+					g.v.MarkOnGPU()
 				}
 
 				// QK-Norm: RMSNorm each head
@@ -611,6 +666,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 							gpu.DevToBF16(qSlice, layerHeadDim)
 						}
 					}
+					g.q.MarkOnGPU()
 					if cpuLayer.HasKV {
 						for head := 0; head < numKVHeads; head++ {
 							kSlice := g.k.Slice(head*layerHeadDim, layerHeadDim)
@@ -619,6 +675,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 								gpu.DevToBF16(kSlice, layerHeadDim)
 							}
 						}
+						g.k.MarkOnGPU()
+					}
+				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "q_qknorm", g.q.Data()[:qDim])
+					if cpuLayer.HasKV {
+						debugOpHook("gpu", step, l, "k_qknorm", g.k.Data()[:layerKVDim])
+						debugOpHook("gpu", step, l, "v_attn", g.v.Data()[:layerKVDim])
 					}
 				}
 

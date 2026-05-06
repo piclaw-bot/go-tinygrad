@@ -9,13 +9,12 @@ import (
 )
 
 var (
-	q4Once   sync.Once
-	q4Fn     CUfunction
-	q4Ready  bool
+	q4Once  sync.Once
+	q4Fn    CUfunction
+	q4Ready bool
 )
 
 func initQ4() { loadMegaModule() }
-
 
 // GPUQuantWeight holds INT4 weights in GPU VRAM.
 type GPUQuantWeight struct {
@@ -34,34 +33,61 @@ func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim in
 	}
 
 	groups := len(scales) / outDim
+	w := &GPUQuantWeight{InDim: inDim, OutDim: outDim, Groups: groups}
 
 	qwBuf, err := Malloc(len(qweight))
 	if err != nil {
 		return nil, fmt.Errorf("alloc qweight (%d): %w", len(qweight)*4, err)
 	}
+	w.QWeight = qwBuf
 	// Upload int32 as raw bytes
-	qwBuf.Upload(int32ToFloat32(qweight))
+	if err := qwBuf.Upload(int32ToFloat32(qweight)); err != nil {
+		w.Free()
+		return nil, err
+	}
 
 	scBuf, err := Malloc(len(scales))
 	if err != nil {
+		w.Free()
 		return nil, err
 	}
-	scBuf.Upload(scales)
+	w.Scales = scBuf
+	if err := scBuf.Upload(scales); err != nil {
+		w.Free()
+		return nil, err
+	}
 
 	giBuf, err := Malloc(len(gIdx))
 	if err != nil {
+		w.Free()
 		return nil, err
 	}
-	giBuf.Upload(int32ToFloat32(gIdx))
+	w.GIdx = giBuf
+	if err := giBuf.Upload(int32ToFloat32(gIdx)); err != nil {
+		w.Free()
+		return nil, err
+	}
 
-	return &GPUQuantWeight{
-		QWeight: qwBuf,
-		Scales:  scBuf,
-		GIdx:    giBuf,
-		InDim:   inDim,
-		OutDim:  outDim,
-		Groups:  groups,
-	}, nil
+	return w, nil
+}
+
+// Free releases GPU buffers owned by the quantized weight.
+func (w *GPUQuantWeight) Free() {
+	if w == nil {
+		return
+	}
+	if w.QWeight != nil {
+		w.QWeight.Free()
+		w.QWeight = nil
+	}
+	if w.Scales != nil {
+		w.Scales.Free()
+		w.Scales = nil
+	}
+	if w.GIdx != nil {
+		w.GIdx.Free()
+		w.GIdx = nil
+	}
 }
 
 // GemvQ4 computes out[outDim] = x[inDim] @ dequant(W) on GPU.
@@ -93,7 +119,6 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups))
 
-	
 	out.dev = GPU_DEVICE
 }
 

@@ -34,11 +34,11 @@ var (
 	cuStreamSynchronize func(CUstream) CUresult
 
 	// Event functions
-	cuEventCreate       func(*CUevent, uint32) CUresult
-	cuEventRecord       func(CUevent, CUstream) CUresult
-	cuEventSynchronize  func(CUevent) CUresult
-	cuStreamWaitEvent   func(CUstream, CUevent, uint32) CUresult
-	cuEventDestroy      func(CUevent) CUresult
+	cuEventCreate      func(*CUevent, uint32) CUresult
+	cuEventRecord      func(CUevent, CUstream) CUresult
+	cuEventSynchronize func(CUevent) CUresult
+	cuStreamWaitEvent  func(CUstream, CUevent, uint32) CUresult
+	cuEventDestroy     func(CUevent) CUresult
 
 	// Graph functions
 	cuStreamBeginCapture func(CUstream, uint32) CUresult
@@ -239,3 +239,23 @@ done:
 `
 
 var fnPrefetch CUfunction
+
+func shutdownStreams() {
+	if !streamsReady {
+		return
+	}
+	EnsureContext()
+	if computeEvent != 0 && cuEventDestroy != nil {
+		cuEventDestroy(computeEvent)
+		computeEvent = 0
+	}
+	if prefetchEvent != 0 && cuEventDestroy != nil {
+		cuEventDestroy(prefetchEvent)
+		prefetchEvent = 0
+	}
+	if prefetchStream != 0 && cuStreamDestroy != nil {
+		cuStreamDestroy(prefetchStream)
+		prefetchStream = 0
+	}
+	streamsReady = false
+}

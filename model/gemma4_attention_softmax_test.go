@@ -65,6 +65,7 @@ func TestGemma4Layer0AttentionSoftmaxKernelVsCPU(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
+	t.Cleanup(gpu.Shutdown)
 
 	m, err := LoadLlama(dir)
 	if err != nil {

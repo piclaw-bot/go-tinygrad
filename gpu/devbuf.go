@@ -21,10 +21,11 @@ const (
 
 // DevBuf is a device-agnostic buffer that can live on CPU or GPU.
 type DevBuf struct {
-	cpu []float32 // CPU data (nil if GPU-only)
-	gpu *Buffer   // GPU data (nil if CPU-only)
-	n   int       // number of float32 elements
-	dev Device    // current authoritative location
+	cpu    []float32 // CPU data (nil if GPU-only)
+	gpu    *Buffer   // GPU data (nil if CPU-only)
+	n      int       // number of float32 elements
+	dev    Device    // current authoritative location
+	ownGPU bool      // true if this DevBuf owns gpu and may free it
 }
 
 // Kernel function pointers (loaded once)
@@ -71,6 +72,7 @@ func (b *DevBuf) ToGPU() error {
 	if err != nil {
 		return err
 	}
+	b.ownGPU = true
 	if b.cpu != nil {
 		b.gpu.Upload(b.cpu)
 	}
@@ -367,6 +369,24 @@ func (b *DevBuf) MarkDirty() {
 	b.dev = CPU
 }
 
+// MarkOnGPU marks GPU data as authoritative after in-place GPU-side mutation.
+func (b *DevBuf) MarkOnGPU() {
+	b.dev = GPU_DEVICE
+}
+
+// Free releases owned GPU resources held by this buffer.
+// CPU memory is left to Go; non-owning slice views do not free the parent pointer.
+func (b *DevBuf) Free() {
+	if b == nil {
+		return
+	}
+	if b.gpu != nil && b.ownGPU {
+		b.gpu.Free()
+	}
+	b.gpu = nil
+	b.ownGPU = false
+}
+
 // GemvNN: out[N] = x[K] @ W[K,N] (W is pre-transposed, column-major for output)
 // This is for the non-Large path where weights are pre-transposed.
 func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
@@ -534,17 +554,7 @@ var (
 
 // DevSiLUMul computes out = silu(a) * b in one kernel launch
 func DevSiLUMul(out, a, b *DevBuf) {
-	fusedSiLUMulOnce.Do(func() {
-		if !SgemmReady() {
-			return
-		}
-		var err error
-		fnFusedSiLUMul, err = LoadPTX(FusedSiLUMulPTX, "fused_silu_mul")
-		if err != nil {
-			return
-		}
-		fusedSiLUMulOK = true
-	})
+	initKernels()
 	n := a.n
 	if fusedSiLUMulOK && tryGPU(a, b, out) {
 		nn := uint32(n)
@@ -597,7 +607,7 @@ var (
 // The slice shares CPU memory with the parent. GPU pointer is offset accordingly.
 // The caller must not outlive the parent buffer.
 func (b *DevBuf) Slice(offset, n int) *DevBuf {
-	s := &DevBuf{n: n, dev: b.dev}
+	s := &DevBuf{n: n, dev: b.dev, ownGPU: false}
 	if b.cpu != nil && offset+n <= len(b.cpu) {
 		s.cpu = b.cpu[offset : offset+n]
 	}
