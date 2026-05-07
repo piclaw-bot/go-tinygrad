@@ -257,8 +257,9 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			gl.UpWm = layer.UpWm
 			gl.DownWm = layer.DownWm
 			if gpu.SgemmReady() {
+				wantNativeMLX := cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma3_text"
 				um := func(qw *MLXQuantWeight) *gpu.GPUMLXWeight {
-					w, err := gpu.UploadMLXWeight(qw.Weight, qw.Scales, qw.Biases, qw.InDim, qw.OutDim, qw.GroupSize)
+					w, err := gpu.UploadMLXWeight(qw.Weight, qw.Scales, qw.Biases, qw.InDim, qw.OutDim, qw.GroupSize, wantNativeMLX)
 					if err != nil && i == 0 {
 						fmt.Printf("[gpu] MLX upload %dx%d: %v\n", qw.OutDim, qw.InDim, err)
 					}
@@ -459,6 +460,16 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
 	copy(output, tokenIDs)
 	forceCPUAttn := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_CPU_ATTN") == "1"
+	forceFastDown := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_FAST_DOWN") == "1"
+	syncDebug := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_GPU_SYNC_DEBUG") == "1"
+	checkGPU := func(stage string) {
+		if !syncDebug {
+			return
+		}
+		if err := gpu.SyncErr(); err != nil {
+			panic(fmt.Sprintf("gpu sync %s: %v", stage, err))
+		}
+	}
 
 	// Temp CPU buffers for RoPE + attention (sequential ops)
 	var kd, vd []float32
@@ -505,6 +516,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gpu.DevToBF16(g.hidden, h)
 				}
 			}
+			if debugOpHook != nil {
+				debugOpHook("gpu", step, 0, "embed_scaled", g.hidden.Data()[:h])
+			}
 
 			// Gemma4: per-layer input gating (GPU path with CPU fallback)
 			var perLayerInputs [][]float32
@@ -520,6 +534,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						sl := g.perLayerProjBuf.Slice(ll*hpl, hpl)
 						gpu.DevRMSNorm(sl, sl, g.perLayerProjNorm, float32(cfg.RMSNormEps))
 					}
+					g.perLayerProjBuf.MarkOnGPU()
 					if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
 						embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
 						copy(g.perLayerEmbedBuf.Data(), embRow)
@@ -527,6 +542,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						gpu.DevScale(g.perLayerEmbedBuf, g.perLayerEmbedBuf, m.EmbedPerLayerScale)
 						gpu.DevAdd(g.perLayerProjBuf, g.perLayerProjBuf, g.perLayerEmbedBuf)
 						gpu.DevScale(g.perLayerProjBuf, g.perLayerProjBuf, m.PerLayerInputScale)
+					}
+					g.perLayerProjBuf.MarkOnGPU()
+					checkGPU(fmt.Sprintf("step=%d pli_model_proj", step))
+					if debugOpHook != nil && nl > 0 {
+						debugOpHook("gpu", step, 0, "pli0_input", g.perLayerProjBuf.Data()[:hpl])
 					}
 				} else {
 					proj := make([]float32, totalDim)
@@ -548,6 +568,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					perLayerInputs = make([][]float32, nl)
 					for ll := 0; ll < nl; ll++ {
 						perLayerInputs[ll] = proj[ll*hpl : (ll+1)*hpl]
+					}
+					if debugOpHook != nil && len(perLayerInputs) > 0 {
+						debugOpHook("gpu", step, 0, "pli0_input", perLayerInputs[0])
 					}
 				}
 			}
@@ -580,6 +603,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				if cfg.ModelType == "gemma4_text" {
 					gpu.DevToBF16(g.normed, h)
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d inputnorm", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "normed", g.normed.Data()[:h])
 				}
@@ -629,6 +653,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						gpu.DevToBF16(g.v, layerKVDim)
 					}
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d qkv_proj", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "q", g.q.Data()[:qDim])
 					if cpuLayer.HasKV {
@@ -652,7 +677,6 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					for head := 0; head < numKVHeads; head++ {
 						vSlice := g.v.Slice(head*layerHeadDim, layerHeadDim)
 						gpu.DevRMSNormNoScale(vSlice, vSlice, eps)
-						gpu.DevToBF16(vSlice, layerHeadDim)
 					}
 					g.v.MarkOnGPU()
 				}
@@ -678,6 +702,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						g.k.MarkOnGPU()
 					}
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d qk_norm", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "q_qknorm", g.q.Data()[:qDim])
 					if cpuLayer.HasKV {
@@ -783,6 +808,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					copy(g.attnOut.Data(), attnCPU)
 					g.attnOut.MarkDirty()
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d attention", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "attn", g.attnOut.Data()[:qDim])
 				}
@@ -801,6 +827,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					g.gemv(g.oOut, g.attnOut, layer.OW, qDim, h)
 				}
 
+				checkGPU(fmt.Sprintf("step=%d layer=%d o_proj", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "o", g.oOut.Data()[:h])
 				}
@@ -811,10 +838,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gpu.DevAdd(g.hidden, g.residual, g.oOut)
 					gpu.DevCopy(g.residual, g.hidden)
 					gpu.DevRMSNorm(g.normed, g.hidden, layer.PreFFNNorm, float32(cfg.RMSNormEps))
+					if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+						gpu.DevToBF16(g.normed, h)
+					}
 				} else {
 					gpu.DevAdd(g.hidden, g.residual, g.oOut)
 					gpu.DevCopy(g.residual, g.hidden)
 					gpu.DevRMSNorm(g.normed, g.hidden, layer.PostNorm, float32(cfg.RMSNormEps))
+				}
+
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "mlp_input", g.normed.Data()[:h])
 				}
 
 				// MLP: gate + up projections
@@ -850,6 +884,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gpu.DevToBF16(g.gate, layerInter)
 					gpu.DevToBF16(g.up, layerInter)
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d gate_up_proj", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "gate_pre", g.gate.Data()[:layerInter])
 					debugOpHook("gpu", step, l, "up", g.up.Data()[:layerInter])
@@ -865,13 +900,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				} else {
 					gpu.DevSiLUMul(g.gate, g.gate, g.up)
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d gate_act", step, l))
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "gate_act", g.gate.Data()[:layerInter])
 				}
 
 				// Down projection
 				if layer.DownWmg != nil {
-					if useDirectMLX {
+					if useDirectMLX && !forceFastDown {
 						gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg)
 					} else {
 						gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
@@ -891,11 +927,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					gemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
 					g.down.MarkDirty()
 				} else {
-					g.gemv(g.down, g.gate, layer.DownW, inter, h)
+					g.gemv(g.down, g.gate, layer.DownW, layerInter, h)
 				}
+				checkGPU(fmt.Sprintf("step=%d layer=%d down_raw", step, l))
 
 				if cfg.ModelType == "gemma4_text" {
 					gpu.DevToBF16(g.down, h)
+					checkGPU(fmt.Sprintf("step=%d layer=%d down_bf16", step, l))
 				}
 				if debugOpHook != nil {
 					debugOpHook("gpu", step, l, "down", g.down.Data()[:h])
@@ -908,9 +946,15 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						gpu.DevToBF16(g.down, h)
 					}
 				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "down_postffn", g.down.Data()[:h])
+				}
 
 				// Residual add
 				gpu.DevAdd(g.hidden, g.residual, g.down)
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "hidden_post_ffn", g.hidden.Data()[:h])
+				}
 
 				// Per-layer input gating (Gemma4, GPU path with CPU fallback)
 				if layer.PLIGate != nil && usePLIGPU {
@@ -940,6 +984,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						hd3[i] += proj2[i]
 					}
 					g.hidden.MarkDirty()
+				}
+				if debugOpHook != nil {
+					debugOpHook("gpu", step, l, "hidden_post_pli", g.hidden.Data()[:h])
 				}
 
 				// Layer scalar (Gemma4)

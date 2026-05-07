@@ -1080,9 +1080,31 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 
+			layerInter := inter
+			if layer.GateWq != nil && layer.GateWq.OutDim > 0 {
+				layerInter = layer.GateWq.OutDim
+			} else if layer.GateWm != nil && layer.GateWm.OutDim > 0 {
+				layerInter = layer.GateWm.OutDim
+			} else if layer.GateW != nil {
+				s := layer.GateW.Shape()
+				if len(s) >= 2 {
+					if m.Large {
+						layerInter = s[0]
+					} else {
+						layerInter = s[1]
+					}
+				} else if len(s) == 1 && s[0] > 0 {
+					layerInter = s[0]
+				}
+			}
+
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "mlp_input", mlpInput)
+			}
+
 			// MLP: gate * up → SiLU → down
-			gate := make([]float32, inter)
-			up := make([]float32, inter)
+			gate := make([]float32, layerInter)
+			up := make([]float32, layerInter)
 			if layer.GateWq != nil {
 				m.mvQ(gate, mlpInput, layer.GateWq)
 				m.mvQ(up, mlpInput, layer.UpWq)
@@ -1090,8 +1112,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				GemvMLQ(gate, mlpInput, layer.GateWm)
 				GemvMLQ(up, mlpInput, layer.UpWm)
 			} else {
-				m.mv(gate, mlpInput, layer.GateW.Data(), h, inter)
-				m.mv(up, mlpInput, layer.UpW.Data(), h, inter)
+				m.mv(gate, mlpInput, layer.GateW.Data(), h, layerInter)
+				m.mv(up, mlpInput, layer.UpW.Data(), h, layerInter)
 			}
 
 			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
@@ -1120,7 +1142,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			} else if layer.DownWm != nil {
 				GemvMLQ(down, gate, layer.DownWm)
 			} else {
-				m.mv(down, gate, layer.DownW.Data(), inter, h)
+				m.mv(down, gate, layer.DownW.Data(), layerInter, h)
 			}
 
 			// BF16 down projection output for Gemma3
@@ -1139,9 +1161,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(cfg.RMSNormEps))
 				}
 			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "down_postffn", down)
+			}
 
 			// Residual
 			simd.VecAdd(hidden, residual, down)
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "hidden_post_ffn", hidden)
+			}
 
 			// Per-layer input gating (Gemma4)
 			if layer.PLIGate != nil && perLayerInputs != nil && l < len(perLayerInputs) {
@@ -1166,6 +1194,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				for i := range hidden {
 					hidden[i] += proj2[i]
 				}
+			}
+			if debugOpHook != nil {
+				debugOpHook("cpu", step, l, "hidden_post_pli", hidden)
 			}
 			// Layer scalar (Gemma4)
 			if layer.LayerScalar != 1.0 {

@@ -29,8 +29,8 @@ type GPUMLXWeight struct {
 }
 
 // UploadMLXWeight uploads MLX quantized weight to GPU VRAM.
-// It transposes the weight matrix to GPTQ layout for maximum kernel performance.
-func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int) (*GPUMLXWeight, error) {
+// It can upload the GPTQ-transposed fast path, native MLX buffers, or both.
+func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int, wantNative bool) (*GPUMLXWeight, error) {
 	if !SgemmReady() {
 		return nil, fmt.Errorf("GPU not available")
 	}
@@ -111,10 +111,12 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 				corrBuf.Free()
 			}
 		}
-		return w, nil
+		if !wantNative {
+			return w, nil
+		}
 	}
 
-	// Fallback: upload for native MLX kernel
+	// Upload native MLX buffers when requested, or as a fallback when GPTQ upload fails.
 	qwBuf, err := Malloc(len(weight))
 	if err != nil {
 		return nil, err

@@ -81,15 +81,21 @@ func TestGemma4Layer0AttentionSoftmaxKernelVsCPU(t *testing.T) {
 
 	var finalQ, finalAttn []float32
 	var kvK, kvV []float32
+	kByStep := map[int][]float32{}
+	vByStep := map[int][]float32{}
 	debugOpHook = func(backend string, step, layer int, op string, vec []float32) {
 		if backend != "cpu" || layer != 0 {
 			return
 		}
 		switch op {
 		case "k_attn":
-			kvK = append(kvK, append([]float32(nil), vec...)...)
+			if _, ok := kByStep[step]; !ok {
+				kByStep[step] = append([]float32(nil), vec...)
+			}
 		case "v_attn":
-			kvV = append(kvV, append([]float32(nil), vec...)...)
+			if _, ok := vByStep[step]; !ok {
+				vByStep[step] = append([]float32(nil), vec...)
+			}
 		case "q_attn":
 			if step == traceStep {
 				finalQ = append([]float32(nil), vec...)
@@ -103,6 +109,15 @@ func TestGemma4Layer0AttentionSoftmaxKernelVsCPU(t *testing.T) {
 	defer func() { debugOpHook = nil }()
 	_ = m.Generate(tok.Encode("Hello"), 1)
 
+	seqLen := traceStep + 1
+	for step := 0; step < seqLen; step++ {
+		if k, ok := kByStep[step]; ok {
+			kvK = append(kvK, k...)
+		}
+		if v, ok := vByStep[step]; ok {
+			kvV = append(kvV, v...)
+		}
+	}
 	if len(finalQ) == 0 || len(finalAttn) == 0 || len(kvK) == 0 || len(kvV) == 0 {
 		t.Fatalf("missing traces: q=%d attn=%d k=%d v=%d", len(finalQ), len(finalAttn), len(kvK), len(kvV))
 	}
@@ -113,7 +128,6 @@ func TestGemma4Layer0AttentionSoftmaxKernelVsCPU(t *testing.T) {
 	}
 	numHeads := m.Config.NumHeads
 	numKVHeads := m.Config.NumKVHeads
-	seqLen := traceStep + 1
 	scores := gqaAttentionScoresScale(finalQ, kvK, seqLen, numHeads, numKVHeads, headDim, 1.0)
 	wantWeights := softmaxRowsCPU(scores, numHeads, seqLen)
 

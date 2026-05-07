@@ -242,6 +242,15 @@ func Sync() {
 	cuCtxSynchronize()
 }
 
+// SyncErr waits for all GPU operations and reports CUDA driver errors.
+func SyncErr() error {
+	EnsureContext()
+	if r := cuCtxSynchronize(); r != CUDA_SUCCESS {
+		return fmt.Errorf("cuCtxSynchronize: error %d", r)
+	}
+	return nil
+}
+
 var extraModules []CUmodule
 
 func loadPTXModule(ptx string, kernelName string) (CUmodule, CUfunction, error) {

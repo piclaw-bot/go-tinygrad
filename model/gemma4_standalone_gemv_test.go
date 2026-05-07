@@ -66,6 +66,8 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 
 		inBuf := gpu.NewDevBufFrom(append([]float32(nil), in...))
 		outBuf := gpu.NewDevBuf(len(want))
+		defer inBuf.Free()
+		defer outBuf.Free()
 		if err := inBuf.ToGPU(); err != nil {
 			t.Fatalf("inBuf.ToGPU: %v", err)
 		}
@@ -73,6 +75,9 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 			t.Fatalf("outBuf.ToGPU: %v", err)
 		}
 		gpu.GemvMLXDirect(outBuf, inBuf, w)
+		if op == "q" || op == "gate" || op == "up" {
+			gpu.DevToBF16(outBuf, len(want))
+		}
 		gpu.Sync()
 		got := append([]float32(nil), outBuf.Data()[:len(want)]...)
 		maxAbs, meanAbs := diffStats(want, got)
@@ -81,6 +86,27 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 			mode = "fallback-gptq"
 		}
 		t.Logf("standalone layer %d op %-4s direct(%s): maxAbs=%.6g meanAbs=%.6g", layerIdx, op, mode, maxAbs, meanAbs)
+
+		if w != nil && w.AsGPTQ != nil {
+			inBuf2 := gpu.NewDevBufFrom(append([]float32(nil), in...))
+			outBuf2 := gpu.NewDevBuf(len(want))
+			defer inBuf2.Free()
+			defer outBuf2.Free()
+			if err := inBuf2.ToGPU(); err != nil {
+				t.Fatalf("inBuf2.ToGPU: %v", err)
+			}
+			if err := outBuf2.ToGPU(); err != nil {
+				t.Fatalf("outBuf2.ToGPU: %v", err)
+			}
+			gpu.GemvMLX(outBuf2, inBuf2, w)
+			if op == "q" || op == "gate" || op == "up" {
+				gpu.DevToBF16(outBuf2, len(want))
+			}
+			gpu.Sync()
+			got2 := append([]float32(nil), outBuf2.Data()[:len(want)]...)
+			maxAbs2, meanAbs2 := diffStats(want, got2)
+			t.Logf("standalone layer %d op %-4s fast(gptq): maxAbs=%.6g meanAbs=%.6g", layerIdx, op, maxAbs2, meanAbs2)
+		}
 	}
 
 	// layer 0 q should match nearly exactly on standalone input
@@ -88,7 +114,8 @@ func TestGemma4StandaloneMLXGemvVsCPU(t *testing.T) {
 	// layer 14 q and o help isolate whether later drift is inherited or intrinsic to GEMV
 	checkGemv(14, "q", cpuOps[opTraceKey{14, "normed"}], g.Layers[14].QWmg, cpuOps[opTraceKey{14, "q"}])
 	checkGemv(14, "o", cpuOps[opTraceKey{14, "attn"}], g.Layers[14].OWmg, cpuOps[opTraceKey{14, "o"}])
-	// layer 15 and 34 down projections exercise later MLP kernels on real inputs
+	// layer 15/34 MLP kernels on real inputs
+	checkGemv(15, "gate", cpuOps[opTraceKey{15, "mlp_input"}], g.Layers[15].GateWmg, cpuOps[opTraceKey{15, "gate_pre"}])
+	checkGemv(15, "up", cpuOps[opTraceKey{15, "mlp_input"}], g.Layers[15].UpWmg, cpuOps[opTraceKey{15, "up"}])
 	checkGemv(15, "down", cpuOps[opTraceKey{15, "gate_act"}], g.Layers[15].DownWmg, cpuOps[opTraceKey{15, "down"}])
-	checkGemv(34, "down", cpuOps[opTraceKey{34, "gate_act"}], g.Layers[34].DownWmg, cpuOps[opTraceKey{34, "down"}])
 }
