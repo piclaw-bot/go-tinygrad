@@ -13,12 +13,12 @@ Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantize
 | Model | Arch | Format | GPU tok/s | CPU tok/s |
 |---|---|---|---|---|
 | **Qwen2.5-7B** | qwen2 | MLX 4-bit | **217** | 1.1 |
-| **Gemma4-E2B** | gemma4 | MLX 4-bit | **125** | 4.6 |
 | **SmolLM2-135M** | llama | BF16 | **86** | 35.5 |
 | **Qwen2.5-7B** | qwen2 | GPTQ 4-bit | **51** | 0.9 |
 | **Qwen2.5-0.5B** | qwen2 | MLX 4-bit | **31** | 7.2 |
 | **Qwen3-0.6B** | qwen3 | MLX 4-bit | **25** | 7.2 |
 | **Gemma3-1B** | gemma3 | MLX 4-bit | **18** | 4.9 |
+| **Gemma4-E2B** | gemma4 | MLX 4-bit | **14** | — |
 
 *RTX 3060 12GB + i7-12700 6-core. Pure Go, zero CGo.*
 

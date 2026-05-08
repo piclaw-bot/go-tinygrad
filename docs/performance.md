@@ -7,12 +7,12 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | Model | Arch | Format | GPU tok/s | GPU ms/tok | CPU tok/s | CPU ms/tok |
 |---|---|---|---|---|---|---|
 | Qwen2.5-7B | qwen2 | MLX 4-bit | **217** | 4.6 | 1.1 | 912 |
-| Gemma4-E2B | gemma4 | MLX 4-bit | **125** | 8.0 | 4.6 | 217 |
 | SmolLM2-135M | llama | BF16 | **86** | 11.6 | 35.5 | 28 |
 | Qwen2.5-7B | qwen2 | GPTQ 4-bit | **51** | 19.7 | 0.9 | 1060 |
 | Qwen2.5-0.5B | qwen2 | MLX 4-bit | **31** | 32.0 | 7.2 | 140 |
 | Qwen3-0.6B | qwen3 | MLX 4-bit | **25** | 39.6 | 7.2 | 138 |
 | Gemma3-1B | gemma3 | MLX 4-bit | **18** | 55.4 | 4.9 | 203 |
+| Gemma4-E2B | gemma4 | MLX 4-bit | **14** | 74.1 | — | — |
 | Qwen3-0.6B | qwen3 | BF16 | — | — | 7.8 | 129 |
 | Gemma3-1B | gemma3 | BF16 | — | — | 4.9 | 203 |
 
