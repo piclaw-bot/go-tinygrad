@@ -855,6 +855,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		for l := 0; l < cfg.NumLayers; l++ {
 			layer := &m.Layers[l]
+			if debugCPUHiddenInOverrideHook != nil {
+				debugCPUHiddenInOverrideHook(step, l, hidden)
+			}
 			residual := make([]float32, h)
 			copy(residual, hidden)
 			if debugOpHook != nil {
