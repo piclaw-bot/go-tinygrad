@@ -572,7 +572,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	}
 
 	// Gemma3: norm formula is (1 + weight) — confirmed in mlx-lm gemma3_text.py line 111
-	if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+	// Gemma4 inherits from Gemma3n which uses raw weight (NOT 1+w)
+	if cfg.ModelType == "gemma3_text" {
 		for l := range m.Layers {
 			for _, norm := range []*tensor.Tensor{
 				m.Layers[l].InputNorm, m.Layers[l].PostNorm,
@@ -604,22 +605,6 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		// per_layer_projection_norm: [hpl]
 		if tryLoad("model.per_layer_projection_norm.weight") {
 			m.PerLayerProjNorm = load("model.per_layer_projection_norm.weight", []int{hpl}).Data()
-			// Apply (1+w) for Gemma4
-			if cfg.ModelType == "gemma4_text" {
-				for i := range m.PerLayerProjNorm {
-					m.PerLayerProjNorm[i] += 1.0
-				}
-			}
-			// Also apply (1+w) to per-layer post norms
-			if cfg.ModelType == "gemma4_text" {
-				for l := range m.Layers {
-					if m.Layers[l].PLIPostNorm != nil {
-						for i := range m.Layers[l].PLIPostNorm {
-							m.Layers[l].PLIPostNorm[i] += 1.0
-						}
-					}
-				}
-			}
 		}
 		// embed_tokens_per_layer: [vocabPerLayer, totalDim] quantized
 		vpl := cfg.VocabPerLayer
@@ -673,10 +658,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		m.RopeHalfFull = fullHalf
 		m.RopeFreqsFull = make([]float32, maxSeq*fullHalf*2)
 		fullTheta := 1000000.0
-		// ProportionalRoPE: factor * (base ** (arange(0, rotated_dims, 2) / dims))
-		// Then mx.fast.rope uses freqs directly — the exponents are freq_base
-		// Actually: freqs = base^(exponents), exponents = arange(0, rotated_dims, 2) / dims
-		// freq at pos = 1 / (base^(2i/dims)) * pos  (standard RoPE)
+		// Proportional RoPE: inv_freq = 1/(base^(arange(0, 2*rope_angles, 2) / head_dim))
+		// Per HuggingFace modeling_rope_utils.py: denominator is head_dim (512), NOT rotated_dims
 		for pos := 0; pos < maxSeq; pos++ {
 			for i := 0; i < fullHalf; i++ {
 				freq := 1.0 / math.Pow(fullTheta, float64(2*i)/float64(fullHD))
