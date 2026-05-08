@@ -989,13 +989,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					debugOpHook("gpu", step, l, "hidden_post_pli", g.hidden.Data()[:h])
 				}
 
-				// Layer scalar (Gemma4)
+				// Layer scalar (Gemma4) — GPU path
 				if cpuLayer.LayerScalar != 1.0 {
-					hd3 := g.hidden.Data()
-					for i := range hd3 {
-						hd3[i] *= cpuLayer.LayerScalar
-					}
-					g.hidden.MarkDirty()
+					gpu.DevScale(g.hidden, g.hidden, cpuLayer.LayerScalar)
 				}
 				if cfg.ModelType == "gemma4_text" {
 					gpu.DevToBF16(g.hidden, h)
