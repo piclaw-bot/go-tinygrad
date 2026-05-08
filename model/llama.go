@@ -848,6 +848,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			for l := 0; l < nl; l++ {
 				perLayerInputs[l] = proj[l*hpl : (l+1)*hpl]
 			}
+			if debugCPUPerLayerInputsOverrideHook != nil {
+				debugCPUPerLayerInputsOverrideHook(step, perLayerInputs)
+			}
 			if debugOpHook != nil && len(perLayerInputs) > 0 {
 				debugOpHook("cpu", step, 0, "pli0_input", perLayerInputs[0])
 			}
@@ -1032,11 +1035,20 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Attention: Q against cached K, V (may be from source layer)
 			seqLen := pos + 1
+			attnSeqLen := seqLen
+			attnKVOffset := 0
+			// SWA layers: restrict attention to sliding_window most recent positions
+			if cfg.SlidingWindow > 0 && len(cfg.LayerTypes) > l && cfg.LayerTypes[l] == "sliding_attention" {
+				if seqLen > cfg.SlidingWindow {
+					attnSeqLen = cfg.SlidingWindow
+					attnKVOffset = seqLen - cfg.SlidingWindow
+				}
+			}
 			var attnOut []float32
 			if cfg.ModelType == "gemma4_text" {
-				attnOut = gqaAttentionScale(q, kvCacheK[kvLayer], kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
+				attnOut = gqaAttentionScale(q, kvCacheK[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], kvCacheV[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
 			} else {
-				attnOut = gqaAttention(q, kvCacheK[kvLayer], kvCacheV[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim)
+				attnOut = gqaAttention(q, kvCacheK[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], kvCacheV[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim)
 			}
 			if debugOpHook != nil {
 				debugOpHook("cpu", step, l, "attn", attnOut)
@@ -1101,6 +1113,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 
+			if debugCPUMLPInputOverrideHook != nil {
+				debugCPUMLPInputOverrideHook(step, l, mlpInput)
+			}
 			if debugOpHook != nil {
 				debugOpHook("cpu", step, l, "mlp_input", mlpInput)
 			}
