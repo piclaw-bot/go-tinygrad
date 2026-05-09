@@ -281,9 +281,11 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 				gl.KWmg = um(layer.KWm)
 				gl.VWmg = um(layer.VWm)
 				gl.OWmg = um(layer.OWm)
-				gl.GateWmg = um(layer.GateWm)
-				gl.UpWmg = um(layer.UpWm)
-				gl.DownWmg = um(layer.DownWm)
+				if layer.GateWm != nil {
+					gl.GateWmg = um(layer.GateWm)
+					gl.UpWmg = um(layer.UpWm)
+					gl.DownWmg = um(layer.DownWm)
+				}
 			}
 		} else {
 			gl.QW = wrapTensor(layer.QW)
@@ -458,6 +460,33 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			wrapped = append(wrapped, turnStart)
 			wrapped = append(wrapped, mdl...)
 			wrapped = append(wrapped, newlineID)
+			tokenIDs = wrapped
+		}
+	}
+	// Qwen3/Qwen3-MoE instruct chat template
+	if (cfg.ModelType == "qwen3" || cfg.ModelType == "qwen3_moe") && g.CPU != nil && g.CPU.Tok != nil {
+		imStart, imEnd, nlID := -1, -1, -1
+		for id, tok := range g.CPU.Tok.InvVocab {
+			if tok == "<|im_start|>" {
+				imStart = id
+			}
+			if tok == "<|im_end|>" {
+				imEnd = id
+			}
+			if tok == "\n" || tok == "\u010a" {
+				nlID = id
+			}
+		}
+		if imStart >= 0 && imEnd >= 0 && nlID >= 0 {
+			user := g.CPU.Tok.Encode("user")
+			assistant := g.CPU.Tok.Encode("assistant")
+			wrapped := []int{imStart}
+			wrapped = append(wrapped, user...)
+			wrapped = append(wrapped, nlID)
+			wrapped = append(wrapped, tokenIDs...)
+			wrapped = append(wrapped, imEnd, nlID, imStart)
+			wrapped = append(wrapped, assistant...)
+			wrapped = append(wrapped, nlID)
 			tokenIDs = wrapped
 		}
 	}
@@ -878,84 +907,97 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					debugOpHook("gpu", step, l, "mlp_input", g.normed.Data()[:h])
 				}
 
-				// MLP: gate + up projections
-				if layer.GateWg != nil {
-					g.normed.ToGPU()
-					gpu.GemvQ4(g.gate, g.normed, layer.GateWg)
-					gpu.GemvQ4(g.up, g.normed, layer.UpWg)
-				} else if layer.GateWmg != nil {
-					if useDirectMLX {
-						gpu.GemvMLXDirect(g.gate, g.normed, layer.GateWmg)
-					} else {
-						gpu.GemvMLX(g.gate, g.normed, layer.GateWmg)
-					}
-					if useDirectMLX {
-						gpu.GemvMLXDirect(g.up, g.normed, layer.UpWmg)
-					} else {
-						gpu.GemvMLX(g.up, g.normed, layer.UpWmg)
-					}
-				} else if layer.GateWq != nil {
-					nd := g.normed.Data()
-					gd := g.gate.Data()
-					ud := g.up.Data()
-					gemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
-					gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
-					g.gate.MarkDirty()
-					g.up.MarkDirty()
-				} else {
-					g.gemv(g.gate, g.normed, layer.GateW, h, inter)
-					g.gemv(g.up, g.normed, layer.UpW, h, inter)
+				// MLP: gate + up projections (or MoE for expert layers)
+				if cpuLayer.IsMoE && cpuLayer.ExpertGateW != nil {
+					// MoE: run router + expert MLPs on CPU, upload result
+					gpu.Sync()
+					mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
+					down := moeForward(mlpIn, cpuLayer, cfg)
+					copy(g.down.Data()[:h], down)
+					g.down.MarkDirty()
 				}
 
-				if cfg.ModelType == "gemma4_text" {
-					gpu.DevToBF16(g.gate, layerInter)
-					gpu.DevToBF16(g.up, layerInter)
-				}
-				checkGPU(fmt.Sprintf("step=%d layer=%d gate_up_proj", step, l))
-				if debugOpHook != nil {
-					debugOpHook("gpu", step, l, "gate_pre", g.gate.Data()[:layerInter])
-					debugOpHook("gpu", step, l, "up", g.up.Data()[:layerInter])
-				}
+				// MLP: gate + up projections (skip for MoE layers)
+				if !cpuLayer.IsMoE {
+					if layer.GateWg != nil {
+						g.normed.ToGPU()
+						gpu.GemvQ4(g.gate, g.normed, layer.GateWg)
+						gpu.GemvQ4(g.up, g.normed, layer.UpWg)
+					} else if layer.GateWmg != nil {
+						if useDirectMLX {
+							gpu.GemvMLXDirect(g.gate, g.normed, layer.GateWmg)
+						} else {
+							gpu.GemvMLX(g.gate, g.normed, layer.GateWmg)
+						}
+						if useDirectMLX {
+							gpu.GemvMLXDirect(g.up, g.normed, layer.UpWmg)
+						} else {
+							gpu.GemvMLX(g.up, g.normed, layer.UpWmg)
+						}
+					} else if layer.GateWq != nil {
+						nd := g.normed.Data()
+						gd := g.gate.Data()
+						ud := g.up.Data()
+						gemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
+						gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
+						g.gate.MarkDirty()
+						g.up.MarkDirty()
+					} else {
+						g.gemv(g.gate, g.normed, layer.GateW, h, inter)
+						g.gemv(g.up, g.normed, layer.UpW, h, inter)
+					}
 
-				// Activation(gate) * up
-				if cfg.HiddenAct == "gelu_pytorch_tanh" {
-					// GELU (Gemma3/4) — GPU kernel
-					gpu.DevGELUTanhMul(g.gate, g.up, layerInter)
 					if cfg.ModelType == "gemma4_text" {
 						gpu.DevToBF16(g.gate, layerInter)
+						gpu.DevToBF16(g.up, layerInter)
 					}
-				} else {
-					gpu.DevSiLUMul(g.gate, g.gate, g.up)
-				}
-				checkGPU(fmt.Sprintf("step=%d layer=%d gate_act", step, l))
-				if debugOpHook != nil {
-					debugOpHook("gpu", step, l, "gate_act", g.gate.Data()[:layerInter])
-				}
+					checkGPU(fmt.Sprintf("step=%d layer=%d gate_up_proj", step, l))
+					if debugOpHook != nil {
+						debugOpHook("gpu", step, l, "gate_pre", g.gate.Data()[:layerInter])
+						debugOpHook("gpu", step, l, "up", g.up.Data()[:layerInter])
+					}
 
-				// Down projection
-				if layer.DownWmg != nil {
-					if useDirectMLX && !forceFastDown {
-						gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg)
+					// Activation(gate) * up
+					if cfg.HiddenAct == "gelu_pytorch_tanh" {
+						// GELU (Gemma3/4) — GPU kernel
+						gpu.DevGELUTanhMul(g.gate, g.up, layerInter)
+						if cfg.ModelType == "gemma4_text" {
+							gpu.DevToBF16(g.gate, layerInter)
+						}
 					} else {
-						gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+						gpu.DevSiLUMul(g.gate, g.gate, g.up)
 					}
-				} else if layer.DownWg != nil {
-					g.gate.ToGPU()
-					gpu.GemvQ4(g.down, g.gate, layer.DownWg)
-				} else if layer.DownWmg != nil {
-					if useDirectMLX {
-						gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg)
+					checkGPU(fmt.Sprintf("step=%d layer=%d gate_act", step, l))
+					if debugOpHook != nil {
+						debugOpHook("gpu", step, l, "gate_act", g.gate.Data()[:layerInter])
+					}
+
+					// Down projection
+					if layer.DownWmg != nil {
+						if useDirectMLX && !forceFastDown {
+							gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg)
+						} else {
+							gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+						}
+					} else if layer.DownWg != nil {
+						g.gate.ToGPU()
+						gpu.GemvQ4(g.down, g.gate, layer.DownWg)
+					} else if layer.DownWmg != nil {
+						if useDirectMLX {
+							gpu.GemvMLXDirect(g.down, g.gate, layer.DownWmg)
+						} else {
+							gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+						}
+					} else if layer.DownWq != nil {
+						gd := g.gate.Data()
+						dd := g.down.Data()
+						gemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
+						g.down.MarkDirty()
 					} else {
-						gpu.GemvMLX(g.down, g.gate, layer.DownWmg)
+						g.gemv(g.down, g.gate, layer.DownW, layerInter, h)
 					}
-				} else if layer.DownWq != nil {
-					gd := g.gate.Data()
-					dd := g.down.Data()
-					gemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
-					g.down.MarkDirty()
-				} else {
-					g.gemv(g.down, g.gate, layer.DownW, layerInter, h)
-				}
+				} // end !cpuLayer.IsMoE
+
 				checkGPU(fmt.Sprintf("step=%d layer=%d down_raw", step, l))
 
 				if cfg.ModelType == "gemma4_text" {
