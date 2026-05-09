@@ -176,6 +176,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		GetFloat32(name string) ([]float32, []int, error)
 		GetInt32(name string) ([]int32, []int, error)
 		GetRaw(name string) ([]byte, string, []int, error)
+		Close() error
 	}
 	var f loader
 	if _, err := os.Stat(dir + "/model.safetensors.index.json"); err == nil {
@@ -191,6 +192,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		}
 		f = sf
 	}
+	defer f.Close()
 
 	// Try loading quantization config (GPTQ)
 	if qcData, err := os.ReadFile(dir + "/quantize_config.json"); err == nil {

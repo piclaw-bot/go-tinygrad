@@ -6,39 +6,74 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"syscall"
 )
 
 // TensorInfo describes a tensor stored in a safetensors file.
 type TensorInfo struct {
-	DType       string  `json:"dtype"`
-	Shape       []int   `json:"shape"`
-	DataOffsets [2]int  `json:"data_offsets"`
+	DType       string `json:"dtype"`
+	Shape       []int  `json:"shape"`
+	DataOffsets [2]int `json:"data_offsets"`
 }
 
 // File represents a loaded safetensors file.
 type File struct {
 	Tensors    map[string]TensorInfo
-	data       []byte // raw mmap'd or loaded data (after header)
+	data       []byte // tensor data region (after header)
 	headerSize int
+	mmapData   []byte   // full mmap'd region (nil if not mmap'd)
+	mmapFd     *os.File // file handle for mmap'd file (nil if not mmap'd)
 }
 
-// Open loads a safetensors file.
-func Open(path string) (*File, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("safetensors: read %s: %w", path, err)
+// Close releases mmap resources. Safe to call on non-mmap'd files.
+func (f *File) Close() error {
+	if f.mmapData != nil {
+		syscall.Munmap(f.mmapData)
+		f.mmapData = nil
+		f.data = nil
 	}
-	if len(raw) < 8 {
+	if f.mmapFd != nil {
+		f.mmapFd.Close()
+		f.mmapFd = nil
+	}
+	return nil
+}
+
+// Open loads a safetensors file using mmap for zero-copy access.
+func Open(path string) (*File, error) {
+	fd, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("safetensors: open %s: %w", path, err)
+	}
+
+	fi, err := fd.Stat()
+	if err != nil {
+		fd.Close()
+		return nil, fmt.Errorf("safetensors: stat %s: %w", path, err)
+	}
+	size := int(fi.Size())
+	if size < 8 {
+		fd.Close()
 		return nil, fmt.Errorf("safetensors: file too short")
 	}
 
-	headerLen := int(binary.LittleEndian.Uint64(raw[:8]))
-	if 8+headerLen > len(raw) {
+	mapped, err := syscall.Mmap(int(fd.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		fd.Close()
+		return nil, fmt.Errorf("safetensors: mmap %s: %w", path, err)
+	}
+
+	headerLen := int(binary.LittleEndian.Uint64(mapped[:8]))
+	if 8+headerLen > size {
+		syscall.Munmap(mapped)
+		fd.Close()
 		return nil, fmt.Errorf("safetensors: header length %d exceeds file size", headerLen)
 	}
 
 	var header map[string]json.RawMessage
-	if err := json.Unmarshal(raw[8:8+headerLen], &header); err != nil {
+	if err := json.Unmarshal(mapped[8:8+headerLen], &header); err != nil {
+		syscall.Munmap(mapped)
+		fd.Close()
 		return nil, fmt.Errorf("safetensors: parse header: %w", err)
 	}
 
@@ -49,6 +84,8 @@ func Open(path string) (*File, error) {
 		}
 		var info TensorInfo
 		if err := json.Unmarshal(val, &info); err != nil {
+			syscall.Munmap(mapped)
+			fd.Close()
 			return nil, fmt.Errorf("safetensors: parse tensor %q: %w", key, err)
 		}
 		tensors[key] = info
@@ -56,8 +93,10 @@ func Open(path string) (*File, error) {
 
 	return &File{
 		Tensors:    tensors,
-		data:       raw[8+headerLen:],
+		data:       mapped[8+headerLen:],
 		headerSize: headerLen,
+		mmapData:   mapped,
+		mmapFd:     fd,
 	}, nil
 }
 
@@ -157,8 +196,16 @@ func float16ToFloat32(h uint16) float32 {
 
 // ShardedFile represents a sharded safetensors model (multiple files).
 type ShardedFile struct {
-	shards  map[string]*File // filename → loaded shard
+	shards  map[string]*File  // filename → loaded shard
 	mapping map[string]string // tensor name → filename
+}
+
+// Close releases all shard resources.
+func (sf *ShardedFile) Close() error {
+	for _, f := range sf.shards {
+		f.Close()
+	}
+	return nil
 }
 
 // OpenSharded loads a sharded safetensors model from an index file.

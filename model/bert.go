@@ -29,11 +29,11 @@ type BertModel struct {
 	Config BertConfig
 
 	// Embeddings
-	WordEmb    *tensor.Tensor
-	PosEmb     *tensor.Tensor
-	TypeEmb    *tensor.Tensor
-	EmbLnW     *tensor.Tensor
-	EmbLnB     *tensor.Tensor
+	WordEmb *tensor.Tensor
+	PosEmb  *tensor.Tensor
+	TypeEmb *tensor.Tensor
+	EmbLnW  *tensor.Tensor
+	EmbLnB  *tensor.Tensor
 
 	// Layers
 	Layers []BertLayer
@@ -56,12 +56,12 @@ func (m *BertModel) InitWorkspace(maxSeqLen int) {
 // Weights are stored pre-transposed for SgemmNN (faster than SgemmNT).
 // QKV weights are fused into a single [hidden, 3*hidden] matrix.
 type BertLayer struct {
-	QKVW, QKVB                   *tensor.Tensor // fused [hidden, 3*hidden]
-	AttnOutW, AttnOutB            *tensor.Tensor
-	AttnLnW, AttnLnB             *tensor.Tensor
-	FfnInterW, FfnInterB         *tensor.Tensor
-	FfnOutW, FfnOutB             *tensor.Tensor
-	FfnLnW, FfnLnB               *tensor.Tensor
+	QKVW, QKVB           *tensor.Tensor // fused [hidden, 3*hidden]
+	AttnOutW, AttnOutB   *tensor.Tensor
+	AttnLnW, AttnLnB     *tensor.Tensor
+	FfnInterW, FfnInterB *tensor.Tensor
+	FfnOutW, FfnOutB     *tensor.Tensor
+	FfnLnW, FfnLnB       *tensor.Tensor
 }
 
 // LoadGTESmall loads the GTE-small model from a safetensors file.
@@ -70,6 +70,7 @@ func LoadGTESmall(path string) (*BertModel, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	cfg := GTESmallConfig
 	m := &BertModel{Config: cfg}
@@ -111,12 +112,12 @@ func LoadGTESmall(path string) (*BertModel, error) {
 		vb := load(p+".attention.self.value.bias", []int{h})
 		qkvB := fuseQKVBias(qb, kb, vb, h)
 		m.Layers[l] = BertLayer{
-			QKVW: qkvW,
-			QKVB: qkvB,
-			AttnOutW: loadT(p+".attention.output.dense.weight", []int{h, h}),
-			AttnOutB: load(p+".attention.output.dense.bias", []int{h}),
-			AttnLnW:  load(p+".attention.output.LayerNorm.weight", []int{h}),
-			AttnLnB:  load(p+".attention.output.LayerNorm.bias", []int{h}),
+			QKVW:      qkvW,
+			QKVB:      qkvB,
+			AttnOutW:  loadT(p+".attention.output.dense.weight", []int{h, h}),
+			AttnOutB:  load(p+".attention.output.dense.bias", []int{h}),
+			AttnLnW:   load(p+".attention.output.LayerNorm.weight", []int{h}),
+			AttnLnB:   load(p+".attention.output.LayerNorm.bias", []int{h}),
 			FfnInterW: loadT(p+".intermediate.dense.weight", []int{inter, h}),
 			FfnInterB: load(p+".intermediate.dense.bias", []int{inter}),
 			FfnOutW:   loadT(p+".output.dense.weight", []int{h, inter}),
@@ -143,7 +144,9 @@ func (m *BertModel) Forward(tokenIDs []int) *tensor.Tensor {
 	// Embeddings: word + position + token_type
 	wordEmb := tensor.Embedding(m.WordEmb, tokenIDs)
 	posIDs := make([]int, seqLen)
-	for i := range posIDs { posIDs[i] = i }
+	for i := range posIDs {
+		posIDs[i] = i
+	}
 	posEmb := tensor.Embedding(m.PosEmb, posIDs)
 	typeIDs := make([]int, seqLen) // all zeros
 	typeEmb := tensor.Embedding(m.TypeEmb, typeIDs)
@@ -220,16 +223,22 @@ func (m *BertModel) Embed(tokenIDs []int, attnMask []bool) []float32 {
 	}
 	if count > 0 {
 		inv := 1.0 / float32(count)
-		for d := range out { out[d] *= inv }
+		for d := range out {
+			out[d] *= inv
+		}
 	}
 
 	// L2 normalize
 	norm := float32(0)
-	for _, v := range out { norm += v * v }
+	for _, v := range out {
+		norm += v * v
+	}
 	norm = float32(math.Sqrt(float64(norm)))
 	if norm > 0 {
 		inv := 1.0 / norm
-		for i := range out { out[i] *= inv }
+		for i := range out {
+			out[i] *= inv
+		}
 	}
 	return out
 }
@@ -237,7 +246,9 @@ func (m *BertModel) Embed(tokenIDs []int, attnMask []bool) []float32 {
 // multiHeadAttention computes multi-head self-attention.
 // q, k, v are [seqLen, hidden]. Returns [seqLen, hidden].
 func multiHeadAttention(q, k, v *tensor.Tensor, seqLen, heads, headDim int) *tensor.Tensor {
-	q.Realize(); k.Realize(); v.Realize()
+	q.Realize()
+	k.Realize()
+	v.Realize()
 	hidden := heads * headDim
 	qData, kData, vData := q.Data(), k.Data(), v.Data()
 	scale := float32(1.0 / math.Sqrt(float64(headDim)))
@@ -261,14 +272,20 @@ func multiHeadAttention(q, k, v *tensor.Tensor, seqLen, heads, headDim int) *ten
 		for i := 0; i < seqLen; i++ {
 			row := scores[i*seqLen : (i+1)*seqLen]
 			mx := row[0]
-			for _, v := range row[1:] { if v > mx { mx = v } }
+			for _, v := range row[1:] {
+				if v > mx {
+					mx = v
+				}
+			}
 			sum := float32(0)
 			for j := range row {
 				row[j] = float32(math.Exp(float64(row[j] - mx)))
 				sum += row[j]
 			}
 			inv := 1.0 / sum
-			for j := range row { row[j] *= inv }
+			for j := range row {
+				row[j] *= inv
+			}
 		}
 
 		// Context: scores @ V (per head)
