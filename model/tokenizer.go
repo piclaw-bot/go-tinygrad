@@ -27,6 +27,10 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 			Vocab  map[string]int  `json:"vocab"`
 			Merges json.RawMessage `json:"merges"`
 		} `json:"model"`
+		AddedTokens []struct {
+			ID      int    `json:"id"`
+			Content string `json:"content"`
+		} `json:"added_tokens"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -38,6 +42,13 @@ func LoadTokenizer(path string) (*Tokenizer, error) {
 	}
 	for k, v := range raw.Model.Vocab {
 		t.InvVocab[v] = k
+	}
+	// Add special/added tokens
+	for _, at := range raw.AddedTokens {
+		if _, exists := t.Vocab[at.Content]; !exists {
+			t.Vocab[at.Content] = at.ID
+		}
+		t.InvVocab[at.ID] = at.Content
 	}
 
 	// Merges can be ["a b", ...] (strings) or [["a","b"], ...] (arrays)

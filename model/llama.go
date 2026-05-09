@@ -166,6 +166,15 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	if cfg.RMSNormEps == 0 {
 		cfg.RMSNormEps = 1e-5
 	}
+	// hidden_act fallback: some models use "hidden_act" instead of "hidden_activation"
+	if cfg.HiddenAct == "" {
+		var actFallback struct {
+			HiddenAct string `json:"hidden_act"`
+		}
+		if err := json.Unmarshal(cfgData, &actFallback); err == nil && actFallback.HiddenAct != "" {
+			cfg.HiddenAct = actFallback.HiddenAct
+		}
+	}
 	if cfg.HeadDim == 0 {
 		cfg.HeadDim = cfg.HiddenSize / cfg.NumHeads
 	}
@@ -821,6 +830,33 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			wrapped = append(wrapped, turnStart)
 			wrapped = append(wrapped, mdl...)
 			wrapped = append(wrapped, newlineID)
+			tokenIDs = wrapped
+		}
+	}
+	// Qwen3/Qwen3-MoE instruct chat template: <|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n
+	if (cfg.ModelType == "qwen3" || cfg.ModelType == "qwen3_moe") && m.Tok != nil {
+		imStart, imEnd, nlID := -1, -1, -1
+		for id, tok := range m.Tok.InvVocab {
+			if tok == "<|im_start|>" {
+				imStart = id
+			}
+			if tok == "<|im_end|>" {
+				imEnd = id
+			}
+			if tok == "\n" || tok == "\u010a" || tok == "Ċ" {
+				nlID = id
+			}
+		}
+		if imStart >= 0 && imEnd >= 0 && nlID >= 0 {
+			user := m.Tok.Encode("user")
+			assistant := m.Tok.Encode("assistant")
+			wrapped := []int{imStart}
+			wrapped = append(wrapped, user...)
+			wrapped = append(wrapped, nlID)
+			wrapped = append(wrapped, tokenIDs...)
+			wrapped = append(wrapped, imEnd, nlID, imStart)
+			wrapped = append(wrapped, assistant...)
+			wrapped = append(wrapped, nlID)
 			tokenIDs = wrapped
 		}
 	}
