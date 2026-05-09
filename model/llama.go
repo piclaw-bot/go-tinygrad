@@ -1171,47 +1171,53 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				debugOpHook("cpu", step, l, "mlp_input", mlpInput)
 			}
 
-			// MLP: gate * up → SiLU → down
-			gate := make([]float32, layerInter)
-			up := make([]float32, layerInter)
-			if layer.GateWq != nil {
-				m.mvQ(gate, mlpInput, layer.GateWq)
-				m.mvQ(up, mlpInput, layer.UpWq)
-			} else if layer.GateWm != nil {
-				GemvMLQ(gate, mlpInput, layer.GateWm)
-				GemvMLQ(up, mlpInput, layer.UpWm)
+			// MLP: gate * up → SiLU → down (or MoE for expert layers)
+			var down []float32
+			if layer.IsMoE && layer.ExpertGateW != nil {
+				// MoE forward: router → top-k experts → weighted sum
+				down = moeForward(mlpInput, layer, cfg)
 			} else {
-				m.mv(gate, mlpInput, layer.GateW.Data(), h, layerInter)
-				m.mv(up, mlpInput, layer.UpW.Data(), h, layerInter)
-			}
+				gate := make([]float32, layerInter)
+				up := make([]float32, layerInter)
+				if layer.GateWq != nil {
+					m.mvQ(gate, mlpInput, layer.GateWq)
+					m.mvQ(up, mlpInput, layer.UpWq)
+				} else if layer.GateWm != nil {
+					GemvMLQ(gate, mlpInput, layer.GateWm)
+					GemvMLQ(up, mlpInput, layer.UpWm)
+				} else {
+					m.mv(gate, mlpInput, layer.GateW.Data(), h, layerInter)
+					m.mv(up, mlpInput, layer.UpW.Data(), h, layerInter)
+				}
 
-			if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
-				simd.ToBF16(gate)
-				simd.ToBF16(up)
-			}
-			if debugOpHook != nil {
-				debugOpHook("cpu", step, l, "gate_pre", gate)
-				debugOpHook("cpu", step, l, "up", up)
-			}
-			// Activation(gate) * up
-			if cfg.HiddenAct == "gelu_pytorch_tanh" {
-				simd.GELUTanhMul(gate, gate, up)
-				simd.ToBF16(gate)
-			} else {
-				simd.VecSiLUMul(gate, gate, up)
-			}
-			if debugOpHook != nil {
-				debugOpHook("cpu", step, l, "gate_act", gate)
-			}
+				if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
+					simd.ToBF16(gate)
+					simd.ToBF16(up)
+				}
+				if debugOpHook != nil {
+					debugOpHook("cpu", step, l, "gate_pre", gate)
+					debugOpHook("cpu", step, l, "up", up)
+				}
+				// Activation(gate) * up
+				if cfg.HiddenAct == "gelu_pytorch_tanh" {
+					simd.GELUTanhMul(gate, gate, up)
+					simd.ToBF16(gate)
+				} else {
+					simd.VecSiLUMul(gate, gate, up)
+				}
+				if debugOpHook != nil {
+					debugOpHook("cpu", step, l, "gate_act", gate)
+				}
 
-			// Down projection
-			down := make([]float32, h)
-			if layer.DownWq != nil {
-				m.mvQ(down, gate, layer.DownWq)
-			} else if layer.DownWm != nil {
-				GemvMLQ(down, gate, layer.DownWm)
-			} else {
-				m.mv(down, gate, layer.DownW.Data(), layerInter, h)
+				// Down projection
+				down = make([]float32, h)
+				if layer.DownWq != nil {
+					m.mvQ(down, gate, layer.DownWq)
+				} else if layer.DownWm != nil {
+					GemvMLQ(down, gate, layer.DownWm)
+				} else {
+					m.mv(down, gate, layer.DownW.Data(), layerInter, h)
+				}
 			}
 
 			// BF16 down projection output for Gemma3

@@ -108,3 +108,113 @@ func LoadSwitchMLXExperts(
 func bf16ToF32(bits uint16) float32 {
 	return math.Float32frombits(uint32(bits) << 16)
 }
+
+// moeForward runs the MoE forward pass: router → top-k → expert MLPs → weighted sum.
+func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
+	h := len(x)
+	numExperts := cfg.NumExperts
+	numActive := cfg.NumExpertsPerTok
+	if numActive <= 0 {
+		numActive = 8
+	}
+
+	// Router: compute logits for each expert
+	routerLogits := make([]float32, numExperts)
+	if layer.RouterW != nil {
+		GemvMLQ(routerLogits, x, layer.RouterW)
+	}
+
+	// Softmax over router logits
+	maxLogit := routerLogits[0]
+	for _, v := range routerLogits[1:] {
+		if v > maxLogit {
+			maxLogit = v
+		}
+	}
+	var expSum float32
+	for i := range routerLogits {
+		routerLogits[i] = float32(math.Exp(float64(routerLogits[i] - maxLogit)))
+		expSum += routerLogits[i]
+	}
+	for i := range routerLogits {
+		routerLogits[i] /= expSum
+	}
+
+	// Top-k selection
+	type expertScore struct {
+		id    int
+		score float32
+	}
+	selected := make([]expertScore, 0, numActive)
+	for i := 0; i < numActive; i++ {
+		bestID := -1
+		bestScore := float32(-1)
+		for j, s := range routerLogits {
+			if s > bestScore {
+				// Check not already selected
+				alreadyPicked := false
+				for _, sel := range selected {
+					if sel.id == j {
+						alreadyPicked = true
+						break
+					}
+				}
+				if !alreadyPicked {
+					bestID = j
+					bestScore = s
+				}
+			}
+		}
+		if bestID >= 0 {
+			selected = append(selected, expertScore{id: bestID, score: bestScore})
+		}
+	}
+
+	// Normalize selected weights (norm_topk_prob)
+	if cfg.NormTopKProb {
+		var sum float32
+		for _, s := range selected {
+			sum += s.score
+		}
+		if sum > 0 {
+			for i := range selected {
+				selected[i].score /= sum
+			}
+		}
+	}
+
+	// Run selected experts and accumulate weighted output
+	moeInter := cfg.MoEIntermediate
+	out := make([]float32, h)
+
+	for _, exp := range selected {
+		eid := exp.id
+		if eid >= len(layer.ExpertGateW) || layer.ExpertGateW[eid] == nil {
+			continue
+		}
+
+		// Expert MLP: gate_proj → SiLU × up_proj → down_proj
+		gate := make([]float32, moeInter)
+		up := make([]float32, moeInter)
+		GemvMLQ(gate, x, layer.ExpertGateW[eid])
+		GemvMLQ(up, x, layer.ExpertUpW[eid])
+
+		// SiLU(gate) * up
+		for i := range gate {
+			sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
+			gate[i] = gate[i] * sig * up[i]
+		}
+
+		// Down projection
+		down := make([]float32, h)
+		GemvMLQ(down, gate, layer.ExpertDownW[eid])
+
+		// Weighted accumulation
+		w := exp.score
+		for i := range out {
+			out[i] += w * down[i]
+		}
+	}
+
+	return out
+}
