@@ -55,6 +55,13 @@ type LlamaConfig struct {
 	QuantGroup  int    `json:"-"`
 	QuantSym    bool   `json:"-"`
 	QuantFormat string `json:"-"` // "gptq" or "mlx"
+
+	// MoE (Mixture of Experts)
+	NumExperts        int  `json:"num_experts"`
+	NumExpertsPerTok  int  `json:"num_experts_per_tok"`
+	MoEIntermediate   int  `json:"moe_intermediate_size"`
+	DecoderSparseStep int  `json:"decoder_sparse_step"`
+	NormTopKProb      bool `json:"norm_topk_prob"`
 }
 
 // LlamaModel holds loaded weights for a LLaMA-style decoder.
@@ -117,6 +124,13 @@ type LlamaLayer struct {
 	GateWm, UpWm, DownWm *MLXQuantWeight
 
 	GateW, UpW, DownW *tensor.Tensor // pre-transposed
+
+	// MoE (Mixture of Experts)
+	IsMoE       bool              // true if this layer uses MoE
+	RouterW     *MLXQuantWeight   // router gate weight [numExperts, hidden]
+	ExpertGateW []*MLXQuantWeight // [numExperts] gate projections
+	ExpertUpW   []*MLXQuantWeight // [numExperts] up projections
+	ExpertDownW []*MLXQuantWeight // [numExperts] down projections
 }
 
 // LoadLlama loads a LLaMA-style model from safetensors + config.json.
@@ -392,9 +406,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// tryLoad checks if a tensor exists
 	tryLoad := func(name string) bool {
-		_, _, err := f.GetFloat32(prefix + name)
+		_, _, _, err := f.GetRaw(prefix + name)
 		if err != nil && prefix != "" {
-			_, _, err = f.GetFloat32(name)
+			_, _, _, err = f.GetRaw(name)
 		}
 		return err == nil
 	}
@@ -422,6 +436,9 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			oDimIn = qDimL
 		}
 
+		// Check if this layer uses MoE (switch_mlp format)
+		isMoELayer := cfg.NumExperts > 0 && tryLoad(p+".mlp.switch_mlp.gate_proj.weight")
+
 		if cfg.QuantFormat == "mlx" && onTheFly {
 			layer = LlamaLayer{
 				InputNorm: load(p+".input_layernorm.weight", []int{h}),
@@ -430,9 +447,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				KWm:       loadMLXW(p+".self_attn.k_proj", kvDimL, h),
 				VWm:       loadMLXW(p+".self_attn.v_proj", kvDimL, h),
 				OWm:       loadMLXW(p+".self_attn.o_proj", h, oDimIn),
-				GateWm:    loadMLXW(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpWm:      loadMLXW(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownWm:    loadMLXW(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+			if !isMoELayer {
+				layer.GateWm = loadMLXW(p+".mlp.gate_proj", cfg.Intermediate, h)
+				layer.UpWm = loadMLXW(p+".mlp.up_proj", cfg.Intermediate, h)
+				layer.DownWm = loadMLXW(p+".mlp.down_proj", h, cfg.Intermediate)
 			}
 		} else if cfg.QuantFormat == "mlx" {
 			// MLX dequant-at-load
@@ -452,9 +471,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				KW:        loadMLXDeq(p+".self_attn.k_proj", kvDimL, h),
 				VW:        loadMLXDeq(p+".self_attn.v_proj", kvDimL, h),
 				OW:        loadMLXDeq(p+".self_attn.o_proj", h, oDimIn),
-				GateW:     loadMLXDeq(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpW:       loadMLXDeq(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownW:     loadMLXDeq(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+			if !isMoELayer {
+				layer.GateW = loadMLXDeq(p+".mlp.gate_proj", cfg.Intermediate, h)
+				layer.UpW = loadMLXDeq(p+".mlp.up_proj", cfg.Intermediate, h)
+				layer.DownW = loadMLXDeq(p+".mlp.down_proj", h, cfg.Intermediate)
 			}
 		} else if cfg.QuantBits > 0 && onTheFly {
 			layer = LlamaLayer{
@@ -464,9 +485,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				KWq:       loadQW(p+".self_attn.k_proj", kvDimL, h),
 				VWq:       loadQW(p+".self_attn.v_proj", kvDimL, h),
 				OWq:       loadQW(p+".self_attn.o_proj", h, oDimIn),
-				GateWq:    loadQW(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpWq:      loadQW(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownWq:    loadQW(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+			if !isMoELayer {
+				layer.GateWq = loadQW(p+".mlp.gate_proj", cfg.Intermediate, h)
+				layer.UpWq = loadQW(p+".mlp.up_proj", cfg.Intermediate, h)
+				layer.DownWq = loadQW(p+".mlp.down_proj", h, cfg.Intermediate)
 			}
 		} else if cfg.QuantBits > 0 {
 			layer = LlamaLayer{
@@ -476,9 +499,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				KW:        loadQ(p+".self_attn.k_proj", kvDimL, h),
 				VW:        loadQ(p+".self_attn.v_proj", kvDimL, h),
 				OW:        loadQ(p+".self_attn.o_proj", h, oDimIn),
-				GateW:     loadQ(p+".mlp.gate_proj", cfg.Intermediate, h),
-				UpW:       loadQ(p+".mlp.up_proj", cfg.Intermediate, h),
-				DownW:     loadQ(p+".mlp.down_proj", h, cfg.Intermediate),
+			}
+			if !isMoELayer {
+				layer.GateW = loadQ(p+".mlp.gate_proj", cfg.Intermediate, h)
+				layer.UpW = loadQ(p+".mlp.up_proj", cfg.Intermediate, h)
+				layer.DownW = loadQ(p+".mlp.down_proj", h, cfg.Intermediate)
 			}
 		} else {
 			layer = LlamaLayer{
@@ -488,9 +513,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				KW:        loadT(p+".self_attn.k_proj.weight", []int{kvDimL, h}),
 				VW:        loadT(p+".self_attn.v_proj.weight", []int{kvDimL, h}),
 				OW:        loadT(p+".self_attn.o_proj.weight", []int{h, oDimIn}),
-				GateW:     loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h}),
-				UpW:       loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h}),
-				DownW:     loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate}),
+			}
+			if !isMoELayer {
+				layer.GateW = loadT(p+".mlp.gate_proj.weight", []int{cfg.Intermediate, h})
+				layer.UpW = loadT(p+".mlp.up_proj.weight", []int{cfg.Intermediate, h})
+				layer.DownW = loadT(p+".mlp.down_proj.weight", []int{h, cfg.Intermediate})
 			}
 		}
 		// Optional Q/K/V biases (Qwen2 has these, LLaMA doesn't)
@@ -509,6 +536,45 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		if tryLoad(p + ".self_attn.q_norm.weight") {
 			layer.QNorm = load(p+".self_attn.q_norm.weight", []int{layerHD})
 			layer.KNorm = load(p+".self_attn.k_norm.weight", []int{layerHD})
+		}
+
+		// MoE: load router and expert weights from switch_mlp format
+		if cfg.NumExperts > 0 && cfg.MoEIntermediate > 0 {
+			moePath := p + ".mlp"
+			if tryLoad(moePath + ".gate.weight") {
+				layer.IsMoE = true
+				// Router gate: [numExperts, hidden] — load as MLX quantized
+				if cfg.QuantFormat == "mlx" && onTheFly {
+					layer.RouterW = loadMLXW(moePath+".gate", cfg.NumExperts, h)
+				}
+				// Expert weights: switch_mlp format [numExperts, moeInter, packed]
+				moeI := cfg.MoEIntermediate
+				expGate, err := LoadSwitchMLXExperts(f, moePath+".switch_mlp.gate_proj", cfg.NumExperts, moeI, h, cfg.QuantGroup, cfg.QuantBits)
+				if err == nil {
+					layer.ExpertGateW = expGate
+				} else {
+					fmt.Printf("  MoE layer %d gate_proj: %v\n", l, err)
+				}
+				expUp, err := LoadSwitchMLXExperts(f, moePath+".switch_mlp.up_proj", cfg.NumExperts, moeI, h, cfg.QuantGroup, cfg.QuantBits)
+				if err == nil {
+					layer.ExpertUpW = expUp
+				} else {
+					fmt.Printf("  MoE layer %d up_proj: %v\n", l, err)
+				}
+				expDown, err := LoadSwitchMLXExperts(f, moePath+".switch_mlp.down_proj", cfg.NumExperts, h, moeI, cfg.QuantGroup, cfg.QuantBits)
+				if err == nil {
+					layer.ExpertDownW = expDown
+				} else {
+					fmt.Printf("  MoE layer %d down_proj: %v\n", l, err)
+				}
+				// Clear the non-MoE MLP weights (they don't apply)
+				layer.GateWm = nil
+				layer.UpWm = nil
+				layer.DownWm = nil
+				layer.GateW = nil
+				layer.UpW = nil
+				layer.DownW = nil
+			}
 		}
 		// Gemma4: per-layer properties
 		if len(cfg.LayerTypes) > l {
