@@ -17,8 +17,9 @@ import (
 
 // GPUModel wraps a LlamaModel with GPU-resident weights and buffers.
 type GPUModel struct {
-	CPU    *LlamaModel
-	Config LlamaConfig
+	CPU       *LlamaModel
+	Config    LlamaConfig
+	GPULayers int // number of layers on GPU (0 = all)
 
 	Layers []gpuLayerBufs
 
@@ -224,7 +225,18 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 
 	g.Layers = make([]gpuLayerBufs, len(m.Layers))
 	gpu.InitAllKernels()
+
+	// Determine how many layers go on GPU
+	gpuLayerCount := len(m.Layers)
+	if g.GPULayers > 0 && g.GPULayers < gpuLayerCount {
+		gpuLayerCount = g.GPULayers
+	}
+	g.GPULayers = gpuLayerCount
+
 	for i, layer := range m.Layers {
+		if i >= gpuLayerCount {
+			break // remaining layers stay on CPU
+		}
 		gl := gpuLayerBufs{
 			InputNorm: wrapTensor(layer.InputNorm),
 			PostNorm:  wrapTensor(layer.PostNorm),
@@ -577,6 +589,21 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			useDirectMLX := cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma3_text"
 			for l := 0; l < len(g.Layers); l++ {
+				// Hybrid forward: CPU fallback for layers beyond GPULayers
+				if g.GPULayers > 0 && l >= g.GPULayers {
+					// Download hidden state from GPU
+					gpu.Sync()
+					hidden := append([]float32(nil), g.hidden.Data()[:h]...)
+					// Run remaining layers on CPU
+					for cl := l; cl < len(m.Layers); cl++ {
+						hidden = g.CPU.ForwardLayer(hidden, cl, step, pos, g.kvCacheK, g.kvCacheV)
+					}
+					// Upload result back to GPU hidden buffer
+					copy(g.hidden.Data(), hidden)
+					g.hidden.MarkDirty()
+					break // all remaining layers handled
+				}
+
 				layer := &g.Layers[l]
 				cpuLayer := &m.Layers[l]
 				if debugOpHook != nil {
