@@ -17,6 +17,7 @@ func main() {
 	dir := flag.String("model", "", "model directory")
 	maxTokens := flag.Int("n", 256, "max tokens per response")
 	useGPU := flag.Bool("gpu", false, "use GPU")
+	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	flag.Parse()
 
 	if *dir == "" {
@@ -49,6 +50,9 @@ func main() {
 			fmt.Printf("GPU failed: %v (using CPU)\n", err)
 		} else {
 			g.CPU.Tok = tok
+			if *gpuLayers > 0 {
+				g.GPULayers = *gpuLayers
+			}
 			gpuMod = g
 			defer g.Close()
 			defer gpu.Shutdown()

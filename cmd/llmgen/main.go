@@ -14,6 +14,7 @@ func main() {
 	prompt := flag.String("prompt", "The meaning of life is", "input prompt")
 	tokens := flag.Int("tokens", 50, "tokens to generate")
 	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
+	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	flag.Parse()
 
 	if *useGPU {
@@ -36,7 +37,9 @@ func main() {
 		m.Config.NumLayers, m.Config.HiddenSize)
 
 	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
-	if err == nil { m.Tok = tok }
+	if err == nil {
+		m.Tok = tok
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tokenizer: %v\n", err)
 		os.Exit(1)
@@ -50,6 +53,8 @@ func main() {
 		gpuMod, err = model.LoadGPUModel(m)
 		if err != nil {
 			fmt.Printf("GPU model failed: %v (falling back to CPU)\n", err)
+		} else if *gpuLayers > 0 {
+			gpuMod.GPULayers = *gpuLayers
 		}
 	}
 

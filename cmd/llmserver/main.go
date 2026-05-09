@@ -267,6 +267,7 @@ func main() {
 	dir := flag.String("model", "", "model directory")
 	listen := flag.String("listen", ":8080", "address to listen on")
 	useGPU := flag.Bool("gpu", false, "use GPU")
+	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	flag.Parse()
 
 	if *dir == "" {
@@ -301,6 +302,9 @@ func main() {
 			log.Printf("GPU failed: %v (using CPU)", err)
 		} else {
 			g.CPU.Tok = tok
+			if *gpuLayers > 0 {
+				g.GPULayers = *gpuLayers
+			}
 			srv.gpuModel = g
 			defer g.Close()
 			defer gpu.Shutdown()

@@ -110,6 +110,35 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 | **F16** | safetensors dtype | F16→F32 at load | F32 on GPU | |
 | **F32** | safetensors dtype | Direct load | Native | |
 
+## Commands
+
+### llmgen — one-shot text generation
+
+```bash
+go run ./cmd/llmgen -model models/qwen3-0.6b-mlx4 -gpu -tokens 50 -prompt "The meaning of life is"
+```
+
+### llmchat — interactive chat
+
+```bash
+go run ./cmd/llmchat -model models/gemma4-e2b-mlx4 -gpu -n 256
+> Hello
+Hello! How can I help you today?
+[8 tok, 13.5 tok/s, 592ms]
+```
+
+### llmserver — OpenAI-compatible API server
+
+```bash
+go run ./cmd/llmserver -model models/gemma4-e2b-mlx4 -gpu -listen :8080
+# Test with curl:
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma4-e2b-mlx4","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU).
+
 ## Architecture Details
 
 - **Lazy tensor DAG** with elementwise fusion
@@ -128,9 +157,11 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 ## Documentation
 
 - **[docs/architecture.md](docs/architecture.md)** — UOp graph, fusion, SIMD dispatch
-- **[docs/development-log.md](docs/development-log.md)** — build process
+- **[docs/gemma4-precision.md](docs/gemma4-precision.md)** — Gemma4 GPU correctness & precision
+- **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager design
 - **[docs/performance.md](docs/performance.md)** — benchmarks, roadmap
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths
+- **[docs/development-log.md](docs/development-log.md)** — build process
 
 ## License
 
