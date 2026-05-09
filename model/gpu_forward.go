@@ -23,6 +23,9 @@ type GPUModel struct {
 
 	Layers []gpuLayerBufs
 
+	// MoE expert pool (nil if not MoE)
+	Experts *gpu.ExpertPool
+
 	// Work buffers (GPU-resident)
 	hidden, residual, normed *gpu.DevBuf
 	q, k, v, attnOut, oOut   *gpu.DevBuf
@@ -414,6 +417,27 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		device = "GPU"
 	}
 	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
+
+	// Initialize MoE expert pool if model has experts
+	if cfg.NumExperts > 0 {
+		// Estimate expert VRAM budget: use remaining VRAM after attention weights
+		free, _ := gpu.MemInfo()
+		expertBudgetMB := int64(free) / (1024 * 1024)
+		if expertBudgetMB > 512 {
+			expertBudgetMB -= 256 // reserve headroom
+		}
+		expertSizeBytes := int64(3 * cfg.MoEIntermediate * cfg.HiddenSize / 2) // gate+up+down MLX4
+		expertSlots := 0
+		if expertSizeBytes > 0 {
+			expertSlots = int(expertBudgetMB * 1024 * 1024 / expertSizeBytes)
+		}
+		if expertSlots > cfg.NumExperts*cfg.NumLayers {
+			expertSlots = cfg.NumExperts * cfg.NumLayers
+		}
+		g.Experts = gpu.NewExpertPool(expertSlots, nil)
+		fmt.Printf("[model] Expert pool: %d slots (%.0f MB budget, %.1f KB/expert)\n",
+			expertSlots, float64(expertBudgetMB), float64(expertSizeBytes)/1024)
+	}
 
 	return g, nil
 }
@@ -909,7 +933,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 				// MLP: gate + up projections (or MoE for expert layers)
 				if cpuLayer.IsMoE && cpuLayer.ExpertGateW != nil {
-					// MoE: run router + expert MLPs on CPU, upload result
+					// MoE: router on CPU, expert MLPs on CPU (GPU expert offload future)
 					gpu.Sync()
 					mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
 					down := moeForward(mlpIn, cpuLayer, cfg)
