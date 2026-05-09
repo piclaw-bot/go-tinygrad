@@ -439,6 +439,13 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			expertSlots, float64(expertBudgetMB), float64(expertSizeBytes)/1024)
 	}
 
+	// Print budget summary
+	if cfg.NumExperts > 0 || g.GPULayers > 0 {
+		free2, total := gpu.MemInfo()
+		fmt.Printf("[budget] GPU VRAM: %.0f/%.0f MB used (%.0f MB free)\n",
+			float64(total-free2)/(1024*1024), float64(total)/(1024*1024), float64(free2)/(1024*1024))
+	}
+
 	return g, nil
 }
 
