@@ -21,8 +21,9 @@ type File struct {
 	Tensors    map[string]TensorInfo
 	data       []byte // tensor data region (after header)
 	headerSize int
-	mmapData   []byte   // full mmap'd region (nil if not mmap'd)
-	mmapFd     *os.File // file handle for mmap'd file (nil if not mmap'd)
+	mmapData   []byte       // full mmap'd region (nil if not mmap'd)
+	mmapFd     *os.File     // file handle for mmap'd file (nil if not mmap'd)
+	Advisor    *MmapAdvisor // madvise tracking (nil if not mmap'd)
 }
 
 // Close releases mmap resources. Safe to call on non-mmap'd files.
@@ -97,6 +98,7 @@ func Open(path string) (*File, error) {
 		headerSize: headerLen,
 		mmapData:   mapped,
 		mmapFd:     fd,
+		Advisor:    NewMmapAdvisor(mapped),
 	}, nil
 }
 
