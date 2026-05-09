@@ -13,6 +13,7 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | Qwen3-0.6B | qwen3 | MLX 4-bit | **25** | 39.6 | 7.2 | 138 |
 | Gemma3-1B | gemma3 | MLX 4-bit | **18** | 55.4 | 4.9 | 203 |
 | Gemma4-E2B | gemma4 | MLX 4-bit | **14** | 74.1 | — | — |
+| Qwen3-30B MoE | qwen3_moe | MLX 4-bit | **0.2** | 5250 | 0.1 | 7200 |
 | Qwen3-0.6B | qwen3 | BF16 | — | — | 7.8 | 129 |
 | Gemma3-1B | gemma3 | BF16 | — | — | 4.9 | 203 |
 

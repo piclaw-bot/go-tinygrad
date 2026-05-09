@@ -29,6 +29,7 @@ Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantize
 | **llama** | SmolLM2, LLaMA 3.x | BF16, F16, F32 | ✅ |
 | **qwen2** | Qwen2.5 0.5B–7B | MLX 4-bit, GPTQ 4-bit | ✅ |
 | **qwen3** | Qwen3 0.6B+ | MLX 4-bit, BF16 | ✅ |
+| **qwen3_moe** | Qwen3-30B-A3B MoE | MLX 4-bit | ✅ |
 | **gemma3** | Gemma 3 1B+ | MLX 4-bit, BF16 | ✅ |
 | **gemma4** | Gemma 4 E2B+ | MLX 4-bit | ✅ |
 
