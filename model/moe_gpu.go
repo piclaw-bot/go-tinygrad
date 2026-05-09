@@ -135,9 +135,12 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			// Upload to expert pool for next time
 			if pool != nil {
 				entry := &gpu.ExpertEntry{ExpertID: eid}
-				gw, err1 := gpu.UploadMLXWeight(layer.ExpertGateW[eid].Weight, layer.ExpertGateW[eid].Scales, layer.ExpertGateW[eid].Biases, layer.ExpertGateW[eid].InDim, layer.ExpertGateW[eid].OutDim, layer.ExpertGateW[eid].GroupSize, false)
-				uw, err2 := gpu.UploadMLXWeight(layer.ExpertUpW[eid].Weight, layer.ExpertUpW[eid].Scales, layer.ExpertUpW[eid].Biases, layer.ExpertUpW[eid].InDim, layer.ExpertUpW[eid].OutDim, layer.ExpertUpW[eid].GroupSize, false)
-				dw, err3 := gpu.UploadMLXWeight(layer.ExpertDownW[eid].Weight, layer.ExpertDownW[eid].Scales, layer.ExpertDownW[eid].Biases, layer.ExpertDownW[eid].InDim, layer.ExpertDownW[eid].OutDim, layer.ExpertDownW[eid].GroupSize, false)
+				ew := layer.ExpertGateW[eid]
+				gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+				ew = layer.ExpertUpW[eid]
+				uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+				ew = layer.ExpertDownW[eid]
+				dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
 				if err1 == nil && err2 == nil && err3 == nil {
 					entry.GateW = gw
 					entry.UpW = uw
