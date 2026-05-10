@@ -60,6 +60,23 @@ Verifier (main model batched forward):
 6. **KV cache sync** — drafter shares main model's KV cache
 7. **Adaptive K** — track acceptance rate, adjust draft length
 
+## Reference Implementations
+
+### llama.cpp PR #22673 — MTP for Qwen3.6
+- 75% acceptance rate with 3 draft tokens
+- >2× speed-up over baseline
+- MTP model loads from the same GGUF (not separate)
+- Has its own KV cache and context
+- Hidden features propagated via "hook" after each ubatch
+- Tested on Qwen3.6 27B and 35B-A3B MoE
+- `aggregate_accept_rate: 0.8258` in coding benchmark
+
+### Key design decisions from llama.cpp
+1. MTP model is a **separate model** but loaded from the **same file**
+2. MTP has its **own KV cache** (not shared with main model)
+3. Hidden states are extracted via a hook mechanism after each batch
+4. Draft tokens verified in a single batched forward pass
+
 ## Models with MTP support
 
 | Model | Drafter | Layers | Hidden | Disk |
