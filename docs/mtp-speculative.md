@@ -10,18 +10,30 @@ accepted per step — up to 3× speedup.
 ## Architecture
 
 ### Drafter model (Gemma4-E2B-it-assistant)
+Local asset: `models/gemma4-e2b-mtp-drafter`.
+
+- Top-level `model_type: gemma4_assistant`, `architectures: [Gemma4AssistantForCausalLM]`
+- Nested text config is `model_type: gemma4_text`
 - `hidden_size: 256` (vs 1536 in main model)
 - `num_hidden_layers: 4` (vs 35 in main model)
 - `intermediate_size: 2048`
-- `num_kv_shared_layers: 4` (all layers share KV from main model)
-- Disk: ~151 MB (BF16)
-- VRAM: ~50 MB
+- `num_attention_heads: 4`, `num_key_value_heads: 1`
+- layer types: 3 sliding layers (`head_dim=256`) + 1 full layer (`global_head_dim=512`)
+- `num_kv_shared_layers: 4`; all drafter layers consume external/shared KV rather than owning K/V projections
+- Disk: 151 MB BF16 safetensors + 31 MB tokenizer
+- VRAM estimate: ~50 MB plus runtime buffers
 
-### Special tensors
-- `pre_projection.weight`: [256, 3072] — maps main model hidden (1536) + context → drafter dim (256)
-- `post_projection.weight`: [1536, 256] — maps drafter hidden (256) → main model dim (1536)
-- `masked_embedding.centroids.weight`: [2048, 256] — token embedding clustering for efficiency
-- `masked_embedding.token_ordering`: [262144] — maps vocab → centroid indices
+### Special tensors in local safetensors
+- `pre_projection.weight`: `[256, 3072]` — maps `embedding(prev_token)[1536] || activation[1536]` into drafter hidden size 256.
+- `post_projection.weight`: `[1536, 256]` — maps drafter hidden/projected state back to the main hidden size for the next drafter step and verifier handoff.
+- `masked_embedding.centroids.weight`: `[2048, 256]` — centroid embedding table.
+- `masked_embedding.token_ordering`: `[262144]` — vocab → centroid ordering/index data.
+- `model.embed_tokens.weight`: `[262144, 256]` — drafter-token embedding table.
+- Per-layer tensors include only `q_proj`, `q_norm`, `o_proj`, MLP weights, norms, and `layer_scalar`.
+- **No `k_proj`, `v_proj`, `k_norm`, or `v_norm` tensors exist in the drafter**; those must come from shared/base-model KV state.
+
+Current loader gap:
+- `LoadLlama(models/gemma4-e2b-mtp-drafter)` currently fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections. MTP support needs a dedicated assistant/drafter loader mode that accepts Q-only attention blocks with external KV.
 
 ### Data flow
 
@@ -52,13 +64,14 @@ Verifier (main model batched forward):
 
 ## Implementation plan
 
-1. **Load drafter alongside main model** — second `LoadLlama` call
-2. **pre/post projection** — new tensor fields in model struct
-3. **Draft loop** — run drafter K times, collect candidate tokens
-4. **Verify** — batched prefill of K candidates through main model
-5. **Accept/reject** — compare logits, keep matching prefix
-6. **KV cache sync** — drafter shares main model's KV cache
-7. **Adaptive K** — track acceptance rate, adjust draft length
+1. **Add drafter loader** — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
+2. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
+3. **pre/post projection** — new tensor fields and GEMV wrappers; `pre_projection` consumes concatenated main embedding + activation.
+4. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
+5. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
+6. **Accept/reject** — keep matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
+7. **KV cache sync** — commit candidate KV for accepted tokens plus bonus token; discard rejected candidate KV tail.
+8. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations
 
