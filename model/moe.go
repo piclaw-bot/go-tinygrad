@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync"
 )
 
 // LoadSwitchMLXExperts loads a switch_mlp-style 3D packed tensor and
@@ -183,36 +184,46 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 		}
 	}
 
-	// Run selected experts and accumulate weighted output
+	// Run selected experts in parallel and accumulate weighted output
 	moeInter := cfg.MoEIntermediate
 	out := make([]float32, h)
 
-	for _, exp := range selected {
+	type expertResult struct {
+		down   []float32
+		weight float32
+	}
+	results := make([]expertResult, len(selected))
+	var wg sync.WaitGroup
+	for si, exp := range selected {
 		eid := exp.id
 		if eid >= len(layer.ExpertGateW) || layer.ExpertGateW[eid] == nil {
 			continue
 		}
+		wg.Add(1)
+		go func(idx int, expertID int, w float32) {
+			defer wg.Done()
+			// Expert MLP: gate_proj → SiLU × up_proj → down_proj
+			gate := make([]float32, moeInter)
+			up := make([]float32, moeInter)
+			GemvMLQ(gate, x, layer.ExpertGateW[expertID])
+			GemvMLQ(up, x, layer.ExpertUpW[expertID])
+			for i := range gate {
+				sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
+				gate[i] = gate[i] * sig * up[i]
+			}
+			down := make([]float32, h)
+			GemvMLQ(down, gate, layer.ExpertDownW[expertID])
+			results[idx] = expertResult{down: down, weight: w}
+		}(si, eid, exp.score)
+	}
+	wg.Wait()
 
-		// Expert MLP: gate_proj → SiLU × up_proj → down_proj
-		gate := make([]float32, moeInter)
-		up := make([]float32, moeInter)
-		GemvMLQ(gate, x, layer.ExpertGateW[eid])
-		GemvMLQ(up, x, layer.ExpertUpW[eid])
-
-		// SiLU(gate) * up
-		for i := range gate {
-			sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
-			gate[i] = gate[i] * sig * up[i]
+	for _, r := range results {
+		if r.down == nil {
+			continue
 		}
-
-		// Down projection
-		down := make([]float32, h)
-		GemvMLQ(down, gate, layer.ExpertDownW[eid])
-
-		// Weighted accumulation
-		w := exp.score
 		for i := range out {
-			out[i] += w * down[i]
+			out[i] += r.weight * r.down[i]
 		}
 	}
 
