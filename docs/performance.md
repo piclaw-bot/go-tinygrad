@@ -55,3 +55,17 @@ MLX 4-bit is **faster** than GPTQ 4-bit for the same model (217 vs 51 tok/s for 
 - MLX uses `group_size=64` (vs GPTQ's 128) → better cache utilization
 - MLX weights transposed to GPTQ layout at upload → reuses fast tiled kernel
 - Bias correction kernel adds ~10% overhead but amortized in pipeline
+
+## MoE Performance (Qwen3-30B-A3B)
+
+128 experts per layer, 8 active per token, 48 layers.
+
+| Configuration | tok/s | Notes |
+|---|---|---|
+| CPU sequential experts | 0.1 | baseline |
+| CPU parallel experts (8 goroutines) | **0.6** | 6× from parallelism |
+| GPU attention + CPU experts | **0.4** | attention on GPU, experts on CPU |
+| GPU attention + GPU expert cache | 0.2 | cold-miss upload dominates (correct output) |
+
+Per-expert VRAM: 2.3 KB (MLX4). Expert pool: 4076 slots in 9.2 GB.
+Bottleneck is CPU expert MLP (384 GEMVs per token × 48 layers).

@@ -19,8 +19,10 @@ Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantize
 | **Qwen3-0.6B** | qwen3 | MLX 4-bit | **25** | 7.2 |
 | **Gemma3-1B** | gemma3 | MLX 4-bit | **18** | 4.9 |
 | **Gemma4-E2B** | gemma4 | MLX 4-bit | **14** | — |
+| **Qwen3-30B MoE** | qwen3_moe | MLX 4-bit | **0.4** | 0.6 |
 
 *RTX 3060 12GB + i7-12700 6-core. Pure Go, zero CGo.*
+*MoE: 128 experts/layer, 8 active/token. GPU runs attention, experts parallel on CPU.*
 
 ## Supported Models
 
@@ -144,24 +146,32 @@ All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU
 
 - **Lazy tensor DAG** with elementwise fusion
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)
-- **Safetensors loader** — sharded, F16/BF16/F32, GPTQ/MLX quantized
+- **Safetensors loader** — mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized
 - **Tokenizer** — BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
-- **LLaMA decoder** — RoPE (global + local), GQA, KV cache, SiLU/GELU MLP
+- **LLaMA decoder** — RoPE (global + local + partial), GQA, KV cache, SiLU/GELU MLP
+- **Mixture of Experts** — router top-k, parallel expert MLP, ExpertPool with LRU GPU caching
 - **QK-Norm** — per-head RMSNorm (Qwen3, Gemma3/4)
 - **4-norm residual** — pre/post FFN norms (Gemma3/4)
-- **Sliding window attention** — alternating local/global (Gemma3/4)
+- **Sliding window attention** — alternating local/global with window masking (Gemma3/4)
+- **Per-layer input gating** — PLI with GELU gate, projection, norm (Gemma4)
+- **KV sharing** — shared layers reuse source-layer KV cache (Gemma4)
+- **Layer scalar** — per-layer output scaling (Gemma4)
 - **Embedding scaling** — `× √hidden_size` (Gemma3/4)
 - **Batched prefill** — GEMM for multi-token prompt processing
+- **Hybrid forward** — GPU layers + CPU layers with `--gpu-layers N`
+- **Weight budget** — tiered memory: GPU VRAM, pinned CPU, mmap with madvise
 - **Chunked LM head** — splits across available VRAM
 - **GPU DevBuf** — device-agnostic buffers, lazy CPU↔GPU transfer
+- **Chat templates** — Gemma4 (`<|turn>`), Qwen3 (`<|im_start|>`)
 
 ## Documentation
 
 - **[docs/architecture.md](docs/architecture.md)** — UOp graph, fusion, SIMD dispatch
 - **[docs/gemma4-precision.md](docs/gemma4-precision.md)** — Gemma4 GPU correctness & precision
-- **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager design
-- **[docs/performance.md](docs/performance.md)** — benchmarks, roadmap
-- **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths
+- **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager (ds4-inspired)
+- **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — MTP speculative decoding for Gemma4/Qwen3.6
+- **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
+- **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)
 - **[docs/development-log.md](docs/development-log.md)** — build process
 
 ## License
