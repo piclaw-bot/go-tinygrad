@@ -362,7 +362,9 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	}
 
 	device := "CPU"
-	// Precompute RoPE cos/sin table
+	// Precompute RoPE cos/sin table for GPU kernel
+	// m.RopeFreqs is interleaved [cos, sin, cos, sin, ...] at (pos*halfDim + i) * 2
+	// GPU kernel expects [cos0, sin0, cos1, sin1, ...] per position, headDim stride
 	{
 		headDimL := cfg.HeadDim
 		halfDim := headDimL / 2
@@ -370,9 +372,9 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		csData := make([]float32, maxSeqL*headDimL)
 		for p := 0; p < maxSeqL; p++ {
 			for i := 0; i < halfDim; i++ {
-				freq := m.RopeFreqs[p*halfDim+i]
-				csData[p*headDimL+i*2] = float32(math.Cos(float64(freq)))
-				csData[p*headDimL+i*2+1] = float32(math.Sin(float64(freq)))
+				srcOff := (p*halfDim + i) * 2
+				csData[p*headDimL+i*2] = m.RopeFreqs[srcOff]     // cos
+				csData[p*headDimL+i*2+1] = m.RopeFreqs[srcOff+1] // sin
 			}
 		}
 		g.ropeCosSin = gpu.NewDevBufFrom(csData)
@@ -940,12 +942,15 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 				// MLP: gate + up projections (or MoE for expert layers)
 				if cpuLayer.IsMoE && cpuLayer.ExpertGateW != nil {
-					// MoE: router + expert MLPs
+					// MoE: router + expert MLPs (GPU-cached or CPU fallback)
 					gpu.Sync()
 					mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
-					// CPU-only MoE for correctness (GPU expert caching available but
-					// produces slightly different results due to GEMV accumulation order)
-					down := moeForward(mlpIn, cpuLayer, cfg)
+					var down []float32
+					if g.Experts != nil && g.Experts.Slots() > 0 {
+						down = moeForwardGPU(mlpIn, cpuLayer, cfg, g.Experts, l)
+					} else {
+						down = moeForward(mlpIn, cpuLayer, cfg)
+					}
 					copy(g.down.Data()[:h], down)
 					g.down.MarkDirty()
 				}

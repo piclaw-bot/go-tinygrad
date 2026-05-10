@@ -8,7 +8,7 @@ import (
 
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
 // Falls back to CPU GemvMLQ for cold experts not in the pool.
-func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool) []float32 {
+func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int) []float32 {
 	h := len(x)
 	numExperts := cfg.NumExperts
 	numActive := cfg.NumExpertsPerTok
@@ -90,10 +90,11 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			continue
 		}
 
-		// Check GPU expert pool
+		// Check GPU expert pool (keyed by layer*numExperts + expert)
+		poolKey := layerIdx*cfg.NumExperts + eid
 		var gpuEntry *gpu.ExpertEntry
 		if pool != nil {
-			gpuEntry = pool.Get(eid)
+			gpuEntry = pool.Get(poolKey)
 		}
 
 		var down []float32
@@ -134,7 +135,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 
 			// Upload to expert pool for next time
 			if pool != nil {
-				entry := &gpu.ExpertEntry{ExpertID: eid}
+				entry := &gpu.ExpertEntry{ExpertID: poolKey}
 				ew := layer.ExpertGateW[eid]
 				gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
 				ew = layer.ExpertUpW[eid]
