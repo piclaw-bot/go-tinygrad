@@ -7,7 +7,7 @@
 
 // func Snrm2(x []float32) float32
 // Returns sqrt(sum(x[i]^2))
-TEXT ·Snrm2(SB), NOSPLIT, $0-28
+TEXT ·snrm2Asm(SB), NOSPLIT, $0-28
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     VXORPS  Y0, Y0, Y0
@@ -58,7 +58,7 @@ snrm2_sqrt:
     RET
 
 // func VecAdd(dst, a, b []float32)
-TEXT ·VecAdd(SB), NOSPLIT, $0-72
+TEXT ·vecAddAsm(SB), NOSPLIT, $0-72
     MOVQ    dst_base+0(FP), DI
     MOVQ    a_base+24(FP), SI
     MOVQ    a_len+32(FP), CX
@@ -111,7 +111,7 @@ vadd_done:
     RET
 
 // func VecMul(dst, a, b []float32)
-TEXT ·VecMul(SB), NOSPLIT, $0-72
+TEXT ·vecMulAsm(SB), NOSPLIT, $0-72
     MOVQ    dst_base+0(FP), DI
     MOVQ    a_base+24(FP), SI
     MOVQ    a_len+32(FP), CX
@@ -165,7 +165,7 @@ vmul_done:
 
 // func VecScaleAdd(dst, a, b []float32, scale float32)
 // dst[i] = a[i] + scale * b[i]
-TEXT ·VecScaleAdd(SB), NOSPLIT, $0-76
+TEXT ·vecScaleAddAsm(SB), NOSPLIT, $0-76
     MOVQ    dst_base+0(FP), DI
     MOVQ    a_base+24(FP), SI
     MOVQ    a_len+32(FP), CX
@@ -225,7 +225,7 @@ vsa_done:
 
 // func RMSNorm(x, w []float32, eps float32)
 // x[i] = w[i] * x[i] * rsqrt(mean(x^2) + eps)
-TEXT ·RMSNorm(SB), NOSPLIT, $0-52
+TEXT ·rmsNormAsm(SB), NOSPLIT, $0-52
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVQ    w_base+24(FP), DI
@@ -341,7 +341,7 @@ rn_done:
 
 // func RMSNormBF16(x, w []float32, eps float32)
 // Same as RMSNorm but rounds each output to BF16 (mask lower 16 bits)
-TEXT ·RMSNormBF16(SB), NOSPLIT, $0-52
+TEXT ·rmsNormBF16Asm(SB), NOSPLIT, $0-52
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVQ    w_base+24(FP), DI
@@ -463,7 +463,7 @@ rnb_done:
     RET
 
 // func ToBF16(x []float32)
-TEXT ·ToBF16(SB), NOSPLIT, $0-24
+TEXT ·toBF16Asm(SB), NOSPLIT, $0-24
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
 
@@ -513,13 +513,13 @@ bf16_done:
 
 // VecSiLUMul is implemented in Go (uses exp which has no simple SIMD form)
 // func VecSiLUMul(dst, a, b []float32)
-TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
+TEXT ·vecSiLUMulAsm(SB), NOSPLIT, $0-72
     JMP ·vecSiLUMulGo(SB)
 
 
 // GELUTanhMul: dst[i] = gelu_tanh(a[i]) * b[i]
 // func GELUTanhMul(dst, a, b []float32)
-TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
+TEXT ·geluTanhMulAsm(SB), NOSPLIT, $0-72
     JMP ·geluTanhMulGo(SB)
 
 // ============================================================
@@ -532,7 +532,7 @@ TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
 // func BF16DotAsm(x, y []uint16) float32
 // Loads 16 BF16 values per iteration (32 bytes = 2× YMM of u16),
 // widens to F32 (4× YMM), FMA accumulates, horizontal reduce.
-TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
+TEXT ·bf16DotAsm(SB), NOSPLIT, $0-52
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVQ    y_base+24(FP), DI
@@ -611,7 +611,7 @@ bf16dot_done:
 
 // func BF16VecAddAsm(dst, a, b []uint16)
 // Widens BF16→F32, adds, narrows F32→BF16
-TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
+TEXT ·bf16VecAddAsm(SB), NOSPLIT, $0-72
     MOVQ    dst_base+0(FP), DI
     MOVQ    a_base+24(FP), SI
     MOVQ    a_len+32(FP), CX
@@ -668,7 +668,7 @@ bf16add_done:
     RET
 
 // func BF16RMSNormAsm(x, w []uint16, eps float32)
-TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
+TEXT ·bf16RMSNormAsm(SB), NOSPLIT, $0-52
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVQ    w_base+24(FP), DI
@@ -788,7 +788,7 @@ bf16rn_done:
     RET
 
 // func BF16WidenToF32(dst []float32, src []uint16)
-TEXT ·BF16WidenToF32(SB), NOSPLIT, $0-48
+TEXT ·bf16WidenToF32Asm(SB), NOSPLIT, $0-48
     MOVQ    dst_base+0(FP), DI
     MOVQ    src_base+24(FP), SI
     MOVQ    src_len+32(FP), CX
@@ -824,7 +824,7 @@ bfw_done:
     RET
 
 // func BF16NarrowFromF32(dst []uint16, src []float32)
-TEXT ·BF16NarrowFromF32(SB), NOSPLIT, $0-48
+TEXT ·bf16NarrowFromF32Asm(SB), NOSPLIT, $0-48
     MOVQ    dst_base+0(FP), DI
     MOVQ    src_base+24(FP), SI
     MOVQ    src_len+32(FP), CX
@@ -863,7 +863,7 @@ bfn_done:
 
 // func RMSNormNoScale(x []float32, eps float32)
 // Normalizes x in-place by RMS without weight multiplication.
-TEXT ·RMSNormNoScale(SB), NOSPLIT, $0-28
+TEXT ·rmsNormNoScaleAsm(SB), NOSPLIT, $0-28
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVSS   eps+24(FP), X8

@@ -3,7 +3,7 @@
 #include "textflag.h"
 
 // func Sdot(x, y []float32) float32
-TEXT ·Sdot(SB), NOSPLIT, $0-52
+TEXT ·sdotAsm(SB), NOSPLIT, $0-52
     MOVQ    x_base+0(FP), SI
     MOVQ    x_len+8(FP), CX
     MOVQ    y_base+24(FP), DI
@@ -77,7 +77,7 @@ sdot_done:
     RET
 
 // func Saxpy(alpha float32, x []float32, y []float32)
-TEXT ·Saxpy(SB), NOSPLIT, $0-56
+TEXT ·saxpyAsm(SB), NOSPLIT, $0-56
     MOVSS       alpha+0(FP), X8
     VBROADCASTSS X8, Y8
     MOVQ    x_base+8(FP), SI

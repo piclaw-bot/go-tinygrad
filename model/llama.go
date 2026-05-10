@@ -1088,15 +1088,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if cfg.ModelType == "gemma4_text" && v != nil {
 				eps := float32(cfg.RMSNormEps)
 				for head := 0; head < numKVHeads; head++ {
-					sl := v[head*layerHeadDim : (head+1)*layerHeadDim]
-					var ss float32
-					for _, x := range sl {
-						ss += x * x
-					}
-					scale := float32(1.0 / math.Sqrt(float64(ss/float32(len(sl))+eps)))
-					for i := range sl {
-						sl[i] *= scale
-					}
+					simd.RMSNormNoScale(v[head*layerHeadDim:(head+1)*layerHeadDim], eps)
 				}
 			} else if layer.VNorm != nil && v != nil {
 				vnorm := layer.VNorm.Data()

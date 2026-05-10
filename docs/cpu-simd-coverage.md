@@ -9,7 +9,7 @@ wrappers for every hot decode/prefill primitive, with scalar Go as fallback.
 |---|---|---:|---:|---|
 | `RMSNorm` F32 | `simd.RMSNorm` wrapper | ✅ | ✅ | Used by decoder and `ForwardLayer` |
 | `RMSNormBF16` on F32 buffers | `simd.RMSNormBF16` wrapper | ✅ | ✅* | arm64 runtime verification pending |
-| `RMSNormNoScale` | `simd.RMSNormNoScale` wrapper | ✅ | ✅* | Gemma4 V norm still has some scalar call-sites |
+| `RMSNormNoScale` | `simd.RMSNormNoScale` wrapper | ✅ | ✅* | Gemma4 CPU V norm now routes through wrapper |
 | Residual add | `simd.VecAdd` | ✅ | ✅ | Decoder and `ForwardLayer` use wrapper |
 | Residual + scale | `simd.VecScaleAdd` | ✅ | ✅ | Available; not yet used everywhere |
 | `ToBF16` | `simd.ToBF16` | ✅ | ✅ | Used for Gemma3/4 truncation semantics |
@@ -45,6 +45,15 @@ Run with:
 go test ./model -run '^$' -bench 'BenchmarkCPUHot' -benchmem
 ```
 
+## Dispatch cleanup status
+
+- `simd.RuntimeCapabilities()` centralizes architecture/runtime feature reporting.
+- `simd.HasSgemmAsm`, `simd.HasDotAsm`, and `simd.HasVecAsm` expose runtime-safe capability gates.
+- `Sdot`/`Saxpy` now dispatch through small Go wrappers and fall back to scalar code if AVX2/FMA or NEON is unavailable, or if callers pass mismatched lengths.
+- SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels.
+- Vector entrypoints (`VecAdd`, `VecMul`, `VecScaleAdd`, `RMSNorm*`, `ToBF16`, BF16 helpers) now dispatch through Go wrappers and fall back to scalar code when runtime SIMD gates are false.
+- Activation wrappers (`VecSiLUMul`, `GELUTanhMul`) intentionally call Go math directly until polynomial SIMD approximations are implemented; prior assembly stubs only bounced back into Go.
+
 ## Baseline snapshot (i7-12700, amd64)
 
 ```text
@@ -52,7 +61,7 @@ BenchmarkCPUHotRMSNorm3584              ~0.50 µs/op, 0 allocs
 BenchmarkCPUHotGELUTanhMul8192          ~187 µs/op, 0 allocs
 BenchmarkCPUHotSiLUMul8192              ~69 µs/op, 0 allocs
 BenchmarkCPUHotRoPEPartialGemma4SWA     ~2.6 µs/op, 0 allocs
-BenchmarkCPUHotGQAAttentionDecode512    ~1.1 ms/op, 13 allocs  (after Sdot wiring)
+BenchmarkCPUHotGQAAttentionDecode512    ~1.1–1.7 ms/op, 13 allocs  (after Sdot wiring)
 BenchmarkCPUHotGemvMLQ1536x2048         ~10.4 ms/op, 0 allocs
 ```
 

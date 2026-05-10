@@ -1,10 +1,6 @@
 package model
 
-import (
-	"math"
-
-	"github.com/rcarmo/go-pherence/simd"
-)
+import "github.com/rcarmo/go-pherence/simd"
 
 // ForwardLayer runs a single transformer layer on CPU and returns the updated hidden state.
 // This is used by the hybrid GPU/CPU forward pass for layers that don't fit in GPU VRAM.
@@ -69,15 +65,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	if cfg.ModelType == "gemma4_text" && v != nil {
 		eps := float32(cfg.RMSNormEps)
 		for head := 0; head < numKVHeads; head++ {
-			sl := v[head*layerHeadDim : (head+1)*layerHeadDim]
-			var ss float32
-			for _, x := range sl {
-				ss += x * x
-			}
-			scale := float32(1.0 / math.Sqrt(float64(ss/float32(len(sl))+eps)))
-			for i := range sl {
-				sl[i] *= scale
-			}
+			simd.RMSNormNoScale(v[head*layerHeadDim:(head+1)*layerHeadDim], eps)
 		}
 	}
 

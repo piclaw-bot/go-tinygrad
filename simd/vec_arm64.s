@@ -10,7 +10,7 @@
 #define VFADD_V3_V0_V0 WORD $0x4e23d400
 
 // func Snrm2(x []float32) float32
-TEXT ·Snrm2(SB), NOSPLIT, $0-28
+TEXT ·snrm2Asm(SB), NOSPLIT, $0-28
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     VEOR    V0.B16, V0.B16, V0.B16
@@ -64,7 +64,7 @@ snrm2_sqrt:
     RET
 
 // func VecAdd(dst, a, b []float32)
-TEXT ·VecAdd(SB), NOSPLIT, $0-72
+TEXT ·vecAddAsm(SB), NOSPLIT, $0-72
     MOVD    dst_base+0(FP), R3
     MOVD    a_base+24(FP), R0
     MOVD    a_len+32(FP), R2
@@ -111,7 +111,7 @@ vadd_done:
     RET
 
 // func VecMul(dst, a, b []float32)
-TEXT ·VecMul(SB), NOSPLIT, $0-72
+TEXT ·vecMulAsm(SB), NOSPLIT, $0-72
     MOVD    dst_base+0(FP), R3
     MOVD    a_base+24(FP), R0
     MOVD    a_len+32(FP), R2
@@ -158,7 +158,7 @@ vmul_done:
     RET
 
 // func VecScaleAdd(dst, a, b []float32, scale float32)
-TEXT ·VecScaleAdd(SB), NOSPLIT, $0-76
+TEXT ·vecScaleAddAsm(SB), NOSPLIT, $0-76
     MOVD    dst_base+0(FP), R3
     MOVD    a_base+24(FP), R0
     MOVD    a_len+32(FP), R2
@@ -207,7 +207,7 @@ vsa_done:
     RET
 
 // func RMSNorm(x, w []float32, eps float32)
-TEXT ·RMSNorm(SB), NOSPLIT, $0-52
+TEXT ·rmsNormAsm(SB), NOSPLIT, $0-52
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     MOVD    w_base+24(FP), R1
@@ -324,22 +324,22 @@ rn_done:
 
 // func RMSNormBF16(x, w []float32, eps float32)
 // Same as RMSNorm + BF16 truncate on output
-TEXT ·RMSNormBF16(SB), NOSPLIT, $0-52
+TEXT ·rmsNormBF16Asm(SB), NOSPLIT, $0-52
     // For ARM64, just call RMSNorm then ToBF16
     // (ARM64 doesn't have a convenient BF16 AND mask like AVX2 VANDPS)
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
 
     // Call RMSNorm first
-    BL      ·RMSNorm(SB)
+    BL      ·rmsNormAsm(SB)
 
     // Then truncate to BF16
     // Reuse the standalone ToBF16 entry instead of branching into another TEXT body.
-    BL      ·ToBF16(SB)
+    BL      ·toBF16Asm(SB)
     RET
 
 // func ToBF16(x []float32)
-TEXT ·ToBF16(SB), NOSPLIT, $0-24
+TEXT ·toBF16Asm(SB), NOSPLIT, $0-24
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
 
@@ -385,11 +385,11 @@ bf16_done:
     RET
 
 // func VecSiLUMul(dst, a, b []float32)
-TEXT ·VecSiLUMul(SB), NOSPLIT, $0-72
+TEXT ·vecSiLUMulAsm(SB), NOSPLIT, $0-72
     B       ·vecSiLUMulGo(SB)
 
 // func GELUTanhMul(dst, a, b []float32)
-TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
+TEXT ·geluTanhMulAsm(SB), NOSPLIT, $0-72
     B       ·geluTanhMulGo(SB)
 
 // ============================================================
@@ -399,7 +399,7 @@ TEXT ·GELUTanhMul(SB), NOSPLIT, $0-72
 // ============================================================
 
 // func BF16DotAsm(x, y []uint16) float32
-TEXT ·BF16DotAsm(SB), NOSPLIT, $0-52
+TEXT ·bf16DotAsm(SB), NOSPLIT, $0-52
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     MOVD    y_base+24(FP), R1
@@ -464,7 +464,7 @@ bf16dot_arm_done:
 
 // func BF16VecAddAsm(dst, a, b []uint16)
 // Widen BF16→F32, add, narrow F32→BF16
-TEXT ·BF16VecAddAsm(SB), NOSPLIT, $0-72
+TEXT ·bf16VecAddAsm(SB), NOSPLIT, $0-72
     MOVD    dst_base+0(FP), R3
     MOVD    a_base+24(FP), R0
     MOVD    a_len+32(FP), R2
@@ -521,7 +521,7 @@ bf16add_arm_done:
 
 // func BF16RMSNormAsm(x, w []uint16, eps float32)
 // Phase 1: widen→square→sum. Phase 2: widen→scale→narrow.
-TEXT ·BF16RMSNormAsm(SB), NOSPLIT, $0-52
+TEXT ·bf16RMSNormAsm(SB), NOSPLIT, $0-52
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     MOVD    w_base+24(FP), R1
@@ -638,7 +638,7 @@ bf16rn_arm_done:
 
 // func BF16WidenToF32(dst []float32, src []uint16)
 // Vectorized: 8 elements per iteration (2× USHLL+SHL)
-TEXT ·BF16WidenToF32(SB), NOSPLIT, $0-48
+TEXT ·bf16WidenToF32Asm(SB), NOSPLIT, $0-48
     MOVD    dst_base+0(FP), R3
     MOVD    src_base+24(FP), R0
     MOVD    src_len+32(FP), R2
@@ -689,7 +689,7 @@ bfw_arm_done:
 
 // func BF16NarrowFromF32(dst []uint16, src []float32)
 // Vectorized: 8 elements per iteration (2× USHR+UZP1)
-TEXT ·BF16NarrowFromF32(SB), NOSPLIT, $0-48
+TEXT ·bf16NarrowFromF32Asm(SB), NOSPLIT, $0-48
     MOVD    dst_base+0(FP), R3
     MOVD    src_base+24(FP), R0
     MOVD    src_len+32(FP), R2
@@ -740,7 +740,7 @@ bfn_arm_done:
 
 // func RMSNormNoScale(x []float32, eps float32)
 // Normalizes x in-place by RMS without weight multiplication.
-TEXT ·RMSNormNoScale(SB), NOSPLIT, $0-28
+TEXT ·rmsNormNoScaleAsm(SB), NOSPLIT, $0-28
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     FMOVS   eps+24(FP), F8

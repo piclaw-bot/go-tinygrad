@@ -13,5 +13,5 @@ func vecSiLUMulGo(dst, a, b []float32) {
 }
 
 func init() {
-	HasVecAsm = true
+	HasVecAsm = RuntimeCapabilities().HasVec
 }

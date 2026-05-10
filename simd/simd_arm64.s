@@ -16,7 +16,7 @@
 #define VFADD_V1_V0_V0 WORD $0x4e21d400
 
 // func Sdot(x, y []float32) float32
-TEXT ·Sdot(SB), NOSPLIT, $0-52
+TEXT ·sdotAsm(SB), NOSPLIT, $0-52
     MOVD    x_base+0(FP), R0
     MOVD    x_len+8(FP), R2
     MOVD    y_base+24(FP), R1
@@ -81,7 +81,7 @@ sdot_done:
     RET
 
 // func Saxpy(alpha float32, x []float32, y []float32)
-TEXT ·Saxpy(SB), NOSPLIT, $0-56
+TEXT ·saxpyAsm(SB), NOSPLIT, $0-56
     FMOVS   alpha+0(FP), F8
     VDUP    V8.S[0], V8.S4          // broadcast alpha
     MOVD    x_base+8(FP), R0
