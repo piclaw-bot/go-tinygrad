@@ -28,8 +28,8 @@ type TurboQuantState struct {
 	Config    TurboQuantConfig
 	RotationK []float32 // [headDim × headDim] random orthogonal matrix for keys
 	RotationV []float32 // [headDim × headDim] random orthogonal matrix for values
-	CodebookK []float32 // [2^keyBits] optimal quantization levels for keys
-	CodebookV []float32 // [2^valueBits] optimal quantization levels for values
+	CodebookK []float32 // [2^keyBits] reserved for future non-uniform quantization
+	CodebookV []float32 // [2^valueBits] reserved for future non-uniform quantization
 	HeadDim   int
 	NumLayers int
 }
@@ -97,7 +97,11 @@ func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, cod
 		return make([]byte, (dim*bits+7)/8), vMin, 0
 	}
 
-	// Step 3: quantize each coordinate to [0, 2^bits - 1]
+	// Step 3: quantize each coordinate to [0, 2^bits - 1]. The codebook
+	// parameter is reserved for a future non-uniform quantizer; the current
+	// implementation deliberately stays uniform because it has lower error in
+	// the existing roundtrip tests.
+	_ = codebook
 	nLevels := 1 << bits
 	indices := make([]byte, dim)
 	for i, v := range rotated {
@@ -142,7 +146,9 @@ func (tq *TurboQuantState) DequantizeVector(packed []byte, vMin, scale float32, 
 	return out
 }
 
-// randomOrthogonal generates a random orthogonal matrix via Gram-Schmidt.
+// randomOrthogonal generates a row-major random orthogonal matrix via
+// modified Gram-Schmidt. Columns are orthonormal (Q^T Q = I); callers apply Q
+// for rotation and Q^T for inverse rotation.
 func randomOrthogonal(dim int, rng *rand.Rand) []float32 {
 	// Generate random Gaussian matrix
 	mat := make([]float32, dim*dim)

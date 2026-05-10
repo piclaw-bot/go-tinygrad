@@ -92,6 +92,10 @@ type LlamaModel struct {
 	Large         bool      // true if weights are NOT pre-transposed
 	Quantized     bool      // true if using GPTQ INT4 weights
 	OnTheFlyQuant bool      // true = keep INT4 in memory, dequant per token (slow but low memory) // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
+
+	// TurboQuant state keyed by headDim. Gemma4 uses per-layer head dimensions,
+	// so each distinct headDim needs its own orthogonal rotation matrix.
+	TurboQuantStates map[int]*TurboQuantState
 }
 
 // LlamaLayer holds weights for one decoder layer.
@@ -865,21 +869,28 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
 	headDim := cfg.HeadDim
-	kvDim := headDim * numKVHeads
 	inter := cfg.Intermediate
 
 	// Allocate KV cache (with optional TurboQuant compression)
-	var tqState *TurboQuantState
-	if os.Getenv("TURBO_QUANT") == "1" {
-		tqCfg := DefaultTurboQuantConfig()
-		tqState = NewTurboQuantState(headDim, cfg.NumLayers, tqCfg)
-		fmt.Printf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
-			tqCfg.KeyBits, tqCfg.ValueBits, tqCfg.ResidualWindow)
-	}
-	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * kvDim]
+	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * layerKVDim]
 	kvCacheV := make([][]float32, cfg.NumLayers)
 	var compressedKV []*CompressedKVCache
-	if tqState != nil {
+	if os.Getenv("TURBO_QUANT") == "1" {
+		tqCfg := DefaultTurboQuantConfig()
+		if m.TurboQuantStates == nil {
+			m.TurboQuantStates = make(map[int]*TurboQuantState)
+		}
+		getTQ := func(layerHeadDim int) *TurboQuantState {
+			if tq := m.TurboQuantStates[layerHeadDim]; tq != nil {
+				return tq
+			}
+			tq := NewTurboQuantState(layerHeadDim, cfg.NumLayers, tqCfg)
+			m.TurboQuantStates[layerHeadDim] = tq
+			return tq
+		}
+		fmt.Printf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
+			tqCfg.KeyBits, tqCfg.ValueBits, tqCfg.ResidualWindow)
+
 		compressedKV = make([]*CompressedKVCache, cfg.NumLayers)
 		for l := range compressedKV {
 			layerHD := headDim
@@ -887,12 +898,18 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				layerHD = m.Layers[l].HeadDimLocal
 			}
 			layerKVDim := numKVHeads * layerHD
-			compressedKV[l] = NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tqState, tqState.IsProtectedLayer(l))
+			tq := getTQ(layerHD)
+			compressedKV[l] = NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tq, tq.IsProtectedLayer(l))
 		}
 	} else {
 		for l := range kvCacheK {
-			kvCacheK[l] = make([]float32, 0, 2048*kvDim)
-			kvCacheV[l] = make([]float32, 0, 2048*kvDim)
+			layerHD := headDim
+			if m.Layers[l].HeadDimLocal > 0 {
+				layerHD = m.Layers[l].HeadDimLocal
+			}
+			layerKVDim := numKVHeads * layerHD
+			kvCacheK[l] = make([]float32, 0, 2048*layerKVDim)
+			kvCacheV[l] = make([]float32, 0, 2048*layerKVDim)
 		}
 	}
 
@@ -1137,10 +1154,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			if k != nil {
 				if compressedKV != nil {
-					compressedKV[l].Append(k, v)
+					compressedKV[kvLayer].Append(k, v)
 				} else {
-					kvCacheK[l] = append(kvCacheK[l], k...)
-					kvCacheV[l] = append(kvCacheV[l], v...)
+					kvCacheK[kvLayer] = append(kvCacheK[kvLayer], k...)
+					kvCacheV[kvLayer] = append(kvCacheV[kvLayer], v...)
 				}
 			}
 

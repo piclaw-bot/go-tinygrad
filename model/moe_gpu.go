@@ -117,6 +117,11 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	}
 	results := make([]expertResult, len(selected))
 	var wg sync.WaitGroup
+	type uploadCandidate struct {
+		expertID int
+		poolKey  int
+	}
+	uploadAfterCPU := make([]uploadCandidate, 0, len(selected))
 
 	for si, exp := range selected {
 		eid := exp.id
@@ -125,7 +130,10 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		}
 
 		poolKey := layerIdx*cfg.NumExperts + eid
-		gpuEntry := pool.Get(poolKey)
+		var gpuEntry *gpu.ExpertEntry
+		if pool != nil {
+			gpuEntry = pool.Get(poolKey)
+		}
 
 		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil {
 			// GPU path: reuse pre-allocated buffers
@@ -139,7 +147,13 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 				weight: exp.score,
 			}
 		} else {
-			// CPU fallback (parallel)
+			// CPU fallback (parallel). CUDA uploads are deliberately deferred until
+			// after wg.Wait(); the CUDA driver context is thread-local and the expert
+			// pool may evict GPU buffers, so doing this inside worker goroutines can
+			// race with in-flight GPU work.
+			if pool != nil {
+				uploadAfterCPU = append(uploadAfterCPU, uploadCandidate{expertID: eid, poolKey: poolKey})
+			}
 			wg.Add(1)
 			go func(idx int, expertID int, w float32) {
 				defer wg.Done()
@@ -154,31 +168,34 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 				down := make([]float32, h)
 				GemvMLQ(down, gate, layer.ExpertDownW[expertID])
 				results[idx] = expertResult{down: down, weight: w}
-
-				// Upload to expert pool for next time (native MLX)
-				if pool != nil {
-					entry := &gpu.ExpertEntry{ExpertID: poolKey}
-					ew := layer.ExpertGateW[expertID]
-					gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-					ew = layer.ExpertUpW[expertID]
-					uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-					ew = layer.ExpertDownW[expertID]
-					dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-					if err1 == nil && err2 == nil && err3 == nil {
-						entry.GateW = gw
-						entry.UpW = uw
-						entry.DownW = dw
-						entry.SizeBytes = int64(3 * moeInter * h / 2)
-						evicted := pool.Put(entry)
-						if evicted != nil {
-							gpu.FreeExpertEntry(evicted)
-						}
-					}
-				}
 			}(si, eid, exp.score)
 		}
 	}
 	wg.Wait()
+
+	// Warm the GPU expert pool sequentially after CPU fallback work completes.
+	for _, cand := range uploadAfterCPU {
+		if pool.Get(cand.poolKey) != nil {
+			continue
+		}
+		entry := &gpu.ExpertEntry{ExpertID: cand.poolKey}
+		ew := layer.ExpertGateW[cand.expertID]
+		gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		ew = layer.ExpertUpW[cand.expertID]
+		uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		ew = layer.ExpertDownW[cand.expertID]
+		dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		if err1 == nil && err2 == nil && err3 == nil {
+			entry.GateW = gw
+			entry.UpW = uw
+			entry.DownW = dw
+			entry.SizeBytes = int64(3 * moeInter * h / 2)
+			evicted := pool.Put(entry)
+			if evicted != nil {
+				gpu.FreeExpertEntry(evicted)
+			}
+		}
+	}
 
 	for _, r := range results {
 		if r.down == nil {

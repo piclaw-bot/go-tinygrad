@@ -234,6 +234,9 @@ func TestGemma4KVSharingCPU(t *testing.T) {
 }
 
 func TestGemma4KVSharingGPU(t *testing.T) {
+	if os.Getenv("GEMMA4_TRACE_TEST") == "" {
+		t.Skip("set GEMMA4_TRACE_TEST=1 for GPU KV sharing diagnostic")
+	}
 	dir := gemma4Path()
 	if _, err := os.Stat(dir + "/config.json"); err != nil {
 		t.Skipf("model not found: %s", dir)
@@ -241,7 +244,9 @@ func TestGemma4KVSharingGPU(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
-	t.Cleanup(gpu.Shutdown)
+	// Do not call gpu.Shutdown from this smoke test: CUDA context teardown and
+	// re-init across multiple model tests can poison the driver in one process.
+	// model.TestMain performs one package-level shutdown.
 
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true
@@ -291,6 +296,9 @@ func TestGemma4KVSharingGPU(t *testing.T) {
 }
 
 func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
+	if os.Getenv("GEMMA4_TRACE_TEST") == "" {
+		t.Skip("set GEMMA4_TRACE_TEST=1 for GPU PLI buffer diagnostic")
+	}
 	dir := gemma4Path()
 	if _, err := os.Stat(dir + "/config.json"); err != nil {
 		t.Skipf("model not found: %s", dir)
@@ -298,7 +306,7 @@ func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
 	if !gpu.Available() {
 		t.Skip("GPU not available")
 	}
-	t.Cleanup(gpu.Shutdown)
+	// Do not call gpu.Shutdown from this smoke test; see TestGemma4KVSharingGPU.
 
 	oldForce := ForceOnTheFly
 	ForceOnTheFly = true

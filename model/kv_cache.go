@@ -12,6 +12,11 @@ type CompressedKVCache struct {
 	CompressedK []compressedEntry
 	CompressedV []compressedEntry
 
+	// Reusable decompression scratch buffers. GetK/GetV return these when
+	// compressed entries exist, so callers must treat returned slices as ephemeral.
+	scratchK []float32
+	scratchV []float32
+
 	// Config
 	kvDim          int
 	numKVHeads     int
@@ -48,6 +53,9 @@ func NewCompressedKVCache(kvDim, numKVHeads, headDim int, tq *TurboQuantState, i
 
 // Append adds a new K/V pair for the current position.
 func (c *CompressedKVCache) Append(k, v []float32) {
+	if len(k) != c.kvDim || len(v) != c.kvDim {
+		panic("CompressedKVCache.Append: K/V vector length mismatch")
+	}
 	c.FullK = append(c.FullK, k...)
 	c.FullV = append(c.FullV, v...)
 	c.seqLen++
@@ -108,8 +116,12 @@ func (c *CompressedKVCache) GetK() []float32 {
 	if len(c.CompressedK) == 0 {
 		return c.FullK
 	}
-	// Decompress + concatenate
-	out := make([]float32, 0, c.seqLen*c.kvDim)
+	// Decompress + concatenate into reusable scratch storage.
+	need := c.seqLen * c.kvDim
+	if cap(c.scratchK) < need {
+		c.scratchK = make([]float32, 0, need)
+	}
+	out := c.scratchK[:0]
 	for _, entry := range c.CompressedK {
 		for h := 0; h < c.numKVHeads; h++ {
 			bytesPerHead := (c.headDim*c.tq.Config.KeyBits + 7) / 8
@@ -119,6 +131,7 @@ func (c *CompressedKVCache) GetK() []float32 {
 		}
 	}
 	out = append(out, c.FullK...)
+	c.scratchK = out
 	return out
 }
 
@@ -127,7 +140,11 @@ func (c *CompressedKVCache) GetV() []float32 {
 	if len(c.CompressedV) == 0 {
 		return c.FullV
 	}
-	out := make([]float32, 0, c.seqLen*c.kvDim)
+	need := c.seqLen * c.kvDim
+	if cap(c.scratchV) < need {
+		c.scratchV = make([]float32, 0, need)
+	}
+	out := c.scratchV[:0]
 	for _, entry := range c.CompressedV {
 		for h := 0; h < c.numKVHeads; h++ {
 			bytesPerHead := (c.headDim*c.tq.Config.ValueBits + 7) / 8
@@ -137,6 +154,7 @@ func (c *CompressedKVCache) GetV() []float32 {
 		}
 	}
 	out = append(out, c.FullV...)
+	c.scratchV = out
 	return out
 }
 
@@ -155,15 +173,26 @@ func (c *CompressedKVCache) FullCount() int {
 	return len(c.FullK) / c.kvDim
 }
 
-// MemoryBytes returns approximate memory usage (compressed + full).
+// Reset clears the cache for reuse with a new sequence.
+func (c *CompressedKVCache) Reset() {
+	c.FullK = c.FullK[:0]
+	c.FullV = c.FullV[:0]
+	c.CompressedK = c.CompressedK[:0]
+	c.CompressedV = c.CompressedV[:0]
+	c.scratchK = c.scratchK[:0]
+	c.scratchV = c.scratchV[:0]
+	c.seqLen = 0
+}
+
+// MemoryBytes returns approximate memory usage (compressed + full, excluding slice headers).
 func (c *CompressedKVCache) MemoryBytes() int64 {
 	full := int64(len(c.FullK)+len(c.FullV)) * 4
 	var compressed int64
 	for _, e := range c.CompressedK {
-		compressed += int64(len(e.Packed)) + 8 // packed + vMin + scale
+		compressed += int64(len(e.Packed)) + int64(len(e.HeadVMin)+len(e.HeadScale))*4
 	}
 	for _, e := range c.CompressedV {
-		compressed += int64(len(e.Packed)) + 8
+		compressed += int64(len(e.Packed)) + int64(len(e.HeadVMin)+len(e.HeadScale))*4
 	}
 	return full + compressed
 }

@@ -127,8 +127,8 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 		kvLayer = layer.KVSourceLayer
 	}
 	if k != nil {
-		kvCacheK[layerIdx] = append(kvCacheK[layerIdx], k...)
-		kvCacheV[layerIdx] = append(kvCacheV[layerIdx], v...)
+		kvCacheK[kvLayer] = append(kvCacheK[kvLayer], k...)
+		kvCacheV[kvLayer] = append(kvCacheV[kvLayer], v...)
 	}
 
 	// Attention

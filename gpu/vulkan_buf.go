@@ -99,12 +99,16 @@ func VkBufAlloc(sizeBytes int) (*VkBuf, error) {
 	}
 
 	if r := vkBindBufferMemory(vkDevice, buf, mem, 0); r != VK_SUCCESS {
+		vkFreeMemory(vkDevice, mem, nil)
+		vkDestroyBuffer(vkDevice, buf, nil)
 		return nil, fmt.Errorf("vkBindBufferMemory: %d", r)
 	}
 
 	// Map memory
 	var mapped unsafe.Pointer
 	if r := vkMapMemory(vkDevice, mem, 0, uint64(sizeBytes), 0, &mapped); r != VK_SUCCESS {
+		vkFreeMemory(vkDevice, mem, nil)
+		vkDestroyBuffer(vkDevice, buf, nil)
 		return nil, fmt.Errorf("vkMapMemory: %d", r)
 	}
 
@@ -113,6 +117,9 @@ func VkBufAlloc(sizeBytes int) (*VkBuf, error) {
 
 // Upload copies float32 data to the buffer.
 func (b *VkBuf) Upload(data []float32) {
+	if len(data) == 0 {
+		return
+	}
 	src := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), len(data)*4)
 	dst := unsafe.Slice((*byte)(b.mapped), len(data)*4)
 	copy(dst, src)
@@ -120,6 +127,9 @@ func (b *VkBuf) Upload(data []float32) {
 
 // Download copies float32 data from the buffer.
 func (b *VkBuf) Download(data []float32) {
+	if len(data) == 0 {
+		return
+	}
 	src := unsafe.Slice((*byte)(b.mapped), len(data)*4)
 	dst := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), len(data)*4)
 	copy(dst, src)
@@ -127,9 +137,19 @@ func (b *VkBuf) Download(data []float32) {
 
 // Free releases the buffer and its memory.
 func (b *VkBuf) Free() {
+	if b == nil {
+		return
+	}
 	if b.mapped != nil {
 		vkUnmapMemory(vkDevice, b.mem)
+		b.mapped = nil
 	}
-	vkDestroyBuffer(vkDevice, b.buf, nil)
-	vkFreeMemory(vkDevice, b.mem, nil)
+	if b.buf != 0 {
+		vkDestroyBuffer(vkDevice, b.buf, nil)
+		b.buf = 0
+	}
+	if b.mem != 0 {
+		vkFreeMemory(vkDevice, b.mem, nil)
+		b.mem = 0
+	}
 }
