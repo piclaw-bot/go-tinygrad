@@ -1504,12 +1504,16 @@ func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads
 	headsPerKV := numHeads / numKVHeads
 
 	out := make([]float32, h)
+	if seqLen == 0 {
+		return out
+	}
+	scores := make([]float32, seqLen)
 
 	for head := 0; head < numHeads; head++ {
 		kvHead := head / headsPerKV
 
-		// Compute attention scores for this head against all cached K
-		scores := make([]float32, seqLen)
+		// Compute attention scores for this head against all cached K.
+		// Reuse one score buffer across heads to avoid per-head allocations.
 		qHead := q[head*headDim : (head+1)*headDim]
 		for t := 0; t < seqLen; t++ {
 			kHead := kCache[t*kvDim+kvHead*headDim : t*kvDim+(kvHead+1)*headDim]
@@ -1533,13 +1537,12 @@ func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads
 			scores[i] *= inv
 		}
 
-		// Weighted sum of V
-		for d := 0; d < headDim; d++ {
-			sum := float32(0)
-			for t := 0; t < seqLen; t++ {
-				sum += scores[t] * vCache[t*kvDim+kvHead*headDim+d]
-			}
-			out[head*headDim+d] = sum
+		// Weighted sum of V. Iterate by cached token and use SIMD SAXPY on the
+		// contiguous head slice instead of scalar strided accumulation per dim.
+		outHead := out[head*headDim : (head+1)*headDim]
+		for t := 0; t < seqLen; t++ {
+			vHead := vCache[t*kvDim+kvHead*headDim : t*kvDim+(kvHead+1)*headDim]
+			simd.Saxpy(scores[t], vHead, outHead)
 		}
 	}
 	return out

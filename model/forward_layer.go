@@ -149,14 +149,10 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	// Post-attention norm + residual
 	if layer.PreFFNNorm != nil {
 		rmsNormInPlace(oOut, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
-		for i := range hidden {
-			hidden[i] = residual[i] + oOut[i]
-		}
+		simd.VecAdd(hidden, residual, oOut)
 		copy(residual, hidden)
 	} else {
-		for i := range hidden {
-			hidden[i] = residual[i] + oOut[i]
-		}
+		simd.VecAdd(hidden, residual, oOut)
 		copy(residual, hidden)
 		rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(cfg.RMSNormEps))
 	}

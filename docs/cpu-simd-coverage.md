@@ -18,7 +18,7 @@ wrappers for every hot decode/prefill primitive, with scalar Go as fallback.
 | RoPE | scalar Go | ❌ | ❌ | Needs vectorized pair rotation |
 | RoPEPartial | scalar Go | ❌ | ❌ | High priority for Gemma4 CPU path |
 | GQA attention scores | `simd.Sdot` per head/token | ✅ | ✅ | Intermediate improvement; still allocates scores per head |
-| GQA attention output | scalar Go | ❌ | ❌ | Candidate for fused per-head decode kernel |
+| GQA attention output | `simd.Saxpy` per cached-token V head | ✅ | ✅ | Score buffer reused across heads; full fused attention still future work |
 | F32 GEMV dense | `simd.SgemmNN` when pre-transposed | ✅ | ✅ | `gemvNT` path uses `simd.Sdot` row-wise |
 | MLX4 GEMV | scalar unpack/dequant loop | ❌ | ❌ | Biggest CPU gap for quantized models and MoE experts |
 | GPTQ Q4 GEMV | scalar unpack/dequant loop | ❌ | ❌ | Needs AVX2/NEON nibble unpack + FMA |
@@ -63,7 +63,7 @@ BenchmarkCPUHotGELUTanhMul8192          ~187 µs/op, 0 allocs
 BenchmarkCPUHotSiLUMul8192              ~69 µs/op, 0 allocs
 BenchmarkCPUHotVecScale3584             ~0.17 µs/op, 0 allocs
 BenchmarkCPUHotRoPEPartialGemma4SWA     ~2.6 µs/op, 0 allocs
-BenchmarkCPUHotGQAAttentionDecode512    ~1.1–1.7 ms/op, 13 allocs  (after Sdot wiring)
+BenchmarkCPUHotGQAAttentionDecode512    ~0.29 ms/op, 2 allocs  (Sdot scores + Saxpy V accumulation)
 BenchmarkCPUHotGemvMLQ1536x2048         ~10.4 ms/op, 0 allocs
 ```
 
@@ -71,6 +71,6 @@ BenchmarkCPUHotGemvMLQ1536x2048         ~10.4 ms/op, 0 allocs
 
 1. Vectorize `RoPEPartial` on AVX2 and NEON.
 2. Add MLX4 GEMV SIMD kernels for CPU quantized decode and MoE experts.
-3. Eliminate GQA attention scratch allocations and fuse score/softmax/output where practical.
-4. Add allocation gates for decode once scratch-buffer reuse lands.
+3. Eliminate the remaining GQA attention result/scratch allocations with caller-owned scratch buffers.
+4. Add allocation gates for decode once broader scratch-buffer reuse lands.
 5. Runtime-verify arm64 NEON kernels on Orange Pi 6+.
