@@ -10,6 +10,22 @@ Inspired by the [ds4 streaming PR](https://github.com/antirez/ds4/pull/24),
 which adds mmap-backed streamed weight access with hot-residency plans,
 madvise-based eviction, and expert cache tracking for DeepSeek on Metal.
 
+## Eager mmap loading
+
+By default, safetensors files are mmap'd lazily, so the OS may fault pages during
+first use. For batch/server deployments where predictable first-token latency is
+more important than fastest startup, pass `--eager-load` (or set
+`GO_PHERENCE_EAGER_LOAD=1`). This issues `MADV_WILLNEED` for each mmap'd shard
+and touches one byte per page at model load time.
+
+```bash
+./bin/llmserver -model models/qwen2.5-7b-mlx4 --eager-load -gpu
+./bin/llmgen -model models/gemma4-e2b-mlx4 --eager-load --turbo-quant
+```
+
+The loader logs the total mapped bytes and elapsed pre-fault time. Sharded models
+pre-fault each shard and report the aggregate size.
+
 ## Memory Tiers
 
 ```

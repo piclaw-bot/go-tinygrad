@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/rcarmo/go-pherence/safetensors"
@@ -222,6 +223,17 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		f = sf
 	}
 	defer f.Close()
+
+	if os.Getenv("GO_PHERENCE_EAGER_LOAD") == "1" {
+		if ef, ok := f.(interface{ EagerLoad() (int64, error) }); ok {
+			t0 := time.Now()
+			bytes, err := ef.EagerLoad()
+			if err != nil {
+				return nil, fmt.Errorf("eager load safetensors: %w", err)
+			}
+			fmt.Printf("  Eager loaded %.1f MB of mmap'd weights in %.2fs\n", float64(bytes)/(1024*1024), time.Since(t0).Seconds())
+		}
+	}
 
 	// Try loading quantization config (GPTQ)
 	if qcData, err := os.ReadFile(dir + "/quantize_config.json"); err == nil {

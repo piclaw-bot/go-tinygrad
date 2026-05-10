@@ -3,6 +3,8 @@ package model
 import (
 	"fmt"
 	"math"
+	"os"
+	"time"
 
 	"github.com/rcarmo/go-pherence/safetensors"
 	"github.com/rcarmo/go-pherence/tensor"
@@ -71,6 +73,15 @@ func LoadGTESmall(path string) (*BertModel, error) {
 		return nil, err
 	}
 	defer f.Close()
+
+	if os.Getenv("GO_PHERENCE_EAGER_LOAD") == "1" {
+		t0 := time.Now()
+		bytes, err := f.EagerLoad()
+		if err != nil {
+			return nil, fmt.Errorf("eager load safetensors: %w", err)
+		}
+		fmt.Printf("  Eager loaded %.1f MB of mmap'd weights in %.2fs\n", float64(bytes)/(1024*1024), time.Since(t0).Seconds())
+	}
 
 	cfg := GTESmallConfig
 	m := &BertModel{Config: cfg}

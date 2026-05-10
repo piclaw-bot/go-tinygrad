@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"syscall"
 )
 
@@ -24,6 +25,33 @@ type File struct {
 	mmapData   []byte       // full mmap'd region (nil if not mmap'd)
 	mmapFd     *os.File     // file handle for mmap'd file (nil if not mmap'd)
 	Advisor    *MmapAdvisor // madvise tracking (nil if not mmap'd)
+}
+
+var eagerLoadSink byte
+
+// EagerLoad asks the OS to read the mmap'd file and then touches one byte per
+// page to fault pages in now instead of during first-token inference.
+// It returns the number of bytes covered. Safe to call on non-mmap'd files.
+func (f *File) EagerLoad() (int64, error) {
+	if f == nil || len(f.mmapData) == 0 {
+		return 0, nil
+	}
+	if f.Advisor != nil {
+		f.Advisor.Prefetch(0, int64(len(f.mmapData)))
+	}
+	pageSize := syscall.Getpagesize()
+	if pageSize <= 0 {
+		pageSize = 4096
+	}
+	var sink byte
+	for off := 0; off < len(f.mmapData); off += pageSize {
+		sink ^= f.mmapData[off]
+	}
+	// Touch the final byte so short/non-page-aligned files are fully covered.
+	sink ^= f.mmapData[len(f.mmapData)-1]
+	eagerLoadSink ^= sink
+	runtime.KeepAlive(f.mmapData)
+	return int64(len(f.mmapData)), nil
 }
 
 // Close releases mmap resources. Safe to call on non-mmap'd files.
@@ -200,6 +228,22 @@ func float16ToFloat32(h uint16) float32 {
 type ShardedFile struct {
 	shards  map[string]*File  // filename → loaded shard
 	mapping map[string]string // tensor name → filename
+}
+
+// EagerLoad pre-faults all mapped shards and returns total bytes covered.
+func (sf *ShardedFile) EagerLoad() (int64, error) {
+	if sf == nil {
+		return 0, nil
+	}
+	var total int64
+	for name, f := range sf.shards {
+		n, err := f.EagerLoad()
+		if err != nil {
+			return total, fmt.Errorf("eager load shard %s: %w", name, err)
+		}
+		total += n
+	}
+	return total, nil
 }
 
 // Close releases all shard resources.

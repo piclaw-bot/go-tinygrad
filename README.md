@@ -141,9 +141,11 @@ curl -s http://localhost:8080/v1/chat/completions \
 ```
 
 All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU).
-CPU generation also supports `--turbo-quant` to enable TurboQuant KV-cache compression
-(4-bit keys, 2-bit values, protected first/last layers, 128-token residual window).
-TurboQuant is currently CPU-backend only; GPU KV compression is a future step.
+Use `--eager-load` to pre-fault mmap'd safetensors weights at startup for more
+predictable first-token latency. CPU generation also supports `--turbo-quant` to
+enable TurboQuant KV-cache compression (4-bit keys, 2-bit values, protected
+first/last layers, 128-token residual window). TurboQuant is currently CPU-backend
+only; GPU KV compression is a future step.
 
 ## Architecture Details
 
@@ -164,6 +166,7 @@ TurboQuant is currently CPU-backend only; GPU KV compression is a future step.
 - **Batched prefill** — GEMM for multi-token prompt processing
 - **Hybrid forward** — GPU layers + CPU layers with `--gpu-layers N`
 - **Weight budget** — tiered memory: GPU VRAM, pinned CPU, mmap with madvise
+- **Eager mmap loading** — optional `--eager-load` startup pre-faulting for stable latency
 - **Chunked LM head** — splits across available VRAM
 - **GPU DevBuf** — device-agnostic buffers, lazy CPU↔GPU transfer
 - **Chat templates** — Gemma4 (`<|turn>`), Qwen3 (`<|im_start|>`)

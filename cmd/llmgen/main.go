@@ -16,8 +16,12 @@ func main() {
 	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
+	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
 
+	if *eagerLoad {
+		os.Setenv("GO_PHERENCE_EAGER_LOAD", "1")
+	}
 	if *useGPU {
 		model.ForceOnTheFly = true
 		if *turboQuant {

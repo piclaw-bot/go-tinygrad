@@ -128,3 +128,30 @@ func TestMmapAdvisorWithFile(t *testing.T) {
 	nMerged, _, _ := a.Stats()
 	t.Logf("after merge: %d ranges (was %d)", nMerged, nRanges)
 }
+
+func TestEagerLoadWithFile(t *testing.T) {
+	path := "../../models/smollm2-135m/model.safetensors"
+	f, err := Open(path)
+	if err != nil {
+		path = "../models/smollm2-135m/model.safetensors"
+		f, err = Open(path)
+		if err != nil {
+			t.Skipf("model not found: %v", err)
+		}
+	}
+	defer f.Close()
+
+	bytes, err := f.EagerLoad()
+	if err != nil {
+		t.Fatalf("EagerLoad: %v", err)
+	}
+	if bytes != int64(len(f.mmapData)) {
+		t.Fatalf("EagerLoad bytes=%d want %d", bytes, len(f.mmapData))
+	}
+	nRanges, hotBytes, peakBytes := f.Advisor.Stats()
+	t.Logf("eager loaded %.2f MB: ranges=%d hot=%.2f MB peak=%.2f MB",
+		float64(bytes)/(1024*1024), nRanges, float64(hotBytes)/(1024*1024), float64(peakBytes)/(1024*1024))
+	if nRanges == 0 || hotBytes == 0 || peakBytes == 0 {
+		t.Fatal("expected eager load to update advisor stats")
+	}
+}
