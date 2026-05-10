@@ -953,20 +953,14 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			tokID = output[len(output)-1]
 		}
 
-		// Embed single token
-		embData := m.EmbedTokens.Data()
+		// Embed single token using the same helper exposed for verifier/MTP paths.
 		hidden := make([]float32, h)
-		copy(hidden, embData[tokID*h:(tokID+1)*h])
+		if err := m.ScaledTokenEmbeddingInto(hidden, tokID); err != nil {
+			panic(err)
+		}
 
 		pos := step
 
-		// Gemma3: scale embeddings by sqrt(hidden_size), BF16 precision
-		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
-			scale := float32(math.Sqrt(float64(h)))
-			for i := range hidden {
-				hidden[i] = toBF16(hidden[i] * scale)
-			}
-		}
 		if debugOpHook != nil {
 			debugOpHook("cpu", step, 0, "embed_scaled", hidden)
 		}
@@ -1395,28 +1389,12 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		// LM head: logits = hidden @ lm_head^T (greedy: take argmax)
 		if step >= len(tokenIDs)-1 {
 			logits := make([]float32, cfg.VocabSize)
-			lmData := m.LMHead.Data()
-			for v := 0; v < cfg.VocabSize; v++ {
-				sum := float32(0)
-				row := lmData[v*h : (v+1)*h]
-				if h >= 8 {
-					sum = simd.Sdot(hidden, row)
-				} else {
-					for d := 0; d < h; d++ {
-						sum += hidden[d] * row[d]
-					}
-				}
-				logits[v] = sum
+			if err := m.LMHeadLogitsInto(logits, hidden); err != nil {
+				panic(err)
 			}
-
-			// Argmax
-			maxIdx := 0
-			maxVal := logits[0]
-			for i, v := range logits[1:] {
-				if v > maxVal {
-					maxVal = v
-					maxIdx = i + 1
-				}
+			maxIdx, _, err := ArgmaxLogits(logits)
+			if err != nil {
+				panic(err)
 			}
 			if debugLogitsHook != nil {
 				debugLogitsHook("cpu", step, hidden, logits)

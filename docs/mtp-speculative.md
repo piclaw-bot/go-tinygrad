@@ -36,6 +36,7 @@ Loader status:
 - `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
 - `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
 - Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
+- Verifier-side helper methods now expose raw/scaled main token embeddings, LM-head logits, and greedy argmax for reuse outside `Generate`.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
 
@@ -69,13 +70,14 @@ Verifier (main model batched forward):
 ## Implementation plan
 
 1. **Drafter loader** ✅ — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
-2. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
-3. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
-4. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
-5. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
-6. **Accept/reject** — keep matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
-7. **KV cache sync** — commit candidate KV for accepted tokens plus bonus token; discard rejected candidate KV tail.
-8. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
+2. **Main-model verifier helper primitives** ✅ — raw/scaled token embeddings, LM-head logits, and argmax are now reusable outside `Generate`.
+3. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
+4. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
+5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
+6. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
+7. **Accept/reject** — keep matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
+8. **KV cache sync** — commit candidate KV for accepted tokens plus bonus token; discard rejected candidate KV tail.
+9. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations
 
