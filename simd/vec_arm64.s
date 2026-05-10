@@ -206,6 +206,51 @@ vsa_scalar_loop:
 vsa_done:
     RET
 
+// func VecScale(dst, a []float32, scale float32)
+// dst[i] = scale * a[i]
+TEXT ·vecScaleAsm(SB), NOSPLIT, $0-52
+    MOVD    dst_base+0(FP), R3
+    MOVD    a_base+24(FP), R0
+    MOVD    a_len+32(FP), R2
+    FMOVS   scale+48(FP), F8
+    VDUP    V8.S[0], V8.S4
+
+    CMP     $8, R2
+    BLT     vs_tail4
+
+vs_loop8:
+    VLD1.P  32(R0), [V0.S4, V1.S4]
+    WORD    $0x6e28dc00  // FMUL V0.4S, V0.4S, V8.4S
+    WORD    $0x6e28dc21  // FMUL V1.4S, V1.4S, V8.4S
+    VST1.P  [V0.S4, V1.S4], 32(R3)
+    SUB     $8, R2, R2
+    CMP     $8, R2
+    BGE     vs_loop8
+
+vs_tail4:
+    CMP     $4, R2
+    BLT     vs_scalar
+    VLD1.P  16(R0), [V0.S4]
+    WORD    $0x6e28dc00  // FMUL V0.4S, V0.4S, V8.4S
+    VST1.P  [V0.S4], 16(R3)
+    SUB     $4, R2, R2
+
+vs_scalar:
+    CMP     $0, R2
+    BEQ     vs_done
+
+vs_scalar_loop:
+    FMOVS   (R0), F0
+    FMULS   F8, F0, F0
+    FMOVS   F0, (R3)
+    ADD     $4, R0
+    ADD     $4, R3
+    SUB     $1, R2, R2
+    CBNZ    R2, vs_scalar_loop
+
+vs_done:
+    RET
+
 // func RMSNorm(x, w []float32, eps float32)
 TEXT ·rmsNormAsm(SB), NOSPLIT, $0-52
     MOVD    x_base+0(FP), R0

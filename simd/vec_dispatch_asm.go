@@ -15,6 +15,9 @@ func vecMulAsm(dst, a, b []float32)
 func vecScaleAddAsm(dst, a, b []float32, scale float32)
 
 //go:noescape
+func vecScaleAsm(dst, a []float32, scale float32)
+
+//go:noescape
 func rmsNormAsm(x, w []float32, eps float32)
 
 //go:noescape
@@ -80,6 +83,15 @@ func VecScaleAdd(dst, a, b []float32, scale float32) {
 		return
 	}
 	vecScaleAddGo(dst, a, b, scale)
+}
+
+// VecScale computes dst[i] = scale*a[i]. dst may alias a.
+func VecScale(dst, a []float32, scale float32) {
+	if len(dst) == len(a) && HasVecAsm {
+		vecScaleAsm(dst, a, scale)
+		return
+	}
+	vecScaleGo(dst, a, scale)
 }
 
 // VecSiLUMul computes dst[i] = silu(a[i]) * b[i] where silu(x) = x/(1+exp(-x)).

@@ -9,6 +9,8 @@ func VecMul(dst, a, b []float32) { vecMulGo(dst, a, b) }
 
 func VecScaleAdd(dst, a, b []float32, scale float32) { vecScaleAddGo(dst, a, b, scale) }
 
+func VecScale(dst, a []float32, scale float32) { vecScaleGo(dst, a, scale) }
+
 func VecSiLUMul(dst, a, b []float32) { vecSiLUMulGo(dst, a, b) }
 
 func RMSNorm(x, w []float32, eps float32) { rmsNormGo(x, w, eps) }

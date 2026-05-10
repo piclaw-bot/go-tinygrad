@@ -39,6 +39,12 @@ func vecScaleAddGo(dst, a, b []float32, scale float32) {
 	}
 }
 
+func vecScaleGo(dst, a []float32, scale float32) {
+	for i := range a {
+		dst[i] = a[i] * scale
+	}
+}
+
 func geluTanhMulGo(dst, a, b []float32) {
 	for i := range a {
 		x := a[i]

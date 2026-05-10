@@ -11,7 +11,7 @@ wrappers for every hot decode/prefill primitive, with scalar Go as fallback.
 | `RMSNormBF16` on F32 buffers | `simd.RMSNormBF16` wrapper | ✅ | ✅* | arm64 runtime verification pending |
 | `RMSNormNoScale` | `simd.RMSNormNoScale` wrapper | ✅ | ✅* | Gemma4 CPU V norm now routes through wrapper |
 | Residual add | `simd.VecAdd` | ✅ | ✅ | Decoder and `ForwardLayer` use wrapper |
-| Residual + scale | `simd.VecScaleAdd` | ✅ | ✅ | Available; not yet used everywhere |
+| Residual + scale | `simd.VecScaleAdd` / `simd.VecScale` | ✅ | ✅ | Gemma4 layer scalar now uses `VecScale` |
 | `ToBF16` | `simd.ToBF16` | ✅ | ✅ | Used for Gemma3/4 truncation semantics |
 | SiLU × Mul | `simd.VecSiLUMul` wrapper | wrapper only | wrapper only | Currently jumps to Go due `exp`; candidate for polynomial SIMD approximation |
 | GELU(tanh) × Mul | `simd.GELUTanhMul` wrapper | wrapper only | wrapper only | Centralized in decoder, `ForwardLayer`, PLI fallback |
@@ -35,6 +35,7 @@ wrappers for every hot decode/prefill primitive, with scalar Go as fallback.
 - `BenchmarkCPUHotRMSNorm3584`
 - `BenchmarkCPUHotGELUTanhMul8192`
 - `BenchmarkCPUHotSiLUMul8192`
+- `BenchmarkCPUHotVecScale3584`
 - `BenchmarkCPUHotRoPEPartialGemma4SWA`
 - `BenchmarkCPUHotGQAAttentionDecode512`
 - `BenchmarkCPUHotGemvMLQ1536x2048`
@@ -60,6 +61,7 @@ go test ./model -run '^$' -bench 'BenchmarkCPUHot' -benchmem
 BenchmarkCPUHotRMSNorm3584              ~0.50 µs/op, 0 allocs
 BenchmarkCPUHotGELUTanhMul8192          ~187 µs/op, 0 allocs
 BenchmarkCPUHotSiLUMul8192              ~69 µs/op, 0 allocs
+BenchmarkCPUHotVecScale3584             ~0.17 µs/op, 0 allocs
 BenchmarkCPUHotRoPEPartialGemma4SWA     ~2.6 µs/op, 0 allocs
 BenchmarkCPUHotGQAAttentionDecode512    ~1.1–1.7 ms/op, 13 allocs  (after Sdot wiring)
 BenchmarkCPUHotGemvMLQ1536x2048         ~10.4 ms/op, 0 allocs

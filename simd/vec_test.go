@@ -33,6 +33,25 @@ func TestVecMul(t *testing.T) {
 	t.Log("VecMul: OK")
 }
 
+func TestVecScale(t *testing.T) {
+	a := []float32{1, -2, 3.5, 4, -5, 6, 7.25, -8, 9}
+	dst := make([]float32, len(a))
+	VecScale(dst, a, 0.5)
+	for i := range a {
+		want := a[i] * 0.5
+		if dst[i] != want {
+			t.Fatalf("VecScale[%d]=%f want %f", i, dst[i], want)
+		}
+	}
+	VecScale(a, a, -2)
+	wantInPlace := []float32{-2, 4, -7, -8, 10, -12, -14.5, 16, -18}
+	for i, want := range wantInPlace {
+		if a[i] != want {
+			t.Fatalf("VecScale in-place[%d]=%f want %f", i, a[i], want)
+		}
+	}
+}
+
 func TestSnrm2(t *testing.T) {
 	x := []float32{3, 4} // sqrt(9+16) = 5
 	got := Snrm2(x)
@@ -42,7 +61,9 @@ func TestSnrm2(t *testing.T) {
 
 	// Larger test
 	x2 := make([]float32, 1024)
-	for i := range x2 { x2[i] = 1.0 }
+	for i := range x2 {
+		x2[i] = 1.0
+	}
 	got2 := Snrm2(x2)
 	want2 := float32(math.Sqrt(1024))
 	if math.Abs(float64(got2-want2)) > 0.01 {
@@ -58,11 +79,15 @@ func TestRMSNorm(t *testing.T) {
 
 	// Reference: rms = sqrt(mean(x^2))
 	ss := float32(0)
-	for _, v := range x { ss += v * v }
+	for _, v := range x {
+		ss += v * v
+	}
 	rms := float32(math.Sqrt(float64(ss/8.0 + eps)))
 
 	want := make([]float32, 8)
-	for i := range x { want[i] = x[i] / rms }
+	for i := range x {
+		want[i] = x[i] / rms
+	}
 
 	RMSNorm(x, w, eps)
 	for i := range x {
@@ -74,7 +99,9 @@ func TestRMSNorm(t *testing.T) {
 	// Test with non-trivial weights
 	x2 := []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
 	w2 := make([]float32, len(x2))
-	for i := range w2 { w2[i] = float32(i+1) * 0.1 }
+	for i := range w2 {
+		w2[i] = float32(i+1) * 0.1
+	}
 	x2copy := make([]float32, len(x2))
 	copy(x2copy, x2)
 
@@ -82,7 +109,9 @@ func TestRMSNorm(t *testing.T) {
 
 	// Verify against Go reference
 	ss2 := float32(0)
-	for _, v := range x2copy { ss2 += v * v }
+	for _, v := range x2copy {
+		ss2 += v * v
+	}
 	inv := float32(1.0 / math.Sqrt(float64(ss2/float32(len(x2copy))+eps)))
 	for i := range x2 {
 		want := w2[i] * x2copy[i] * inv
@@ -128,7 +157,10 @@ func TestVecSiLUMul(t *testing.T) {
 func BenchmarkRMSNorm(b *testing.B) {
 	x := make([]float32, 3584)
 	w := make([]float32, 3584)
-	for i := range x { x[i] = float32(i)*0.001 - 1.0; w[i] = 1.0 }
+	for i := range x {
+		x[i] = float32(i)*0.001 - 1.0
+		w[i] = 1.0
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		RMSNorm(x, w, 1e-6)
@@ -139,16 +171,33 @@ func BenchmarkVecAdd(b *testing.B) {
 	a := make([]float32, 3584)
 	c := make([]float32, 3584)
 	d := make([]float32, 3584)
-	for i := range a { a[i] = float32(i); c[i] = float32(i) * 0.5 }
+	for i := range a {
+		a[i] = float32(i)
+		c[i] = float32(i) * 0.5
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		VecAdd(d, a, c)
 	}
 }
 
+func BenchmarkVecScale(b *testing.B) {
+	a := make([]float32, 3584)
+	d := make([]float32, 3584)
+	for i := range a {
+		a[i] = float32(i) * 0.5
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		VecScale(d, a, 0.125)
+	}
+}
+
 func BenchmarkToBF16(b *testing.B) {
 	x := make([]float32, 3584)
-	for i := range x { x[i] = float32(i) * 0.001 }
+	for i := range x {
+		x[i] = float32(i) * 0.001
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ToBF16(x)

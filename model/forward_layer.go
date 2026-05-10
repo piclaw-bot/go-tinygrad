@@ -230,9 +230,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 
 	// Layer scalar (Gemma4)
 	if layer.LayerScalar != 1.0 {
-		for i := range hidden {
-			hidden[i] *= layer.LayerScalar
-		}
+		simd.VecScale(hidden, hidden, layer.LayerScalar)
 	}
 	if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
 		bf16Slice(hidden)

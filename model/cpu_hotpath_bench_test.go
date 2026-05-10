@@ -53,6 +53,17 @@ func BenchmarkCPUHotSiLUMul8192(b *testing.B) {
 	}
 }
 
+func BenchmarkCPUHotVecScale3584(b *testing.B) {
+	a := benchSeq(3584)
+	dst := make([]float32, len(a))
+	b.ReportAllocs()
+	b.SetBytes(int64(len(a) * 4 * 2))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		simd.VecScale(dst, a, 0.70710677)
+	}
+}
+
 func BenchmarkCPUHotRoPEPartialGemma4SWA(b *testing.B) {
 	numHeads := 8
 	headDim := 256
