@@ -93,11 +93,14 @@ func BenchmarkCPUHotGQAAttentionDecode512(b *testing.B) {
 	q := benchSeq(numHeads * headDim)
 	k := benchSeq(seqLen * numKVHeads * headDim)
 	v := benchSeq(seqLen * numKVHeads * headDim)
+	out := make([]float32, numHeads*headDim)
+	scores := make([]float32, seqLen)
+	scale := float32(1.0 / math.Sqrt(float64(headDim)))
 	b.ReportAllocs()
 	b.SetBytes(int64((len(q) + len(k) + len(v)) * 4))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = gqaAttention(q, k, v, seqLen, numHeads, numKVHeads, headDim)
+		gqaAttentionScaleInto(out, scores, q, k, v, seqLen, numHeads, numKVHeads, headDim, scale)
 	}
 }
 

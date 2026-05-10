@@ -930,6 +930,20 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
 	copy(output, tokenIDs)
 
+	// Reusable CPU decode scratch for GQA attention.
+	maxHeadDim := headDim
+	for i := range m.Layers {
+		if m.Layers[i].HeadDimLocal > maxHeadDim {
+			maxHeadDim = m.Layers[i].HeadDimLocal
+		}
+	}
+	maxSeqLen := len(tokenIDs) + maxTokens
+	if maxSeqLen < 1 {
+		maxSeqLen = 1
+	}
+	attnScoresScratch := make([]float32, maxSeqLen)
+	attnOutScratch := make([]float32, numHeads*maxHeadDim)
+
 	// Process prompt + generate
 	for step := 0; step < len(tokenIDs)+maxTokens-1; step++ {
 		var tokID int
@@ -1187,10 +1201,12 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				kCache = kvCacheK[kvLayer]
 				vCache = kvCacheV[kvLayer]
 			}
+			attnOut = attnOutScratch[:qDim]
+			attnScores := attnScoresScratch[:attnSeqLen]
 			if cfg.ModelType == "gemma4_text" {
-				attnOut = gqaAttentionScale(q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
+				gqaAttentionScaleInto(attnOut, attnScores, q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
 			} else {
-				attnOut = gqaAttention(q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim)
+				gqaAttentionScaleInto(attnOut, attnScores, q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, float32(1.0/math.Sqrt(float64(layerHeadDim))))
 			}
 			if debugOpHook != nil {
 				debugOpHook("cpu", step, l, "attn", attnOut)
@@ -1499,21 +1515,28 @@ func gqaAttention(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, hea
 }
 
 func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int, scale float32) []float32 {
+	out := make([]float32, numHeads*headDim)
+	scores := make([]float32, seqLen)
+	gqaAttentionScaleInto(out, scores, q, kCache, vCache, seqLen, numHeads, numKVHeads, headDim, scale)
+	return out
+}
+
+func gqaAttentionScaleInto(out, scores, q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int, scale float32) {
 	h := numHeads * headDim
 	kvDim := numKVHeads * headDim
 	headsPerKV := numHeads / numKVHeads
-
-	out := make([]float32, h)
+	out = out[:h]
+	clear(out)
 	if seqLen == 0 {
-		return out
+		return
 	}
-	scores := make([]float32, seqLen)
+	scores = scores[:seqLen]
 
 	for head := 0; head < numHeads; head++ {
 		kvHead := head / headsPerKV
 
 		// Compute attention scores for this head against all cached K.
-		// Reuse one score buffer across heads to avoid per-head allocations.
+		// Reuse one caller-owned score buffer across heads.
 		qHead := q[head*headDim : (head+1)*headDim]
 		for t := 0; t < seqLen; t++ {
 			kHead := kCache[t*kvDim+kvHead*headDim : t*kvDim+(kvHead+1)*headDim]
@@ -1545,7 +1568,6 @@ func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads
 			simd.Saxpy(scores[t], vHead, outHead)
 		}
 	}
-	return out
 }
 
 // gemvNTParallel is like gemvNT but parallelized across CPU cores.
