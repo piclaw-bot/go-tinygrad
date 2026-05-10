@@ -36,7 +36,7 @@ Loader status:
 - `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
 - `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
 - Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
-- Verifier-side helper methods now expose raw/scaled main token embeddings, LM-head logits, and greedy argmax for reuse outside `Generate`.
+- Verifier-side helper methods now expose raw/scaled main token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax for reuse outside `Generate`.
 - Staged KV helpers can checkpoint and restore both uncompressed and TurboQuant-backed KV caches for candidate accept/reject rollback.
 - `AcceptMTPDraft` now encodes LiteRT-style accepted-prefix plus bonus-token semantics with verified-token accounting that excludes the bonus token.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
@@ -72,7 +72,7 @@ Verifier (main model batched forward):
 ## Implementation plan
 
 1. **Drafter loader** ✅ — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
-2. **Main-model verifier helper primitives** ✅ — raw/scaled token embeddings, LM-head logits, and argmax are now reusable outside `Generate`.
+2. **Main-model verifier helper primitives** ✅ — raw/scaled token embeddings, Gemma4 per-layer inputs, LM-head logits, and argmax are now reusable outside `Generate`.
 3. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
 4. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
 5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
@@ -123,7 +123,7 @@ Performance notes from public HF cards:
 
 Implementation implications for go-pherence:
 1. Add a main-model `Verify(tokens []int)` path that runs a short batched forward, returns logits for each position, updates candidate KV, and exposes final hidden/projected activations.
-2. Preserve or compute Gemma4 per-layer embeddings for all verifier tokens; LiteRT-LM explicitly feeds `per_layer_embeddings` to verifier.
+2. Preserve or compute Gemma4 per-layer embeddings for all verifier tokens; LiteRT-LM explicitly feeds `per_layer_embeddings` to verifier. `Gemma4PerLayerInputs` now provides the single-token primitive used by `Generate` and future verifier code.
 3. Model the drafter input as `embedding(prev_token) || activation`, not just token IDs.
 4. Add acceptance accounting with accepted-prefix length plus bonus token, mirroring LiteRT-LM.
 5. Consider a `.litertlm` inspector later: section metadata can reveal whether an artifact includes `tf_lite_mtp_drafter`, but implementing the format is not required for native safetensors MTP.

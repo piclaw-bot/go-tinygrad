@@ -40,6 +40,68 @@ func TestTokenEmbeddingHelpers(t *testing.T) {
 	}
 }
 
+func TestGemma4PerLayerInputs(t *testing.T) {
+	m := &LlamaModel{
+		Config: LlamaConfig{
+			HiddenSize:     2,
+			NumLayers:      2,
+			HiddenPerLayer: 2,
+			VocabPerLayer:  2,
+			RMSNormEps:     0,
+		},
+		PerLayerModelProj: []float32{
+			1, 0,
+			1, 0,
+			2, 0,
+			2, 0,
+		},
+		PerLayerProjNorm:   []float32{1, 1},
+		PerLayerProjScale:  1,
+		PerLayerInputScale: 0.5,
+		EmbedPerLayerScale: 1,
+		EmbedPerLayer: []float32{
+			0, 0, 0, 0,
+			10, 20, 30, 40,
+		},
+	}
+	inputs, err := m.Gemma4PerLayerInputs([]float32{1, 99}, 1)
+	if err != nil {
+		t.Fatalf("Gemma4PerLayerInputs: %v", err)
+	}
+	if len(inputs) != 2 {
+		t.Fatalf("len(inputs)=%d want 2", len(inputs))
+	}
+	if want := []float32{5.5, 10.5}; !sameFloat32s(inputs[0], want) {
+		t.Fatalf("inputs[0]=%v want %v", inputs[0], want)
+	}
+	if want := []float32{15.5, 20.5}; !sameFloat32s(inputs[1], want) {
+		t.Fatalf("inputs[1]=%v want %v", inputs[1], want)
+	}
+
+	m.PerLayerModelProj = nil
+	inputs, err = m.Gemma4PerLayerInputs([]float32{1, 2}, 1)
+	if err != nil || inputs != nil {
+		t.Fatalf("disabled per-layer inputs = %v, %v; want nil, nil", inputs, err)
+	}
+}
+
+func TestGemma4PerLayerInputsValidation(t *testing.T) {
+	m := &LlamaModel{
+		Config:             LlamaConfig{HiddenSize: 2, NumLayers: 1, HiddenPerLayer: 2},
+		PerLayerModelProj:  []float32{1, 2, 3},
+		PerLayerProjNorm:   []float32{1, 1},
+		PerLayerProjScale:  1,
+		PerLayerInputScale: 1,
+		EmbedPerLayerScale: 1,
+	}
+	if _, err := m.Gemma4PerLayerInputs([]float32{1}, 0); err == nil {
+		t.Fatal("Gemma4PerLayerInputs accepted short hidden")
+	}
+	if _, err := m.Gemma4PerLayerInputs([]float32{1, 2}, 0); err == nil {
+		t.Fatal("Gemma4PerLayerInputs accepted short projection")
+	}
+}
+
 func TestLMHeadLogitsAndArgmax(t *testing.T) {
 	m := &LlamaModel{
 		Config: LlamaConfig{VocabSize: 3, HiddenSize: 2},

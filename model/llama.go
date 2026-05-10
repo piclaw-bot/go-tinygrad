@@ -965,35 +965,13 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			debugOpHook("cpu", step, 0, "embed_scaled", hidden)
 		}
 
-		// Gemma4: compute per-layer inputs for this token
-		var perLayerInputs [][]float32
-		if m.PerLayerModelProj != nil && cfg.HiddenPerLayer > 0 {
-			hpl := cfg.HiddenPerLayer
-			nl := cfg.NumLayers
-			totalDim := nl * hpl
-			// Project hidden → [numLayers * hiddenPerLayer]
-			proj := make([]float32, totalDim)
-			gemvNT(proj, hidden, m.PerLayerModelProj, h, totalDim)
-			for i := range proj {
-				proj[i] *= m.PerLayerProjScale
-			}
-			// RMSNorm each layer's slice
-			for l := 0; l < nl; l++ {
-				sl := proj[l*hpl : (l+1)*hpl]
-				rmsNormInPlace(sl, m.PerLayerProjNorm, float32(cfg.RMSNormEps))
-			}
-			// Add per-layer embedding if available
-			if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
-				embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
-				for i := range proj {
-					proj[i] = (proj[i] + embRow[i]*m.EmbedPerLayerScale) * m.PerLayerInputScale
-				}
-			}
-			// Split into per-layer slices
-			perLayerInputs = make([][]float32, nl)
-			for l := 0; l < nl; l++ {
-				perLayerInputs[l] = proj[l*hpl : (l+1)*hpl]
-			}
+		// Gemma4: compute per-layer inputs for this token using the same helper
+		// exposed for verifier/MTP paths.
+		perLayerInputs, err := m.Gemma4PerLayerInputs(hidden, tokID)
+		if err != nil {
+			panic(err)
+		}
+		if perLayerInputs != nil {
 			if debugCPUPerLayerInputsOverrideHook != nil {
 				debugCPUPerLayerInputsOverrideHook(step, perLayerInputs)
 			}

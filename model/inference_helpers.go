@@ -37,6 +37,63 @@ func (m *LlamaModel) ScaledTokenEmbeddingInto(dst []float32, tokenID int) error 
 	return nil
 }
 
+// Gemma4PerLayerInputs builds Gemma4 per-layer input slices for one token.
+// Returned per-layer slices share a single backing buffer and remain valid as
+// long as the returned [][]float32 is kept alive.
+func (m *LlamaModel) Gemma4PerLayerInputs(hidden []float32, tokenID int) ([][]float32, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil model")
+	}
+	cfg := m.Config
+	if m.PerLayerModelProj == nil || cfg.HiddenPerLayer == 0 {
+		return nil, nil
+	}
+	h := cfg.HiddenSize
+	hpl := cfg.HiddenPerLayer
+	nl := cfg.NumLayers
+	totalDim := nl * hpl
+	if len(hidden) != h {
+		return nil, fmt.Errorf("per-layer input hidden len=%d, want %d", len(hidden), h)
+	}
+	if tokenID < 0 {
+		return nil, fmt.Errorf("token id %d out of range", tokenID)
+	}
+	if len(m.PerLayerModelProj) != totalDim*h {
+		return nil, fmt.Errorf("per-layer model projection len=%d, want %d", len(m.PerLayerModelProj), totalDim*h)
+	}
+	if len(m.PerLayerProjNorm) != hpl {
+		return nil, fmt.Errorf("per-layer projection norm len=%d, want %d", len(m.PerLayerProjNorm), hpl)
+	}
+	if m.EmbedPerLayer != nil && tokenID < cfg.VocabPerLayer {
+		need := cfg.VocabPerLayer * totalDim
+		if len(m.EmbedPerLayer) < need {
+			return nil, fmt.Errorf("per-layer embedding len=%d, want at least %d", len(m.EmbedPerLayer), need)
+		}
+	}
+
+	proj := make([]float32, totalDim)
+	gemvNT(proj, hidden, m.PerLayerModelProj, h, totalDim)
+	for i := range proj {
+		proj[i] *= m.PerLayerProjScale
+	}
+	for l := 0; l < nl; l++ {
+		sl := proj[l*hpl : (l+1)*hpl]
+		rmsNormInPlace(sl, m.PerLayerProjNorm, float32(cfg.RMSNormEps))
+	}
+	if m.EmbedPerLayer != nil && tokenID < cfg.VocabPerLayer {
+		embRow := m.EmbedPerLayer[tokenID*totalDim : (tokenID+1)*totalDim]
+		for i := range proj {
+			proj[i] = (proj[i] + embRow[i]*m.EmbedPerLayerScale) * m.PerLayerInputScale
+		}
+	}
+
+	perLayerInputs := make([][]float32, nl)
+	for l := 0; l < nl; l++ {
+		perLayerInputs[l] = proj[l*hpl : (l+1)*hpl]
+	}
+	return perLayerInputs, nil
+}
+
 // LMHeadLogitsInto computes logits = hidden · lm_head^T.
 func (m *LlamaModel) LMHeadLogitsInto(logits, hidden []float32) error {
 	if m == nil || m.LMHead == nil {
