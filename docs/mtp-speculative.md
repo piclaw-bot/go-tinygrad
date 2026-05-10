@@ -38,6 +38,7 @@ Loader status:
 - Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
 - Verifier-side helper methods now expose raw/scaled main token embeddings, LM-head logits, and greedy argmax for reuse outside `Generate`.
 - Staged KV helpers can checkpoint and restore both uncompressed and TurboQuant-backed KV caches for candidate accept/reject rollback.
+- `AcceptMTPDraft` now encodes LiteRT-style accepted-prefix plus bonus-token semantics with verified-token accounting that excludes the bonus token.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
 
@@ -76,7 +77,7 @@ Verifier (main model batched forward):
 4. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
 5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
 6. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
-7. **Accept/reject** — keep matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
+7. **Accept/reject semantics** ✅ — `AcceptMTPDraft` keeps the matching prefix and emits the verifier bonus token on mismatch/all-accepted completion.
 8. **KV staging primitives** ✅ — checkpoint/restore helpers support both uncompressed and TurboQuant-backed caches.
 9. **KV cache sync** — commit candidate KV for accepted tokens plus bonus token; discard rejected candidate KV tail.
 10. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
