@@ -2,6 +2,7 @@ package model
 
 import (
 	"math"
+	"sync"
 
 	"github.com/rcarmo/go-pherence/gpu"
 )
@@ -80,85 +81,111 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		}
 	}
 
-	// Run selected experts — GPU for cached, CPU for cold
+	// Separate GPU-cached and CPU-fallback experts
 	moeInter := cfg.MoEIntermediate
 	out := make([]float32, h)
 
+	// Pre-allocate GPU work buffers once (reused across experts)
+	var xBuf, gateBuf, upBuf, downBuf *gpu.DevBuf
+	hasGPUExperts := false
 	for _, exp := range selected {
+		poolKey := layerIdx*cfg.NumExperts + exp.id
+		if pool != nil && pool.Get(poolKey) != nil {
+			hasGPUExperts = true
+			break
+		}
+	}
+	if hasGPUExperts {
+		xBuf = gpu.NewDevBufFrom(append([]float32(nil), x...))
+		gateBuf = gpu.NewDevBuf(moeInter)
+		upBuf = gpu.NewDevBuf(moeInter)
+		downBuf = gpu.NewDevBuf(h)
+		xBuf.ToGPU()
+		gateBuf.ToGPU()
+		upBuf.ToGPU()
+		downBuf.ToGPU()
+		defer xBuf.Free()
+		defer gateBuf.Free()
+		defer upBuf.Free()
+		defer downBuf.Free()
+	}
+
+	// Run CPU experts in parallel, GPU experts sequentially (shared buffers)
+	type expertResult struct {
+		down   []float32
+		weight float32
+	}
+	results := make([]expertResult, len(selected))
+	var wg sync.WaitGroup
+
+	for si, exp := range selected {
 		eid := exp.id
 		if eid >= len(layer.ExpertGateW) || layer.ExpertGateW[eid] == nil {
 			continue
 		}
 
-		// Check GPU expert pool (keyed by layer*numExperts + expert)
 		poolKey := layerIdx*cfg.NumExperts + eid
-		var gpuEntry *gpu.ExpertEntry
-		if pool != nil {
-			gpuEntry = pool.Get(poolKey)
-		}
+		gpuEntry := pool.Get(poolKey)
 
-		var down []float32
-		if gpuEntry != nil && gpuEntry.GateW != nil {
-			// GPU path: run expert MLP on GPU
-			xBuf := gpu.NewDevBufFrom(append([]float32(nil), x...))
-			gateBuf := gpu.NewDevBuf(moeInter)
-			upBuf := gpu.NewDevBuf(moeInter)
-			downBuf := gpu.NewDevBuf(h)
-			xBuf.ToGPU()
-			gateBuf.ToGPU()
-			upBuf.ToGPU()
-			downBuf.ToGPU()
-
+		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil {
+			// GPU path: reuse pre-allocated buffers
 			gpu.GemvMLXDirect(gateBuf, xBuf, gpuEntry.GateW)
 			gpu.GemvMLXDirect(upBuf, xBuf, gpuEntry.UpW)
 			gpu.DevSiLUMul(gateBuf, gateBuf, upBuf)
 			gpu.GemvMLXDirect(downBuf, gateBuf, gpuEntry.DownW)
 			gpu.Sync()
-
-			down = append([]float32(nil), downBuf.Data()[:h]...)
-			xBuf.Free()
-			gateBuf.Free()
-			upBuf.Free()
-			downBuf.Free()
-		} else {
-			// CPU fallback
-			gate := make([]float32, moeInter)
-			up := make([]float32, moeInter)
-			GemvMLQ(gate, x, layer.ExpertGateW[eid])
-			GemvMLQ(up, x, layer.ExpertUpW[eid])
-			for i := range gate {
-				sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
-				gate[i] = gate[i] * sig * up[i]
+			results[si] = expertResult{
+				down:   append([]float32(nil), downBuf.Data()[:h]...),
+				weight: exp.score,
 			}
-			down = make([]float32, h)
-			GemvMLQ(down, gate, layer.ExpertDownW[eid])
+		} else {
+			// CPU fallback (parallel)
+			wg.Add(1)
+			go func(idx int, expertID int, w float32) {
+				defer wg.Done()
+				gate := make([]float32, moeInter)
+				up := make([]float32, moeInter)
+				GemvMLQ(gate, x, layer.ExpertGateW[expertID])
+				GemvMLQ(up, x, layer.ExpertUpW[expertID])
+				for i := range gate {
+					sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
+					gate[i] = gate[i] * sig * up[i]
+				}
+				down := make([]float32, h)
+				GemvMLQ(down, gate, layer.ExpertDownW[expertID])
+				results[idx] = expertResult{down: down, weight: w}
 
-			// Upload to expert pool for next time
-			if pool != nil {
-				entry := &gpu.ExpertEntry{ExpertID: poolKey}
-				ew := layer.ExpertGateW[eid]
-				gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-				ew = layer.ExpertUpW[eid]
-				uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-				ew = layer.ExpertDownW[eid]
-				dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
-				if err1 == nil && err2 == nil && err3 == nil {
-					entry.GateW = gw
-					entry.UpW = uw
-					entry.DownW = dw
-					entry.SizeBytes = int64(3 * moeInter * h / 2) // approximate
-					evicted := pool.Put(entry)
-					if evicted != nil {
-						gpu.FreeExpertEntry(evicted)
+				// Upload to expert pool for next time (native MLX)
+				if pool != nil {
+					entry := &gpu.ExpertEntry{ExpertID: poolKey}
+					ew := layer.ExpertGateW[expertID]
+					gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+					ew = layer.ExpertUpW[expertID]
+					uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+					ew = layer.ExpertDownW[expertID]
+					dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+					if err1 == nil && err2 == nil && err3 == nil {
+						entry.GateW = gw
+						entry.UpW = uw
+						entry.DownW = dw
+						entry.SizeBytes = int64(3 * moeInter * h / 2)
+						evicted := pool.Put(entry)
+						if evicted != nil {
+							gpu.FreeExpertEntry(evicted)
+						}
 					}
 				}
-			}
+			}(si, eid, exp.score)
 		}
+	}
+	wg.Wait()
 
-		// Weighted accumulation
-		w := exp.score
+	for _, r := range results {
+		if r.down == nil {
+			continue
+		}
 		for i := range out {
-			out[i] += w * down[i]
+			out[i] += r.weight * r.down[i]
 		}
 	}
 
