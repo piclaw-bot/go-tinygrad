@@ -35,6 +35,7 @@ Local asset: `models/gemma4-e2b-mtp-drafter`.
 Loader status:
 - `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
 - `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
+- Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
 
 ### Data flow

@@ -3,9 +3,11 @@ package model
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rcarmo/go-pherence/safetensors"
 	"github.com/rcarmo/go-pherence/tensor"
@@ -36,12 +38,14 @@ type Gemma4MTPDrafter struct {
 
 // Gemma4MTPDrafterLayer is one q-only assistant layer.
 type Gemma4MTPDrafterLayer struct {
-	InputNorm     *tensor.Tensor
-	PostNorm      *tensor.Tensor
-	PreFFNNorm    *tensor.Tensor
-	PostFFNNorm   *tensor.Tensor
-	LayerScalar   float32
-	HeadDimLocal  int
+	InputNorm    *tensor.Tensor
+	PostNorm     *tensor.Tensor
+	PreFFNNorm   *tensor.Tensor
+	PostFFNNorm  *tensor.Tensor
+	LayerScalar  float32
+	HeadDimLocal int
+	// KVSourceLayer is -1 for q-only MTP drafter layers. The drafter
+	// forward pass must map each layer to external/main-model K/V state.
 	KVSourceLayer int
 
 	QW    []float32 // [numHeads*headDim, hidden]
@@ -90,10 +94,19 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 	if cfg.VocabSize == 0 {
 		return nil, fmt.Errorf("invalid nested text_config: vocab_size=0")
 	}
+	if cfg.NumHeads == 0 {
+		return nil, fmt.Errorf("invalid nested text_config: num_attention_heads=0")
+	}
+	if cfg.Intermediate == 0 {
+		return nil, fmt.Errorf("invalid nested text_config: intermediate_size=0")
+	}
 	if cfg.RMSNormEps == 0 {
 		cfg.RMSNormEps = 1e-6
 	}
 	if cfg.HeadDim == 0 {
+		if cfg.HiddenSize%cfg.NumHeads != 0 {
+			return nil, fmt.Errorf("invalid nested text_config: hidden_size=%d not divisible by num_attention_heads=%d", cfg.HiddenSize, cfg.NumHeads)
+		}
 		cfg.HeadDim = cfg.HiddenSize / cfg.NumHeads
 	}
 	if cfg.HiddenAct == "" {
@@ -111,9 +124,8 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", name, err)
 		}
-		shape, err = preferActualShape(shape, actualShape, len(data))
-		if err != nil {
-			return nil, fmt.Errorf("load %s: %w", name, err)
+		if err := validateShape(name, shape, actualShape, len(data)); err != nil {
+			return nil, err
 		}
 		return tensor.FromFloat32(data, shape), nil
 	}
@@ -122,8 +134,8 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", name, err)
 		}
-		if _, err := preferActualShape(shape, actualShape, len(data)); err != nil {
-			return nil, fmt.Errorf("load %s: %w", name, err)
+		if err := validateShape(name, shape, actualShape, len(data)); err != nil {
+			return nil, err
 		}
 		return data, nil
 	}
@@ -174,7 +186,7 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 		layer := Gemma4MTPDrafterLayer{
 			LayerScalar:   1,
 			HeadDimLocal:  headDim,
-			KVSourceLayer: l,
+			KVSourceLayer: -1,
 		}
 		if layer.InputNorm, err = loadTensor(p+".input_layernorm.weight", []int{h}); err != nil {
 			return nil, err
@@ -188,9 +200,9 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 		if layer.PostFFNNorm, err = loadTensor(p+".post_feedforward_layernorm.weight", []int{h}); err != nil {
 			return nil, err
 		}
-		if scalar, err := loadData(p+".layer_scalar", []int{1}); err == nil && len(scalar) > 0 {
+		if scalar, err := loadData(p+".layer_scalar", []int{1}); err == nil {
 			layer.LayerScalar = scalar[0]
-		} else if err != nil {
+		} else {
 			return nil, err
 		}
 
@@ -224,18 +236,38 @@ func openDrafterSafetensors(dir string) (drafterSafetensors, error) {
 	indexPath := filepath.Join(dir, "model.safetensors.index.json")
 	if _, err := os.Stat(indexPath); err == nil {
 		return safetensors.OpenSharded(indexPath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat %s: %w", indexPath, err)
 	}
 	return safetensors.Open(filepath.Join(dir, "model.safetensors"))
 }
 
-func preferActualShape(expected, actual []int, n int) ([]int, error) {
-	if len(actual) > 0 && shapeProduct(actual) == n {
-		return actual, nil
+func validateShape(name string, expected, actual []int, n int) error {
+	if len(actual) == 0 {
+		if shapeProduct(expected) != n {
+			return fmt.Errorf("load %s: shape unavailable, expected %v (%d elems), got %d elems", name, expected, shapeProduct(expected), n)
+		}
+		return nil
 	}
-	if shapeProduct(expected) != n {
-		return nil, fmt.Errorf("shape mismatch: expected %v (%d elems), actual %v (%d elems)", expected, shapeProduct(expected), actual, n)
+	if !sameShape(actual, expected) {
+		return fmt.Errorf("load %s: shape mismatch: expected %v, actual %v", name, expected, actual)
 	}
-	return expected, nil
+	if shapeProduct(actual) != n {
+		return fmt.Errorf("load %s: shape %v has %d elems, data has %d", name, actual, shapeProduct(actual), n)
+	}
+	return nil
+}
+
+func sameShape(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func shapeProduct(shape []int) int {
@@ -251,19 +283,25 @@ func loadIntTensor(f drafterSafetensors, name string, expectedLen int) ([]int, e
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", name, err)
 	}
-	if shapeProduct(shape) != expectedLen {
-		return nil, fmt.Errorf("load %s: expected %d elems, shape %v has %d", name, expectedLen, shape, shapeProduct(shape))
+	if err := validateShape(name, []int{expectedLen}, shape, shapeProduct(shape)); err != nil {
+		return nil, err
 	}
 	out := make([]int, expectedLen)
-	switch dtype {
-	case "I64":
+	maxInt := int64(int(^uint(0) >> 1))
+	minInt := -maxInt - 1
+	switch strings.ToUpper(dtype) {
+	case "I64", "INT64":
 		if len(raw) != expectedLen*8 {
 			return nil, fmt.Errorf("load %s: raw size %d does not match I64 len %d", name, len(raw), expectedLen)
 		}
 		for i := range out {
-			out[i] = int(int64(binary.LittleEndian.Uint64(raw[i*8:])))
+			v := int64(binary.LittleEndian.Uint64(raw[i*8:]))
+			if v < minInt || v > maxInt {
+				return nil, fmt.Errorf("load %s: value %d overflows int", name, v)
+			}
+			out[i] = int(v)
 		}
-	case "I32":
+	case "I32", "INT32":
 		if len(raw) != expectedLen*4 {
 			return nil, fmt.Errorf("load %s: raw size %d does not match I32 len %d", name, len(raw), expectedLen)
 		}
