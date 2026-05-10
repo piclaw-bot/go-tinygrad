@@ -37,7 +37,7 @@ Loader status:
 - `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
 - Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
 - Verifier-side helper methods now expose raw/scaled main token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax for reuse outside `Generate`.
-- Staged KV helpers can checkpoint and restore both uncompressed and TurboQuant-backed KV caches for candidate accept/reject rollback.
+- Staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
 - `AcceptMTPDraft` now encodes LiteRT-style accepted-prefix plus bonus-token semantics with verified-token accounting that excludes the bonus token.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
@@ -78,8 +78,8 @@ Verifier (main model batched forward):
 5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
 6. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
 7. **Accept/reject semantics** ✅ — `AcceptMTPDraft` keeps the matching prefix and emits the verifier bonus token on mismatch/all-accepted completion.
-8. **KV staging primitives** ✅ — checkpoint/restore helpers support both uncompressed and TurboQuant-backed caches.
-9. **KV cache sync** — commit candidate KV for accepted tokens plus bonus token; discard rejected candidate KV tail.
+8. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
+9. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
 10. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations

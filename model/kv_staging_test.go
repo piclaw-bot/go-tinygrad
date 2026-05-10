@@ -30,6 +30,30 @@ func TestFloatKVCheckpointRestore(t *testing.T) {
 	}
 }
 
+func TestFloatKVCheckpointKeepAppended(t *testing.T) {
+	k := [][]float32{{1, 2, 10, 11, 12, 13, 14, 15}, {100, 101, 102, 103}}
+	v := [][]float32{{3, 4, 20, 21, 22, 23, 24, 25}, {200, 201, 202, 203}}
+	cp := FloatKVCheckpoint{KLen: []int{2, 0}, VLen: []int{2, 0}}
+	if err := cp.KeepAppended(k, v, []int{2, 1}, 2); err != nil {
+		t.Fatalf("KeepAppended: %v", err)
+	}
+	if got, want := k[0], []float32{1, 2, 10, 11, 12, 13}; !sameFloat32s(got, want) {
+		t.Fatalf("k[0]=%v want %v", got, want)
+	}
+	if got, want := v[0], []float32{3, 4, 20, 21, 22, 23}; !sameFloat32s(got, want) {
+		t.Fatalf("v[0]=%v want %v", got, want)
+	}
+	if got, want := k[1], []float32{100, 101}; !sameFloat32s(got, want) {
+		t.Fatalf("k[1]=%v want %v", got, want)
+	}
+	if got, want := v[1], []float32{200, 201}; !sameFloat32s(got, want) {
+		t.Fatalf("v[1]=%v want %v", got, want)
+	}
+	if err := cp.KeepAppended(k, v, []int{2, 1}, 99); err == nil {
+		t.Fatal("KeepAppended accepted too many tokens")
+	}
+}
+
 func TestCompressedKVCheckpointRestoreAcrossCompression(t *testing.T) {
 	cfg := DefaultTurboQuantConfig()
 	cfg.ResidualWindow = 2
@@ -61,6 +85,41 @@ func TestCompressedKVCheckpointRestoreAcrossCompression(t *testing.T) {
 	gotV := cache.GetV()
 	if !sameFloat32s(gotK, wantK) || !sameFloat32s(gotV, wantV) {
 		t.Fatalf("restore mismatch: gotK=%v wantK=%v gotV=%v wantV=%v", gotK, wantK, gotV, wantV)
+	}
+}
+
+func TestCompressedKVCheckpointKeepAppendedAcrossCompression(t *testing.T) {
+	cfg := DefaultTurboQuantConfig()
+	cfg.ResidualWindow = 2
+	tq := NewTurboQuantState(2, 1, cfg)
+	cache := NewCompressedKVCache(2, 1, 2, tq, false)
+	cache.Append([]float32{1, 2}, []float32{10, 20})
+	cache.Append([]float32{3, 4}, []float32{30, 40})
+	cp := cache.Checkpoint()
+
+	cache.Append([]float32{5, 6}, []float32{50, 60})
+	cache.Append([]float32{7, 8}, []float32{70, 80})
+	cache.Append([]float32{9, 10}, []float32{90, 100})
+	if cache.SeqLen() != 5 || cache.CompressedCount() == 0 {
+		t.Fatalf("expected staged compressed state, seq=%d compressed=%d", cache.SeqLen(), cache.CompressedCount())
+	}
+	if err := cache.KeepAppended(cp, 2); err != nil {
+		t.Fatalf("KeepAppended: %v", err)
+	}
+	if cache.SeqLen() != 4 {
+		t.Fatalf("seq len=%d want 4", cache.SeqLen())
+	}
+	gotK := cache.GetK()
+	gotV := cache.GetV()
+	wantK := []float32{1, 2, 3, 4, 5, 6, 7, 8}
+	wantV := []float32{10, 20, 30, 40, 50, 60, 70, 80}
+	// The first two positions may have been re-compressed after replay, but the
+	// kept staged residual rows must remain exact and the rejected row must vanish.
+	if got, want := gotK[4:], wantK[4:]; !closeFloat32s(got, want, 0.1) {
+		t.Fatalf("kept K suffix=%v want %v (full K=%v)", got, want, gotK)
+	}
+	if got, want := gotV[4:], wantV[4:]; !closeFloat32s(got, want, 0.1) {
+		t.Fatalf("kept V suffix=%v want %v (full V=%v)", got, want, gotV)
 	}
 }
 

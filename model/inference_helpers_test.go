@@ -1,6 +1,7 @@
 package model
 
 import (
+	"math"
 	"testing"
 
 	"github.com/rcarmo/go-pherence/tensor"
@@ -134,11 +135,15 @@ func TestLMHeadLogitsAndArgmax(t *testing.T) {
 }
 
 func sameFloat32s(a, b []float32) bool {
+	return closeFloat32s(a, b, 0)
+}
+
+func closeFloat32s(a, b []float32, tol float32) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		if float32(math.Abs(float64(a[i]-b[i]))) > tol {
 			return false
 		}
 	}
