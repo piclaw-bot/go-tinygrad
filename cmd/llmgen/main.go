@@ -15,10 +15,14 @@ func main() {
 	tokens := flag.Int("tokens", 50, "tokens to generate")
 	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
+	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
 	flag.Parse()
 
 	if *useGPU {
 		model.ForceOnTheFly = true
+		if *turboQuant {
+			fmt.Fprintln(os.Stderr, "warning: --turbo-quant currently applies to the CPU backend only")
+		}
 	}
 
 	if *dir == "" {
@@ -33,6 +37,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "load: %v\n", err)
 		os.Exit(1)
 	}
+	m.EnableTurboQuant = *turboQuant
 	fmt.Printf("Loaded in %.2fs (%d layers, h=%d)\n", time.Since(t0).Seconds(),
 		m.Config.NumLayers, m.Config.HiddenSize)
 

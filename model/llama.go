@@ -93,8 +93,10 @@ type LlamaModel struct {
 	Quantized     bool      // true if using GPTQ INT4 weights
 	OnTheFlyQuant bool      // true = keep INT4 in memory, dequant per token (slow but low memory) // [maxSeqLen, headDim/2, 2] (cos, sin interleaved)
 
-	// TurboQuant state keyed by headDim. Gemma4 uses per-layer head dimensions,
-	// so each distinct headDim needs its own orthogonal rotation matrix.
+	// TurboQuant controls optional CPU KV cache compression. State is keyed by
+	// headDim because Gemma4 uses per-layer head dimensions, so each distinct
+	// headDim needs its own orthogonal rotation matrix.
+	EnableTurboQuant bool
 	TurboQuantStates map[int]*TurboQuantState
 }
 
@@ -875,7 +877,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * layerKVDim]
 	kvCacheV := make([][]float32, cfg.NumLayers)
 	var compressedKV []*CompressedKVCache
-	if os.Getenv("TURBO_QUANT") == "1" {
+	if m.EnableTurboQuant || os.Getenv("TURBO_QUANT") == "1" {
 		tqCfg := DefaultTurboQuantConfig()
 		if m.TurboQuantStates == nil {
 			m.TurboQuantStates = make(map[int]*TurboQuantState)

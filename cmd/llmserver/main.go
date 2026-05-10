@@ -268,6 +268,7 @@ func main() {
 	listen := flag.String("listen", ":8080", "address to listen on")
 	useGPU := flag.Bool("gpu", false, "use GPU")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
+	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
 	flag.Parse()
 
 	if *dir == "" {
@@ -277,6 +278,9 @@ func main() {
 
 	if *useGPU {
 		model.ForceOnTheFly = true
+		if *turboQuant {
+			log.Printf("warning: --turbo-quant currently applies to the CPU backend only")
+		}
 	}
 
 	log.Printf("Loading model from %s...", *dir)
@@ -285,6 +289,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Load failed: %v", err)
 	}
+	m.EnableTurboQuant = *turboQuant
 	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
 	if err != nil {
 		log.Fatalf("Tokenizer failed: %v", err)

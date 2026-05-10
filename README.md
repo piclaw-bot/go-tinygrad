@@ -141,6 +141,9 @@ curl -s http://localhost:8080/v1/chat/completions \
 ```
 
 All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU).
+CPU generation also supports `--turbo-quant` to enable TurboQuant KV-cache compression
+(4-bit keys, 2-bit values, protected first/last layers, 128-token residual window).
+TurboQuant is currently CPU-backend only; GPU KV compression is a future step.
 
 ## Architecture Details
 
@@ -155,6 +158,7 @@ All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU
 - **Sliding window attention** — alternating local/global with window masking (Gemma3/4)
 - **Per-layer input gating** — PLI with GELU gate, projection, norm (Gemma4)
 - **KV sharing** — shared layers reuse source-layer KV cache (Gemma4)
+- **TurboQuant KV compression** — optional CPU KV cache compression via `--turbo-quant`
 - **Layer scalar** — per-layer output scaling (Gemma4)
 - **Embedding scaling** — `× √hidden_size` (Gemma3/4)
 - **Batched prefill** — GEMM for multi-token prompt processing

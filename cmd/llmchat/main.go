@@ -18,6 +18,7 @@ func main() {
 	maxTokens := flag.Int("n", 256, "max tokens per response")
 	useGPU := flag.Bool("gpu", false, "use GPU")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
+	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
 	flag.Parse()
 
 	if *dir == "" {
@@ -27,6 +28,9 @@ func main() {
 
 	if *useGPU {
 		model.ForceOnTheFly = true
+		if *turboQuant {
+			fmt.Fprintln(os.Stderr, "warning: --turbo-quant currently applies to the CPU backend only")
+		}
 	}
 
 	fmt.Printf("Loading %s...\n", *dir)
@@ -35,6 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	m.EnableTurboQuant = *turboQuant
 	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
 	if err != nil {
 		log.Fatal(err)
