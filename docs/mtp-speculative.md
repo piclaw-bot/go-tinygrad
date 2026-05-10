@@ -32,8 +32,10 @@ Local asset: `models/gemma4-e2b-mtp-drafter`.
 - Per-layer tensors include only `q_proj`, `q_norm`, `o_proj`, MLP weights, norms, and `layer_scalar`.
 - **No `k_proj`, `v_proj`, `k_norm`, or `v_norm` tensors exist in the drafter**; those must come from shared/base-model KV state.
 
-Current loader gap:
-- `LoadLlama(models/gemma4-e2b-mtp-drafter)` currently fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections. MTP support needs a dedicated assistant/drafter loader mode that accepts Q-only attention blocks with external KV.
+Loader status:
+- `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
+- `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
+- Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
 
 ### Data flow
 
@@ -64,7 +66,7 @@ Verifier (main model batched forward):
 
 ## Implementation plan
 
-1. **Add drafter loader** — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
+1. **Drafter loader** ✅ — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
 2. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
 3. **pre/post projection** — new tensor fields and GEMV wrappers; `pre_projection` consumes concatenated main embedding + activation.
 4. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
