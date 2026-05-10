@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/tensor"
 )
 
 func TestLoadGemma4MTPDrafterLocalAsset(t *testing.T) {
@@ -102,5 +104,66 @@ func TestLoadGemma4MTPDrafterRejectsMalformedConfigBeforeWeights(t *testing.T) {
 	_, err := LoadGemma4MTPDrafter(dir)
 	if err == nil || !strings.Contains(err.Error(), "num_attention_heads=0") {
 		t.Fatalf("LoadGemma4MTPDrafter err = %v, want num_attention_heads validation", err)
+	}
+}
+
+func TestGemma4MTPDrafterProjectionHelpers(t *testing.T) {
+	d := &Gemma4MTPDrafter{
+		Config: LlamaConfig{
+			VocabSize:  4,
+			HiddenSize: 2,
+		},
+		BackboneHiddenSize:      3,
+		EmbedTokens:             tensor.FromFloat32([]float32{0, 1, 2, 3, 4, 5, 6, 7}, []int{4, 2}),
+		MaskedEmbeddingOrdering: []int{3, 2, 1, 0},
+		PreProjection: []float32{
+			1, 2, 3, 10, 20, 30,
+			-1, -2, -3, -10, -20, -30,
+		},
+		PostProjection: []float32{
+			1, 0,
+			0, 1,
+			1, 1,
+		},
+	}
+
+	emb := make([]float32, 2)
+	if err := d.AssistantTokenEmbeddingInto(emb, 2); err != nil {
+		t.Fatalf("AssistantTokenEmbeddingInto: %v", err)
+	}
+	if emb[0] != 4 || emb[1] != 5 {
+		t.Fatalf("assistant embedding = %v, want [4 5]", emb)
+	}
+	if order, err := d.MaskedEmbeddingOrder(2); err != nil || order != 1 {
+		t.Fatalf("MaskedEmbeddingOrder = %d, %v; want 1, nil", order, err)
+	}
+
+	pre := make([]float32, 2)
+	if err := d.PreProjectInto(pre, []float32{1, 1, 1}, []float32{2, 2, 2}); err != nil {
+		t.Fatalf("PreProjectInto: %v", err)
+	}
+	if pre[0] != 126 || pre[1] != -126 {
+		t.Fatalf("pre projection = %v, want [126 -126]", pre)
+	}
+
+	post := make([]float32, 3)
+	if err := d.PostProjectInto(post, []float32{3, 4}); err != nil {
+		t.Fatalf("PostProjectInto: %v", err)
+	}
+	wantPost := []float32{3, 4, 7}
+	for i := range wantPost {
+		if post[i] != wantPost[i] {
+			t.Fatalf("post projection = %v, want %v", post, wantPost)
+		}
+	}
+
+	if err := d.PreProjectInto(make([]float32, 2), []float32{1, 2}, []float32{1, 2, 3}); err == nil {
+		t.Fatal("PreProjectInto accepted short backbone token embedding")
+	}
+	if err := d.PostProjectInto(make([]float32, 2), []float32{1, 2}); err == nil {
+		t.Fatal("PostProjectInto accepted short destination")
+	}
+	if err := d.AssistantTokenEmbeddingInto(make([]float32, 2), 4); err == nil {
+		t.Fatal("AssistantTokenEmbeddingInto accepted out-of-range token")
 	}
 }

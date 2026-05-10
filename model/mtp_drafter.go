@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/rcarmo/go-pherence/safetensors"
+	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
@@ -230,6 +231,92 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 	}
 
 	return d, nil
+}
+
+// AssistantTokenEmbeddingInto copies the assistant/drafter embedding row for tokenID.
+func (d *Gemma4MTPDrafter) AssistantTokenEmbeddingInto(dst []float32, tokenID int) error {
+	if d == nil || d.EmbedTokens == nil {
+		return fmt.Errorf("drafter embeddings are not loaded")
+	}
+	h := d.Config.HiddenSize
+	if len(dst) != h {
+		return fmt.Errorf("assistant token embedding dst len=%d, want %d", len(dst), h)
+	}
+	if tokenID < 0 || tokenID >= d.Config.VocabSize {
+		return fmt.Errorf("token id %d out of range [0,%d)", tokenID, d.Config.VocabSize)
+	}
+	emb := d.EmbedTokens.Data()
+	copy(dst, emb[tokenID*h:(tokenID+1)*h])
+	return nil
+}
+
+// MaskedEmbeddingOrder returns the masked-embedding ordering entry for tokenID.
+func (d *Gemma4MTPDrafter) MaskedEmbeddingOrder(tokenID int) (int, error) {
+	if d == nil || d.MaskedEmbeddingOrdering == nil {
+		return 0, fmt.Errorf("masked embedding ordering is not loaded")
+	}
+	if tokenID < 0 || tokenID >= len(d.MaskedEmbeddingOrdering) {
+		return 0, fmt.Errorf("token id %d out of range [0,%d)", tokenID, len(d.MaskedEmbeddingOrdering))
+	}
+	return d.MaskedEmbeddingOrdering[tokenID], nil
+}
+
+// PreProjectInto computes dst = pre_projection · (backboneTokenEmbedding || activation).
+// Both inputs are main/backbone-width vectors, not assistant hidden-size vectors.
+func (d *Gemma4MTPDrafter) PreProjectInto(dst, backboneTokenEmbedding, activation []float32) error {
+	if d == nil {
+		return fmt.Errorf("nil drafter")
+	}
+	bh := d.BackboneHiddenSize
+	h := d.Config.HiddenSize
+	if len(dst) != h {
+		return fmt.Errorf("pre-project dst len=%d, want %d", len(dst), h)
+	}
+	if len(backboneTokenEmbedding) != bh {
+		return fmt.Errorf("pre-project token embedding len=%d, want %d", len(backboneTokenEmbedding), bh)
+	}
+	if len(activation) != bh {
+		return fmt.Errorf("pre-project activation len=%d, want %d", len(activation), bh)
+	}
+	if len(d.PreProjection) != h*2*bh {
+		return fmt.Errorf("pre_projection len=%d, want %d", len(d.PreProjection), h*2*bh)
+	}
+	for row := 0; row < h; row++ {
+		w := d.PreProjection[row*2*bh : (row+1)*2*bh]
+		dst[row] = simdDot(backboneTokenEmbedding, w[:bh]) + simdDot(activation, w[bh:])
+	}
+	return nil
+}
+
+// PostProjectInto computes dst = post_projection · assistantHidden.
+func (d *Gemma4MTPDrafter) PostProjectInto(dst, assistantHidden []float32) error {
+	if d == nil {
+		return fmt.Errorf("nil drafter")
+	}
+	bh := d.BackboneHiddenSize
+	h := d.Config.HiddenSize
+	if len(dst) != bh {
+		return fmt.Errorf("post-project dst len=%d, want %d", len(dst), bh)
+	}
+	if len(assistantHidden) != h {
+		return fmt.Errorf("post-project hidden len=%d, want %d", len(assistantHidden), h)
+	}
+	if len(d.PostProjection) != bh*h {
+		return fmt.Errorf("post_projection len=%d, want %d", len(d.PostProjection), bh*h)
+	}
+	gemvNT(dst, assistantHidden, d.PostProjection, h, bh)
+	return nil
+}
+
+func simdDot(a, b []float32) float32 {
+	if len(a) >= 8 {
+		return simd.Sdot(a, b)
+	}
+	sum := float32(0)
+	for i := range a {
+		sum += a[i] * b[i]
+	}
+	return sum
 }
 
 func openDrafterSafetensors(dir string) (drafterSafetensors, error) {

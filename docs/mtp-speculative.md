@@ -35,6 +35,7 @@ Local asset: `models/gemma4-e2b-mtp-drafter`.
 Loader status:
 - `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
 - `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
+- Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
 
@@ -45,10 +46,10 @@ Main model decode step N:
   → hidden_state[1536]
 
 Drafter loop (K iterations):
-  hidden_draft = pre_projection(hidden_state)     [256]
+  hidden_draft = pre_projection(embedding(prev_token) || activation) [256]
   for layer in drafter_layers:
     hidden_draft = layer(hidden_draft, KV=main_model_KV)
-  hidden_main = post_projection(hidden_draft)     [1536]
+  hidden_main = post_projection(hidden_draft)                         [1536]
   logits = LM_head(hidden_main)                   [vocab]
   draft_token = argmax(logits)
   → candidate_tokens[K]
@@ -69,7 +70,7 @@ Verifier (main model batched forward):
 
 1. **Drafter loader** ✅ — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
 2. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
-3. **pre/post projection** — new tensor fields and GEMV wrappers; `pre_projection` consumes concatenated main embedding + activation.
+3. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
 4. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
 5. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
 6. **Accept/reject** — keep matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
