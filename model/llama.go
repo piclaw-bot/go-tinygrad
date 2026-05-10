@@ -1349,25 +1349,17 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.PLIGate != nil && perLayerInputs != nil && l < len(perLayerInputs) {
 				hpl := cfg.HiddenPerLayer
 				pli := perLayerInputs[l]
-				// gate = gelu(per_layer_input_gate(h)) → [hiddenPerLayer]
+				// gate = gelu(per_layer_input_gate(h)) * per_layer_input → [hiddenPerLayer]
 				gate2 := make([]float32, hpl)
 				gemvNT(gate2, hidden, layer.PLIGate, h, hpl)
-				for i := range gate2 {
-					gate2[i] = geluTanh(gate2[i])
-				}
-				// gate = gate * per_layer_input
-				for i := range gate2 {
-					gate2[i] *= pli[i]
-				}
+				simd.GELUTanhMul(gate2, gate2, pli)
 				// proj = per_layer_projection(gate) → [hidden]
 				proj2 := make([]float32, h)
 				gemvNT(proj2, gate2, layer.PLIProj, hpl, h)
 				// norm
 				rmsNormInPlace(proj2, layer.PLIPostNorm, float32(cfg.RMSNormEps))
 				// residual add
-				for i := range hidden {
-					hidden[i] += proj2[i]
-				}
+				simd.VecAdd(hidden, hidden, proj2)
 			}
 			if debugOpHook != nil {
 				debugOpHook("cpu", step, l, "hidden_post_pli", hidden)
@@ -1528,12 +1520,10 @@ func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads
 
 		// Compute attention scores for this head against all cached K
 		scores := make([]float32, seqLen)
+		qHead := q[head*headDim : (head+1)*headDim]
 		for t := 0; t < seqLen; t++ {
-			sum := float32(0)
-			for d := 0; d < headDim; d++ {
-				sum += q[head*headDim+d] * kCache[t*kvDim+kvHead*headDim+d]
-			}
-			scores[t] = sum * scale
+			kHead := kCache[t*kvDim+kvHead*headDim : t*kvDim+(kvHead+1)*headDim]
+			scores[t] = simd.Sdot(qHead, kHead) * scale
 		}
 
 		// Causal softmax (all positions are visible for single-token decode)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"sync"
+
+	"github.com/rcarmo/go-pherence/simd"
 )
 
 // LoadSwitchMLXExperts loads a switch_mlp-style 3D packed tensor and
@@ -207,10 +209,7 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 			up := make([]float32, moeInter)
 			GemvMLQ(gate, x, layer.ExpertGateW[expertID])
 			GemvMLQ(up, x, layer.ExpertUpW[expertID])
-			for i := range gate {
-				sig := float32(1.0 / (1.0 + math.Exp(float64(-gate[i]))))
-				gate[i] = gate[i] * sig * up[i]
-			}
+			simd.VecSiLUMul(gate, gate, up)
 			down := make([]float32, h)
 			GemvMLQ(down, gate, layer.ExpertDownW[expertID])
 			results[idx] = expertResult{down: down, weight: w}

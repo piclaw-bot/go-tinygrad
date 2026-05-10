@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rcarmo/go-pherence/gpu"
+	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
@@ -1078,12 +1079,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					hd3 := g.hidden.Data()
 					gate2 := make([]float32, hpl)
 					gemvNT(gate2, hd3, cpuLayer.PLIGate, h, hpl)
-					for i := range gate2 {
-						gate2[i] = geluTanh(gate2[i])
-					}
-					for i := range gate2 {
-						gate2[i] *= pli[i]
-					}
+					simd.GELUTanhMul(gate2, gate2, pli)
 					proj2 := make([]float32, h)
 					gemvNT(proj2, gate2, cpuLayer.PLIProj, hpl, h)
 					rmsNormInPlace(proj2, cpuLayer.PLIPostNorm, float32(cfg.RMSNormEps))

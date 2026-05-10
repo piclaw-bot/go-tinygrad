@@ -2,6 +2,8 @@ package model
 
 import (
 	"math"
+
+	"github.com/rcarmo/go-pherence/simd"
 )
 
 // ForwardLayer runs a single transformer layer on CPU and returns the updated hidden state.
@@ -209,16 +211,10 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	}
 
 	if cfg.HiddenAct == "gelu_pytorch_tanh" {
-		for i := range gate {
-			gate[i] = geluTanh(gate[i]) * up[i]
-		}
+		simd.GELUTanhMul(gate, gate, up)
 		bf16Slice(gate)
 	} else {
-		for i := range gate {
-			x := gate[i]
-			sig := float32(1.0 / (1.0 + math.Exp(float64(-x))))
-			gate[i] = x * sig * up[i]
-		}
+		simd.VecSiLUMul(gate, gate, up)
 	}
 
 	down := make([]float32, h)
@@ -242,9 +238,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	}
 
 	// Residual
-	for i := range hidden {
-		hidden[i] = residual[i] + down[i]
-	}
+	simd.VecAdd(hidden, residual, down)
 
 	// Layer scalar (Gemma4)
 	if layer.LayerScalar != 1.0 {
