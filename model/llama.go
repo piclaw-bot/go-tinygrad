@@ -868,12 +868,32 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	kvDim := headDim * numKVHeads
 	inter := cfg.Intermediate
 
-	// Allocate KV cache
+	// Allocate KV cache (with optional TurboQuant compression)
+	var tqState *TurboQuantState
+	if os.Getenv("TURBO_QUANT") == "1" {
+		tqCfg := DefaultTurboQuantConfig()
+		tqState = NewTurboQuantState(headDim, cfg.NumLayers, tqCfg)
+		fmt.Printf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
+			tqCfg.KeyBits, tqCfg.ValueBits, tqCfg.ResidualWindow)
+	}
 	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * kvDim]
 	kvCacheV := make([][]float32, cfg.NumLayers)
-	for l := range kvCacheK {
-		kvCacheK[l] = make([]float32, 0, 2048*kvDim)
-		kvCacheV[l] = make([]float32, 0, 2048*kvDim)
+	var compressedKV []*CompressedKVCache
+	if tqState != nil {
+		compressedKV = make([]*CompressedKVCache, cfg.NumLayers)
+		for l := range compressedKV {
+			layerHD := headDim
+			if m.Layers[l].HeadDimLocal > 0 {
+				layerHD = m.Layers[l].HeadDimLocal
+			}
+			layerKVDim := numKVHeads * layerHD
+			compressedKV[l] = NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tqState, tqState.IsProtectedLayer(l))
+		}
+	} else {
+		for l := range kvCacheK {
+			kvCacheK[l] = make([]float32, 0, 2048*kvDim)
+			kvCacheV[l] = make([]float32, 0, 2048*kvDim)
+		}
 	}
 
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
@@ -1116,8 +1136,12 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				kvLayer = layer.KVSourceLayer
 			}
 			if k != nil {
-				kvCacheK[l] = append(kvCacheK[l], k...)
-				kvCacheV[l] = append(kvCacheV[l], v...)
+				if compressedKV != nil {
+					compressedKV[l].Append(k, v)
+				} else {
+					kvCacheK[l] = append(kvCacheK[l], k...)
+					kvCacheV[l] = append(kvCacheV[l], v...)
+				}
 			}
 
 			// Attention: Q against cached K, V (may be from source layer)
@@ -1132,10 +1156,18 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 			}
 			var attnOut []float32
-			if cfg.ModelType == "gemma4_text" {
-				attnOut = gqaAttentionScale(q, kvCacheK[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], kvCacheV[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
+			var kCache, vCache []float32
+			if compressedKV != nil {
+				kCache = compressedKV[kvLayer].GetK()
+				vCache = compressedKV[kvLayer].GetV()
 			} else {
-				attnOut = gqaAttention(q, kvCacheK[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], kvCacheV[kvLayer][attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim)
+				kCache = kvCacheK[kvLayer]
+				vCache = kvCacheV[kvLayer]
+			}
+			if cfg.ModelType == "gemma4_text" {
+				attnOut = gqaAttentionScale(q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim, 1.0)
+			} else {
+				attnOut = gqaAttention(q, kCache[attnKVOffset*numKVHeads*layerHeadDim:], vCache[attnKVOffset*numKVHeads*layerHeadDim:], attnSeqLen, numHeads, numKVHeads, layerHeadDim)
 			}
 			if debugOpHook != nil {
 				debugOpHook("cpu", step, l, "attn", attnOut)
