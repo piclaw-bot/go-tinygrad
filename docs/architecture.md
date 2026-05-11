@@ -6,8 +6,8 @@ go-pherence is a multi-backend inference engine that runs MLX, GPTQ, and BF16 mo
 
 1. **Run MLX weights everywhere** — Apple's MLX ecosystem has the best quantized models, but only runs on Apple Silicon. go-pherence makes them portable.
 2. **Pure Go, zero CGo** — single static binary, GPU activates at runtime via `purego` dlopen.
-3. **Three-tier acceleration** — CUDA PTX → Vulkan SPIR-V → SIMD assembly → Go scalar.
-4. **Native BF16** — half-bandwidth pipeline for models trained in BF16.
+3. **Tiered acceleration** — production CUDA PTX path, Vulkan SPIR-V scaffolding, SIMD assembly, and Go scalar fallback.
+4. **Native BF16 scaffolding** — half-bandwidth helpers for BF16-trained models, with F32-compatible paths still used where required.
 
 ## Backend Stack
 
@@ -113,12 +113,12 @@ loader/safetensors BF16 → GetBF16() → []uint16 (zero conversion)
     └─── GPU Vulkan: uint16 load + bitshift (universal)
 ```
 
-## Kernel Inventory
+## Kernel / Shader Inventory
 
-| Backend | F32 | BF16 emulated | BF16 native | Total |
-|---|---|---|---|---|
-| CUDA PTX | 16 | 2 | 3 | **21** |
-| Vulkan SPIR-V | 4 | 4 | — | **8** |
-| AVX2 asm | 8 | 5 | — | **13** |
-| NEON asm | 8 | 5 | — | **13** |
-| Go scalar | all | all | — | fallback |
+| Backend | Current status |
+|---|---|
+| CUDA PTX | 27 hand-written kernels across GEMV/GEMM, attention/RoPE, norms, activations, BF16, and utility paths |
+| Vulkan SPIR-V | `backends/vulkan` owns shader assets for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths; full forward dispatch is still pending |
+| AVX2 asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback |
+| NEON asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback; hardware verification still pending |
+| Go scalar | Universal fallback for unsupported architectures or uncovered kernels |

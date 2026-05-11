@@ -2,7 +2,7 @@
 
 ![go-pherence](docs/icon-256.png)
 
-**Run MLX models on any hardware.** A pure Go inference engine for Apple MLX, GPTQ and BF16 model weights — with CUDA, Vulkan, and SIMD assembly backends. Single static binary, no Python, no CGo, no external dependencies.
+**Run MLX models on any hardware.** A pure Go inference engine for Apple MLX, GPTQ and BF16 model weights — with a production CUDA backend, Vulkan scaffolding, and SIMD assembly CPU paths. Single static binary, no Python, no CGo, no external dependencies.
 
 ## Why
 
@@ -58,7 +58,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 ### GPU: CUDA PTX (NVIDIA)
 
-21 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen:
+27 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen:
 
 - **Quantized GEMV**: INT4 dequant+multiply with shared memory tiling (GPTQ + MLX)
 - **Batched GEMM**: multi-token prefill, reads weights once for all tokens
@@ -69,16 +69,17 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 ### GPU: Vulkan Compute (any GPU)
 
-Portable compute backend for Intel iGPU, AMD, ARM Mali, Adreno:
+Portable compute backend scaffolding for Intel iGPU, AMD, ARM Mali, Adreno:
 
+- `backends/vulkan` owns the Vulkan loader, device/buffer helpers, dispatch scaffolding, and embedded SPIR-V assets
 - 35 Vulkan API functions via `purego` (no SDK required)
-- GLSL compute shaders for all inference ops (F32 + BF16)
-- Command buffer dispatch with descriptor sets and push constants
-- Device auto-selection: discrete → integrated → software fallback
+- GLSL/SPIR-V shader coverage for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths
+- Device auto-selection rejects software/CPU devices by default; set `GO_PHERENCE_VULKAN_ALLOW_CPU=1` for debugging
+- Current status: init/buffer/shader assets are in place; full model dispatch wiring is still pending
 
 ### CPU: SIMD Assembly
 
-AVX2+FMA (amd64) and NEON (arm64) assembly for all hot paths:
+AVX2+FMA (amd64) and NEON (arm64) assembly for the core CPU hot paths:
 
 | Operation | AVX2 | NEON | Notes |
 |---|---|---|---|
@@ -91,7 +92,7 @@ AVX2+FMA (amd64) and NEON (arm64) assembly for all hot paths:
 | **BF16 Widen** | VPMOVZXWD+VPSLLD | USHLL+SHL | 292ns / 3584 elements |
 | **SiLU×Mul** | Go (exp not SIMD) | Go fallback | |
 
-Scalar fallback for `!amd64 && !arm64`.
+Public SIMD entrypoints are runtime-gated with scalar fallback. Remaining CPU gaps include fused GELU, RoPEPartial, and MLX/GPTQ Q4 GEMV kernels.
 
 ### Native BF16
 
@@ -101,7 +102,7 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 - **SIMD**: AVX2 and NEON assembly for BF16 dot/norm/add/widen/narrow
 - **CUDA**: native `ld.global.b16` / `cvt.f32.bf16` on Ampere+
 - **Vulkan**: BF16 emulated via uint16 bitshift (universal)
-- **Model**: `BF16Hidden` type with zero-copy operations
+- **Model**: BF16 helper/scaffolding code for native hidden-state paths; public generation still primarily uses the F32-compatible path where required
 
 ## Weight Format Support
 

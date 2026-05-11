@@ -1,6 +1,6 @@
 # GPU Compute Options
 
-go-pherence supports three GPU backends, all via `purego` dlopen (no CGo):
+go-pherence currently has a production CUDA backend plus Vulkan backend scaffolding. CUDA/Vulkan use `purego` dlopen (no CGo):
 
 ## CUDA PTX (NVIDIA)
 
@@ -50,12 +50,12 @@ AVX2+FMA (amd64) and NEON (arm64):
 
 ```
 if NVIDIA GPU available:
-    → CUDA PTX (fastest, 21+ kernels)
-elif Vulkan device available:
-    → backends/vulkan SPIR-V (portable shaders)
+    → CUDA PTX (fastest, 27 kernels)
+elif Vulkan model dispatch is enabled and a non-software Vulkan device is available:
+    → backends/vulkan SPIR-V (portable shader path; still being wired)
 else:
     → CPU SIMD (AVX2 or NEON assembly)
     → Go scalar (universal fallback)
 ```
 
-The model forward pass auto-dispatches: each operation checks GPU availability and falls back to SIMD/scalar transparently.
+The current production model path chooses CUDA when requested/available, otherwise CPU SIMD/scalar. Vulkan device/shader scaffolding is present but full forward dispatch remains a Phase 3.6 item.

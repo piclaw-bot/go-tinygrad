@@ -174,7 +174,7 @@ Move/update directly:
 Move/update directly:
 
 - CUDA driver/PTX: `gpu/cuda_purego.go`, `gpu/devbuf.go`, `gpu/*_ptx.go`, `gpu/mega_module.go`, `gpu/streams.go`, `gpu/q4_gpu.go`, `gpu/sgemm.go` -> `backends/cuda`
-- Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅
+- Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
 
@@ -206,7 +206,7 @@ Each step should be one small commit with validation after it.
 1. **Add docs and package stubs only.** Land this plan and any README notes. No behavior changes.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
 3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit. ✅
-4. **Backend split.** Separate CUDA and Vulkan into `backends/cuda` and `backends/vulkan`, updating model/runtime imports directly.
+4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. CUDA/PTX remains in `gpu` until the CUDA split can preserve model upload/DevBuf semantics cleanly.
 5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Move or tag diagnostic tests; keep focused unit tests close to packages.

@@ -201,3 +201,12 @@ Started the backend split by moving Vulkan-only scaffolding out of the transitio
 - Moved `gpu/vulkan*.go` and `gpu/shaders/` to `backends/vulkan`.
 - Changed the package name to `vulkan`, keeping CUDA/PTX files and GPU expert resources in `gpu`.
 - Updated README, architecture, GPU options, refactor plan, and Makefile validation targets to include `backends/vulkan`.
+
+## Session 8: Documentation/status audit after backend/runtime moves
+
+Reviewed the public and internal Markdown after the placement, runtime memory, and Vulkan extractions:
+
+- Corrected README/backend docs to avoid over-claiming Vulkan full-forward support; Vulkan is now documented as `backends/vulkan` scaffolding/assets with Phase 3.6 dispatch wiring still pending.
+- Updated kernel inventory wording to avoid stale exact F32/BF16 tables and reflect the current CUDA/Vulkan/SIMD ownership split.
+- Clarified CPU SIMD coverage as runtime-gated core hot paths with remaining GEMV/RoPE/GELU gaps, rather than claiming complete coverage.
+- Clarified native BF16 as scaffolding/helpers where the F32-compatible path is still used as needed.
