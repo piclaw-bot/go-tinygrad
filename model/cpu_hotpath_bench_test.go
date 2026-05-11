@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
@@ -111,7 +113,7 @@ func BenchmarkCPUHotGemvMLQ1536x2048(b *testing.B) {
 	bits := 4
 	packFactor := 32 / bits
 	groups := inDim / groupSize
-	qw := &MLXQuantWeight{
+	qw := &quant.MLXQuantWeight{
 		Weight:    make([]uint32, outDim*(inDim/packFactor)),
 		Scales:    make([]float32, outDim*groups),
 		Biases:    make([]float32, outDim*groups),
@@ -134,6 +136,6 @@ func BenchmarkCPUHotGemvMLQ1536x2048(b *testing.B) {
 	b.SetBytes(int64(inDim * outDim * 4))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		GemvMLQ(out, x, qw)
+		quant.GemvMLQ(out, x, qw)
 	}
 }

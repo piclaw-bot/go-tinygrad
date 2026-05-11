@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/runtime/kv"
 
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
@@ -132,17 +134,17 @@ type LlamaLayer struct {
 	GateWq, UpWq, DownWq *QuantWeight
 
 	// MLX affine quantized weights (nil if not MLX)
-	QWm, KWm, VWm, OWm   *MLXQuantWeight
-	GateWm, UpWm, DownWm *MLXQuantWeight
+	QWm, KWm, VWm, OWm   *quant.MLXQuantWeight
+	GateWm, UpWm, DownWm *quant.MLXQuantWeight
 
 	GateW, UpW, DownW *tensor.Tensor // pre-transposed
 
 	// MoE (Mixture of Experts)
-	IsMoE       bool              // true if this layer uses MoE
-	RouterW     *MLXQuantWeight   // router gate weight [numExperts, hidden]
-	ExpertGateW []*MLXQuantWeight // [numExperts] gate projections
-	ExpertUpW   []*MLXQuantWeight // [numExperts] up projections
-	ExpertDownW []*MLXQuantWeight // [numExperts] down projections
+	IsMoE       bool                    // true if this layer uses MoE
+	RouterW     *quant.MLXQuantWeight   // router gate weight [numExperts, hidden]
+	ExpertGateW []*quant.MLXQuantWeight // [numExperts] gate projections
+	ExpertUpW   []*quant.MLXQuantWeight // [numExperts] up projections
+	ExpertDownW []*quant.MLXQuantWeight // [numExperts] down projections
 }
 
 // LoadLlama loads a LLaMA-style model from safetensors + config.json.
@@ -318,7 +320,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			scales = make([]float32, n)
 			for i := 0; i < n; i++ {
 				h := uint16(scRaw[i*2]) | uint16(scRaw[i*2+1])<<8
-				scales[i] = float16ToFloat32(h)
+				scales[i] = quant.Float16ToFloat32(h)
 			}
 		} else {
 			scales, _, _ = f.GetFloat32(name + ".scales")
@@ -328,10 +330,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	_ = loadQW
 
 	// loadMLXW loads an MLX affine quantized weight.
-	loadMLXW := func(name string, outDim, inDim int) *MLXQuantWeight {
-		qw, err := loadMLXWeight(f, prefix+name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
+	loadMLXW := func(name string, outDim, inDim int) *quant.MLXQuantWeight {
+		qw, err := quant.LoadMLXWeight(f, prefix+name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
 		if err != nil && prefix != "" {
-			qw, err = loadMLXWeight(f, name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
+			qw, err = quant.LoadMLXWeight(f, name, outDim, inDim, cfg.QuantGroup, cfg.QuantBits)
 		}
 		if err != nil {
 			panic(fmt.Sprintf("loadMLXW %s: %v", name, err))
@@ -363,7 +365,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			scales = make([]float32, n)
 			for i := 0; i < n; i++ {
 				h := uint16(scRaw[i*2]) | uint16(scRaw[i*2+1])<<8
-				scales[i] = float16ToFloat32(h)
+				scales[i] = quant.Float16ToFloat32(h)
 			}
 		} else {
 			scales, _, _ = f.GetFloat32(name + ".scales")
@@ -371,10 +373,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 		var data []float32
 		if cfg.QuantSym {
-			data = DequantGPTQSym(qw, gIdx, scales, inDim, outDim)
+			data = quant.DequantGPTQSym(qw, gIdx, scales, inDim, outDim)
 		} else {
 			qz, _, _ := f.GetInt32(name + ".qzeros")
-			data = DequantGPTQ(qw, qz, gIdx, scales, inDim, outDim, false)
+			data = quant.DequantGPTQ(qw, qz, gIdx, scales, inDim, outDim, false)
 		}
 		// data is [outDim, inDim] row-major
 		t := tensor.FromFloat32(data, []int{outDim, inDim})
@@ -388,8 +390,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	// Load embeddings — MLX may quantize these
 	if cfg.QuantFormat == "mlx" {
 		// Try to load quantized embedding, dequantize for lookup
-		if emb, err := loadMLXWeight(f, prefix+"model.embed_tokens", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
-			data := DequantMLX(emb)
+		if emb, err := quant.LoadMLXWeight(f, prefix+"model.embed_tokens", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+			data := quant.DequantMLX(emb)
 			m.EmbedTokens = tensor.FromFloat32(data, []int{cfg.VocabSize, h})
 		} else {
 			m.EmbedTokens = load("model.embed_tokens.weight", []int{cfg.VocabSize, h})
@@ -401,8 +403,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 
 	// LM head: often tied to embed_tokens. MLX may quantize it too.
 	if cfg.QuantFormat == "mlx" {
-		if lm, err := loadMLXWeight(f, prefix+"lm_head", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
-			data := DequantMLX(lm)
+		if lm, err := quant.LoadMLXWeight(f, prefix+"lm_head", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+			data := quant.DequantMLX(lm)
 			m.LMHead = tensor.FromFloat32(data, []int{cfg.VocabSize, h})
 		} else {
 			m.LMHead = m.EmbedTokens // tied weights
@@ -468,7 +470,7 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			// MLX dequant-at-load
 			loadMLXDeq := func(name string, outDim, inDim int) *tensor.Tensor {
 				qw := loadMLXW(name, outDim, inDim)
-				data := DequantMLX(qw)
+				data := quant.DequantMLX(qw)
 				// Use actual dims from loaded weight (may differ from caller's hint)
 				if large {
 					return tensor.FromFloat32(data, []int{qw.OutDim, qw.InDim})
@@ -630,11 +632,11 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 		if cfg.HiddenPerLayer > 0 {
 			hpl := cfg.HiddenPerLayer
 			if cfg.QuantFormat == "mlx" && cfg.QuantBits > 0 {
-				if qw, err := loadMLXWeight(f, prefix+p+".per_layer_input_gate", hpl, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
-					layer.PLIGate = DequantMLX(qw)
-					qw2, _ := loadMLXWeight(f, prefix+p+".per_layer_projection", h, hpl, cfg.QuantGroup, cfg.QuantBits)
+				if qw, err := quant.LoadMLXWeight(f, prefix+p+".per_layer_input_gate", hpl, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+					layer.PLIGate = quant.DequantMLX(qw)
+					qw2, _ := quant.LoadMLXWeight(f, prefix+p+".per_layer_projection", h, hpl, cfg.QuantGroup, cfg.QuantBits)
 					if qw2 != nil {
-						layer.PLIProj = DequantMLX(qw2)
+						layer.PLIProj = quant.DequantMLX(qw2)
 					}
 					if tryLoad(p + ".post_per_layer_input_norm.weight") {
 						layer.PLIPostNorm = load(p+".post_per_layer_input_norm.weight", []int{h}).Data()
@@ -691,8 +693,8 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 			vpl = 262144
 		} // default for Gemma4
 		if cfg.QuantFormat == "mlx" && cfg.QuantBits > 0 {
-			if qw, err := loadMLXWeight(f, prefix+"model.embed_tokens_per_layer", vpl, totalDim, cfg.QuantGroup, cfg.QuantBits); err == nil {
-				m.EmbedPerLayer = DequantMLX(qw)
+			if qw, err := quant.LoadMLXWeight(f, prefix+"model.embed_tokens_per_layer", vpl, totalDim, cfg.QuantGroup, cfg.QuantBits); err == nil {
+				m.EmbedPerLayer = quant.DequantMLX(qw)
 				fmt.Printf("  Loaded per-layer embedding: [%d, %d]\n", vpl, totalDim)
 			}
 		} else if tryLoad("model.embed_tokens_per_layer.weight") {
@@ -786,7 +788,7 @@ func (m *LlamaModel) precomputeRoPE() {
 // Generate produces tokens autoregressively.
 func (m *LlamaModel) mvQ(out, x []float32, qw *QuantWeight) {
 	if qw != nil {
-		gemvQ4Sym(out, x, qw.QWeight, qw.GIdx, qw.Scales, qw.InDim, qw.OutDim)
+		quant.GemvQ4Sym(out, x, qw.QWeight, qw.GIdx, qw.Scales, qw.InDim, qw.OutDim)
 	}
 }
 
@@ -1000,7 +1002,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.QWq != nil {
 				m.mvQ(q, hidden, layer.QWq)
 			} else if layer.QWm != nil {
-				GemvMLQ(q, hidden, layer.QWm)
+				quant.GemvMLQ(q, hidden, layer.QWm)
 			} else {
 				m.mv(q, hidden, layer.QW.Data(), h, qDim)
 			}
@@ -1014,8 +1016,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					m.mvQ(k, hidden, layer.KWq)
 					m.mvQ(v, hidden, layer.VWq)
 				} else if layer.KWm != nil {
-					GemvMLQ(k, hidden, layer.KWm)
-					GemvMLQ(v, hidden, layer.VWm)
+					quant.GemvMLQ(k, hidden, layer.KWm)
+					quant.GemvMLQ(v, hidden, layer.VWm)
 				} else {
 					m.mv(k, hidden, layer.KW.Data(), h, layerKVDim)
 					m.mv(v, hidden, layer.VW.Data(), h, layerKVDim)
@@ -1173,7 +1175,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if layer.OWq != nil {
 				m.mvQ(oOut, attnOut, layer.OWq)
 			} else if layer.OWm != nil {
-				GemvMLQ(oOut, attnOut, layer.OWm)
+				quant.GemvMLQ(oOut, attnOut, layer.OWm)
 			} else {
 				m.mv(oOut, attnOut, layer.OW.Data(), qDim, h)
 			}
@@ -1246,8 +1248,8 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					m.mvQ(gate, mlpInput, layer.GateWq)
 					m.mvQ(up, mlpInput, layer.UpWq)
 				} else if layer.GateWm != nil {
-					GemvMLQ(gate, mlpInput, layer.GateWm)
-					GemvMLQ(up, mlpInput, layer.UpWm)
+					quant.GemvMLQ(gate, mlpInput, layer.GateWm)
+					quant.GemvMLQ(up, mlpInput, layer.UpWm)
 				} else {
 					m.mv(gate, mlpInput, layer.GateW.Data(), h, layerInter)
 					m.mv(up, mlpInput, layer.UpW.Data(), h, layerInter)
@@ -1277,7 +1279,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 				if layer.DownWq != nil {
 					m.mvQ(down, gate, layer.DownWq)
 				} else if layer.DownWm != nil {
-					GemvMLQ(down, gate, layer.DownWm)
+					quant.GemvMLQ(down, gate, layer.DownWm)
 				} else {
 					m.mv(down, gate, layer.DownW.Data(), layerInter, h)
 				}

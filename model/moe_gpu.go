@@ -4,12 +4,14 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
-// Falls back to CPU GemvMLQ for cold experts not in the pool.
+// Falls back to CPU quant.GemvMLQ for cold experts not in the pool.
 func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int) []float32 {
 	h := len(x)
 	numExperts := cfg.NumExperts
@@ -21,7 +23,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	// Router: compute logits for each expert
 	routerLogits := make([]float32, numExperts)
 	if layer.RouterW != nil {
-		GemvMLQ(routerLogits, x, layer.RouterW)
+		quant.GemvMLQ(routerLogits, x, layer.RouterW)
 	}
 
 	// Softmax over router logits
@@ -160,11 +162,11 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 				defer wg.Done()
 				gate := make([]float32, moeInter)
 				up := make([]float32, moeInter)
-				GemvMLQ(gate, x, layer.ExpertGateW[expertID])
-				GemvMLQ(up, x, layer.ExpertUpW[expertID])
+				quant.GemvMLQ(gate, x, layer.ExpertGateW[expertID])
+				quant.GemvMLQ(up, x, layer.ExpertUpW[expertID])
 				simd.VecSiLUMul(gate, gate, up)
 				down := make([]float32, h)
-				GemvMLQ(down, gate, layer.ExpertDownW[expertID])
+				quant.GemvMLQ(down, gate, layer.ExpertDownW[expertID])
 				results[idx] = expertResult{down: down, weight: w}
 			}(si, eid, exp.score)
 		}

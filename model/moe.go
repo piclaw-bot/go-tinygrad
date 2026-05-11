@@ -6,11 +6,13 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
 // LoadSwitchMLXExperts loads a switch_mlp-style 3D packed tensor and
-// slices it into per-expert MLXQuantWeight entries.
+// slices it into per-expert quant.MLXQuantWeight entries.
 //
 // The safetensors weight has shape [numExperts, outDim, packedInDim] (U32)
 // with matching scales/biases [numExperts, outDim, numGroups] (BF16/F32).
@@ -20,7 +22,7 @@ func LoadSwitchMLXExperts(
 	},
 	baseName string,
 	numExperts, outDim, inDim, groupSize, bits int,
-) ([]*MLXQuantWeight, error) {
+) ([]*quant.MLXQuantWeight, error) {
 	// Load packed weight
 	wRaw, wDtype, wShape, err := f.GetRaw(baseName + ".weight")
 	if err != nil {
@@ -64,7 +66,7 @@ func LoadSwitchMLXExperts(
 	sStride := outDim * numGroups * 2    // bytes per expert in scales (BF16)
 	bStride := outDim * numGroups * 2    // bytes per expert in biases (BF16)
 
-	experts := make([]*MLXQuantWeight, numExperts)
+	experts := make([]*quant.MLXQuantWeight, numExperts)
 	for e := 0; e < numExperts; e++ {
 		wSlice := wRaw[e*wStride : (e+1)*wStride]
 		sSlice := sRaw[e*sStride : (e+1)*sStride]
@@ -93,7 +95,7 @@ func LoadSwitchMLXExperts(
 			biases[i] = bf16ToF32(bits16)
 		}
 
-		experts[e] = &MLXQuantWeight{
+		experts[e] = &quant.MLXQuantWeight{
 			Weight:    weight,
 			Scales:    scales,
 			Biases:    biases,
@@ -124,7 +126,7 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 	// Router: compute logits for each expert
 	routerLogits := make([]float32, numExperts)
 	if layer.RouterW != nil {
-		GemvMLQ(routerLogits, x, layer.RouterW)
+		quant.GemvMLQ(routerLogits, x, layer.RouterW)
 	}
 
 	// Softmax over router logits
@@ -207,11 +209,11 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 			// Expert MLP: gate_proj → SiLU × up_proj → down_proj
 			gate := make([]float32, moeInter)
 			up := make([]float32, moeInter)
-			GemvMLQ(gate, x, layer.ExpertGateW[expertID])
-			GemvMLQ(up, x, layer.ExpertUpW[expertID])
+			quant.GemvMLQ(gate, x, layer.ExpertGateW[expertID])
+			quant.GemvMLQ(up, x, layer.ExpertUpW[expertID])
 			simd.VecSiLUMul(gate, gate, up)
 			down := make([]float32, h)
-			GemvMLQ(down, gate, layer.ExpertDownW[expertID])
+			quant.GemvMLQ(down, gate, layer.ExpertDownW[expertID])
 			results[idx] = expertResult{down: down, weight: w}
 		}(si, eid, exp.score)
 	}

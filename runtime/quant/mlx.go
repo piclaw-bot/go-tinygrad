@@ -1,4 +1,4 @@
-package model
+package quant
 
 // MLX quantization support.
 //
@@ -100,9 +100,9 @@ func GemvMLQ(out, x []float32, qw *MLXQuantWeight) {
 	}
 }
 
-// loadMLXWeight loads an MLX affine quantized weight from safetensors.
+// LoadMLXWeight loads an MLX affine quantized weight from safetensors.
 // prefix is e.g. "model.layers.0.self_attn.q_proj"
-func loadMLXWeight(f interface {
+func LoadMLXWeight(f interface {
 	GetFloat32(name string) ([]float32, []int, error)
 	GetRaw(name string) ([]byte, string, []int, error)
 }, prefix string, outDim, inDim, groupSize, bits int) (*MLXQuantWeight, error) {
@@ -187,7 +187,7 @@ func loadMLXFloat(f interface {
 		n := len(raw) / 2
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
-			out[i] = float16ToFloat32(binary.LittleEndian.Uint16(raw[i*2:]))
+			out[i] = Float16ToFloat32(binary.LittleEndian.Uint16(raw[i*2:]))
 		}
 		return out, nil
 	case "BF16":

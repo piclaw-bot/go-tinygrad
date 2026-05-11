@@ -160,7 +160,7 @@ Move/update directly:
 
 - `model/kv_cache.go` and the generic staging parts of `model/kv_staging.go` -> `runtime/kv` ✅
 - `model/turboquant.go` -> `runtime/kv` ✅
-- `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go`, `model/bf16.go` -> `runtime/quant` plus `backends/cpu` kernels where appropriate
+- `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go` -> `runtime/quant` ✅; `model/bf16.go` remains with BF16 model semantics for now
 - `gpu/budget.go`, `gpu/placement.go`, `gpu/expert_pool.go` -> `backends/placement` or `runtime/memory` depending on whether they own device resources
 - `loader/safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now
 
@@ -212,7 +212,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move:
 
 ```sh
-go test ./gpu ./loader/... ./backends/simd ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -228,7 +228,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./loader/... ./backends/simd ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go test ./models/bert -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2

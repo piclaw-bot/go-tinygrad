@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
@@ -76,7 +78,7 @@ func TestGemma4QuantizedLayer4DownFromCapturedGate(t *testing.T) {
 	if mQ.Layers[4].DownWm == nil {
 		t.Fatal("expected quantized MLX down weight for layer4")
 	}
-	GemvMLQ(qDown, gpuGate, mQ.Layers[4].DownWm)
+	quant.GemvMLQ(qDown, gpuGate, mQ.Layers[4].DownWm)
 	bf16Slice(qDown)
 	maxAbs, meanAbs = diffStats(gpuDown, qDown)
 	t.Logf("L4 quantized cpu(down from gpu gate_act) vs gpu down: maxAbs=%.6g meanAbs=%.6g", maxAbs, meanAbs)

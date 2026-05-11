@@ -1,4 +1,4 @@
-package model
+package quant
 
 // GPTQ INT4 dequantization for quantized model inference.
 //
@@ -109,8 +109,8 @@ func DequantGPTQSym(qweight, gIdx []int32, scales []float32,
 	return out
 }
 
-// float16ToFloat32 converts a uint16 IEEE 754 half-precision to float32.
-func float16ToFloat32(h uint16) float32 {
+// Float16ToFloat32 converts a uint16 IEEE 754 half-precision to float32.
+func Float16ToFloat32(h uint16) float32 {
 	sign := uint32(h>>15) & 1
 	exp := uint32(h>>10) & 0x1F
 	frac := uint32(h) & 0x3FF

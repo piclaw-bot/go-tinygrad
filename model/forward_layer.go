@@ -1,6 +1,9 @@
 package model
 
-import "github.com/rcarmo/go-pherence/backends/simd"
+import (
+	"github.com/rcarmo/go-pherence/backends/simd"
+	"github.com/rcarmo/go-pherence/runtime/quant"
+)
 
 // ForwardLayer runs a single transformer layer on CPU and returns the updated hidden state.
 // This is used by the hybrid GPU/CPU forward pass for layers that don't fit in GPU VRAM.
@@ -33,7 +36,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	// Q projection
 	q := make([]float32, qDim)
 	if layer.QWm != nil {
-		GemvMLQ(q, hidden, layer.QWm)
+		quant.GemvMLQ(q, hidden, layer.QWm)
 	} else if layer.QW != nil {
 		m.mv(q, hidden, layer.QW.Data(), h, qDim)
 	}
@@ -44,8 +47,8 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 		k = make([]float32, layerKVDim)
 		v = make([]float32, layerKVDim)
 		if layer.KWm != nil {
-			GemvMLQ(k, hidden, layer.KWm)
-			GemvMLQ(v, hidden, layer.VWm)
+			quant.GemvMLQ(k, hidden, layer.KWm)
+			quant.GemvMLQ(v, hidden, layer.VWm)
 		} else if layer.KW != nil {
 			m.mv(k, hidden, layer.KW.Data(), h, layerKVDim)
 			m.mv(v, hidden, layer.VW.Data(), h, layerKVDim)
@@ -141,7 +144,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	// Output projection
 	oOut := make([]float32, h)
 	if layer.OWm != nil {
-		GemvMLQ(oOut, attnOut, layer.OWm)
+		quant.GemvMLQ(oOut, attnOut, layer.OWm)
 	} else if layer.OW != nil {
 		m.mv(oOut, attnOut, layer.OW.Data(), qDim, h)
 	}
@@ -182,8 +185,8 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	gate := make([]float32, layerInter)
 	up := make([]float32, layerInter)
 	if layer.GateWm != nil {
-		GemvMLQ(gate, mlpInput, layer.GateWm)
-		GemvMLQ(up, mlpInput, layer.UpWm)
+		quant.GemvMLQ(gate, mlpInput, layer.GateWm)
+		quant.GemvMLQ(up, mlpInput, layer.UpWm)
 	} else if layer.GateW != nil {
 		m.mv(gate, mlpInput, layer.GateW.Data(), h, layerInter)
 		m.mv(up, mlpInput, layer.UpW.Data(), h, layerInter)
@@ -203,7 +206,7 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 
 	down := make([]float32, h)
 	if layer.DownWm != nil {
-		GemvMLQ(down, gate, layer.DownWm)
+		quant.GemvMLQ(down, gate, layer.DownWm)
 	} else if layer.DownW != nil {
 		m.mv(down, gate, layer.DownW.Data(), layerInter, h)
 	}

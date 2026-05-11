@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
@@ -48,9 +50,9 @@ func TestGemma4StandaloneQuantizedCPUMLXVsCPU(t *testing.T) {
 	}
 	mq.Tok = tok
 
-	check := func(layerIdx int, op string, in []float32, qw *MLXQuantWeight, want []float32, bf16Out bool) {
+	check := func(layerIdx int, op string, in []float32, qw *quant.MLXQuantWeight, want []float32, bf16Out bool) {
 		got := make([]float32, len(want))
-		GemvMLQ(got, in, qw)
+		quant.GemvMLQ(got, in, qw)
 		if bf16Out {
 			bf16Slice(got)
 		}

@@ -1,6 +1,6 @@
-package model
+package quant
 
-// gemvQ4Sym computes out = x @ W^T where W is stored as GPTQ INT4 symmetric.
+// GemvQ4Sym computes out = x @ W^T where W is stored as GPTQ INT4 symmetric.
 // This dequantizes on-the-fly during the dot product, avoiding the full F32 expansion.
 //
 // qweight: [inDim/8, outDim] packed int32
@@ -8,7 +8,7 @@ package model
 // gIdx:    [inDim] int32
 // x:       [inDim] float32
 // out:     [outDim] float32
-func gemvQ4Sym(out, x []float32, qweight, gIdx []int32, scales []float32, inDim, outDim int) {
+func GemvQ4Sym(out, x []float32, qweight, gIdx []int32, scales []float32, inDim, outDim int) {
 	for j := 0; j < outDim; j++ {
 		var sum float32
 		for packIdx := 0; packIdx < inDim/8; packIdx++ {

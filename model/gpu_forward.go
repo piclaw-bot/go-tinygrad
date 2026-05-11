@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/rcarmo/go-pherence/runtime/quant"
+
 	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/gpu"
 	"github.com/rcarmo/go-pherence/tensor"
@@ -78,8 +80,8 @@ type gpuLayerBufs struct {
 	QWmg, KWmg, VWmg, OWmg  *gpu.GPUMLXWeight
 	GateWmg, UpWmg, DownWmg *gpu.GPUMLXWeight
 	// MLX on CPU
-	QWm, KWm, VWm, OWm   *MLXQuantWeight
-	GateWm, UpWm, DownWm *MLXQuantWeight
+	QWm, KWm, VWm, OWm   *quant.MLXQuantWeight
+	GateWm, UpWm, DownWm *quant.MLXQuantWeight
 	// Gemma4 per-layer input gating on GPU (raw row-major F32 weights)
 	PLIGate, PLIProj, PLIPostNorm *gpu.DevBuf
 }
@@ -274,7 +276,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			gl.DownWm = layer.DownWm
 			if gpu.SgemmReady() {
 				wantNativeMLX := cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma3_text"
-				um := func(qw *MLXQuantWeight) *gpu.GPUMLXWeight {
+				um := func(qw *quant.MLXQuantWeight) *gpu.GPUMLXWeight {
 					w, err := gpu.UploadMLXWeight(qw.Weight, qw.Scales, qw.Biases, qw.InDim, qw.OutDim, qw.GroupSize, wantNativeMLX)
 					if err != nil && i == 0 {
 						fmt.Printf("[gpu] MLX upload %dx%d: %v\n", qw.OutDim, qw.InDim, err)
@@ -977,8 +979,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						nd := g.normed.Data()
 						gd := g.gate.Data()
 						ud := g.up.Data()
-						gemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
-						gemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
+						quant.GemvQ4Sym(gd, nd, layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
+						quant.GemvQ4Sym(ud, nd, layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
 						g.gate.MarkDirty()
 						g.up.MarkDirty()
 					} else {
@@ -1030,7 +1032,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					} else if layer.DownWq != nil {
 						gd := g.gate.Data()
 						dd := g.down.Data()
-						gemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
+						quant.GemvQ4Sym(dd, gd, layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
 						g.down.MarkDirty()
 					} else {
 						g.gemv(g.down, g.gate, layer.DownW, layerInter, h)
