@@ -495,3 +495,11 @@ Hardened tensor neural-network helpers:
 - `Embedding` now validates nil/2D weights and token ID bounds while preserving empty ID handling.
 - `MatMul`/`MatMulTransposed` reject nil tensors and avoid taking `&slice[0]` on zero-sized matrices before SIMD calls.
 - `Linear` and `LinearPreT` validate bias shape before in-place bias addition.
+
+## Session 44: Tensor NN helper validation audit
+
+Hardened tensor neural-network utility ops:
+
+- `Softmax`, `LayerNorm`, and `GELU` now reject nil receivers explicitly.
+- `Softmax` and `LayerNorm` avoid division/indexing on zero-width last axes.
+- `LayerNorm` validates gamma/beta shape compatibility and requires them to be supplied together.

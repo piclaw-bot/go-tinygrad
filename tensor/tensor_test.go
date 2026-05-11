@@ -501,3 +501,20 @@ func TestMatMulAndLinearValidation(t *testing.T) {
 		t.Fatalf("zero-row matmul shape=%v", shape)
 	}
 }
+
+func TestNNHelperValidation(t *testing.T) {
+	assertPanics(t, func() { _ = (*Tensor)(nil).Softmax() })
+	assertPanics(t, func() { _ = (*Tensor)(nil).LayerNorm(nil, nil, 1e-5) })
+	assertPanics(t, func() { _ = (*Tensor)(nil).GELU() })
+	x := Ones([]int{2, 3})
+	assertPanics(t, func() { _ = x.LayerNorm(Ones([]int{2}), Ones([]int{3}), 1e-5) })
+	assertPanics(t, func() { _ = x.LayerNorm(Ones([]int{3}), Ones([]int{2}), 1e-5) })
+	assertPanics(t, func() { _ = x.LayerNorm(Ones([]int{3}), nil, 1e-5) })
+	z := Zeros([]int{2, 0})
+	if got := z.Softmax(); got.Numel() != 0 {
+		t.Fatalf("zero-width softmax numel=%d", got.Numel())
+	}
+	if got := z.LayerNorm(nil, nil, 1e-5); got.Numel() != 0 {
+		t.Fatalf("zero-width layernorm numel=%d", got.Numel())
+	}
+}
