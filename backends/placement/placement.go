@@ -1,4 +1,4 @@
-package gpu
+package placement
 
 import (
 	"fmt"
@@ -191,10 +191,10 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 }
 
 // PlanLayerPlacement decides where each layer goes based on available GPU VRAM.
-// gpuLayers < 0 means auto-fit as many as possible.
-func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int) PlacementPlan {
-	free, _ := MemInfo()
-	availGPU := int64(free)
+// gpuLayers < 0 means auto-fit as many as possible. availGPUBytes is explicit
+// so placement policy stays independent from CUDA/Vulkan device queries.
+func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64) PlacementPlan {
+	availGPU := int64(availGPUBytes)
 
 	residentBytes := EstimateResidentBytes(info)
 	remainingGPU := availGPU - residentBytes

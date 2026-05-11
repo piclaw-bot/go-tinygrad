@@ -35,6 +35,14 @@ Tier 2: Regular heap      Go-managed, GC pressure
 Tier 3: mmap (disk)       OS page cache, madvise control
 ```
 
+## Implementation status
+
+Backend-neutral budget and layer-placement policy now lives in `backends/placement`:
+
+- `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters.
+- `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery.
+- GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting.
+
 ## Budget Categories
 
 ### 1. Permanent Residency Budget (`--resident-mb`)
@@ -147,7 +155,7 @@ type LayerPlacement struct {
     KVSize     int64     // KV cache bytes
 }
 
-func PlanLayerPlacement(model *LlamaConfig, budget *BudgetManager) []LayerPlacement
+func PlanLayerPlacement(info placement.ModelSizeInfo, gpuLayers int, availGPUBytes uint64) placement.PlacementPlan
 ```
 
 Decision logic:
@@ -203,14 +211,14 @@ user can adjust `--resident-mb` / `--expert-slots` based on actual usage.
 
 | ds4 concept | go-pherence equivalent |
 |---|---|
-| `hot_residency_plan` | `PlanLayerPlacement()` with `ResidentBudget` |
+| `hot_residency_plan` | `backends/placement.PlanLayerPlacement()` with resident estimates |
 | `madvise(DONTNEED/WILLNEED)` | `MmapAdvisor.Evict()/Prefetch()` |
-| `g_model_stream_hit/evict_count` | `BudgetManager.LayerHits/Evicts` |
+| `g_model_stream_hit/evict_count` | `backends/placement.BudgetManager` hit/evict counters |
 | `compact_expert_cache` | `ExpertPool` with LRU |
 | Metal shared memory | CUDA pinned memory + explicit DMA |
 | `split_after_layers=1` (streaming) | Layer-at-a-time GPU forward |
 | `DS4_METAL_RESIDENT_HOT_MB` | `--resident-mb` flag |
-| `hot_plan_add_tensor` | `BudgetManager.AllocResident()` |
+| `hot_plan_add_tensor` | `backends/placement.BudgetManager.Alloc(...)` |
 | `hot_plan_merge` (range merging) | `MmapAdvisor` range coalescing |
 
 The key difference: ds4 runs on unified memory (Metal shared), so madvise

@@ -1,8 +1,10 @@
-package gpu
+package placement
 
 import (
 	"testing"
 )
+
+const testAvailGPUBytes = 12 * 1024 * 1024 * 1024
 
 func TestPlanLayerPlacementSmall(t *testing.T) {
 	// SmolLM2-135M: should fit entirely on GPU
@@ -16,7 +18,7 @@ func TestPlanLayerPlacementSmall(t *testing.T) {
 		VocabSize:    49152,
 		QuantBits:    0, // BF16
 	}
-	plan := PlanLayerPlacement(info, -1)
+	plan := PlanLayerPlacement(info, -1, testAvailGPUBytes)
 	plan.PrintPlan()
 	t.Logf("SmolLM2-135M: %d GPU layers, %d mmap, %.0f MB total GPU",
 		plan.GPULayers, plan.MmapLayers, plan.TotalGPUMB)
@@ -34,7 +36,7 @@ func TestPlanLayerPlacementMedium(t *testing.T) {
 		VocabSize:    152064,
 		QuantBits:    4,
 	}
-	plan := PlanLayerPlacement(info, -1)
+	plan := PlanLayerPlacement(info, -1, testAvailGPUBytes)
 	plan.PrintPlan()
 	t.Logf("Qwen2.5-7B MLX4: %d GPU layers, %d mmap, %.0f MB total GPU",
 		plan.GPULayers, plan.MmapLayers, plan.TotalGPUMB)
@@ -57,13 +59,13 @@ func TestPlanLayerPlacementGemma4(t *testing.T) {
 		HasDoubleWideMLP:  true,
 		NumKVSharedLayers: 20,
 	}
-	plan := PlanLayerPlacement(info, -1)
+	plan := PlanLayerPlacement(info, -1, testAvailGPUBytes)
 	plan.PrintPlan()
 	t.Logf("Gemma4-E2B MLX4: %d GPU layers, %d mmap, %.0f MB total GPU",
 		plan.GPULayers, plan.MmapLayers, plan.TotalGPUMB)
 
 	// Test explicit layer count
-	plan10 := PlanLayerPlacement(info, 10)
+	plan10 := PlanLayerPlacement(info, 10, testAvailGPUBytes)
 	t.Logf("Gemma4-E2B MLX4 (10 GPU layers): %d GPU, %d mmap, %.0f MB GPU",
 		plan10.GPULayers, plan10.MmapLayers, plan10.TotalGPUMB)
 }

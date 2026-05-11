@@ -152,6 +152,7 @@ only; GPU KV compression is a future step.
 Current package ownership is being refactored around explicit loader/model/backend boundaries:
 
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
+- **`backends/placement/`** — backend-neutral memory budget and layer placement policy
 - **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
 - **`models/bert/`** — GTE/BERT encoder path
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives

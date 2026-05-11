@@ -1,4 +1,4 @@
-package gpu
+package placement
 
 import (
 	"fmt"
@@ -52,12 +52,13 @@ func NewBudgetManager(residentMB, layerMB, streamMB, expertMB int64) *BudgetMana
 	}
 }
 
-// NewAutoBudgetManager creates a manager using GPU VRAM auto-detection.
-// Allocates: resident first, then layers fill remaining, stream/expert from flags.
-func NewAutoBudgetManager(residentMB, streamMB, expertMB int64) *BudgetManager {
-	free, total := MemInfo()
-	if total == 0 {
-		// No GPU — all budgets are for CPU/mmap only
+// NewAutoBudgetManager creates a manager using caller-provided accelerator memory info.
+// freeBytes/totalBytes are explicit so this backend-neutral package does not
+// depend on a CUDA/Vulkan device query. Allocates: resident first, then layers
+// fill remaining, stream/expert from flags.
+func NewAutoBudgetManager(freeBytes, totalBytes uint64, residentMB, streamMB, expertMB int64) *BudgetManager {
+	if totalBytes == 0 {
+		// No accelerator — all budgets are for CPU/mmap only.
 		return &BudgetManager{
 			StreamBudget: streamMB * 1024 * 1024,
 		}
@@ -69,24 +70,24 @@ func NewAutoBudgetManager(residentMB, streamMB, expertMB int64) *BudgetManager {
 
 	// Reserve 256MB headroom for work buffers, KV cache growth, etc.
 	headroom := int64(256 * 1024 * 1024)
-	available := int64(free) - headroom
+	available := int64(freeBytes) - headroom
 	if available < 0 {
 		available = 0
 	}
 
-	// Resident comes first
+	// Resident comes first.
 	if residentBytes > available {
 		residentBytes = available
 	}
 	remaining := available - residentBytes
 
-	// Expert pool
+	// Expert pool.
 	if expertBytes > remaining {
 		expertBytes = remaining
 	}
 	remaining -= expertBytes
 
-	// Layer pool gets the rest
+	// Layer pool gets the rest.
 	layerBytes := remaining
 
 	return &BudgetManager{

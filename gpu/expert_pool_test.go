@@ -2,6 +2,8 @@ package gpu
 
 import (
 	"testing"
+
+	"github.com/rcarmo/go-pherence/backends/placement"
 )
 
 func TestExpertPoolBasic(t *testing.T) {
@@ -60,7 +62,7 @@ func TestExpertPoolBasic(t *testing.T) {
 }
 
 func TestExpertPoolWithBudget(t *testing.T) {
-	budget := NewBudgetManager(0, 0, 0, 10) // 10MB expert budget
+	budget := placement.NewBudgetManager(0, 0, 0, 10) // 10MB expert budget
 	pool := NewExpertPool(5, budget)
 
 	// Fill with experts

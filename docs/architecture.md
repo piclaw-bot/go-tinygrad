@@ -39,12 +39,13 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 |---|---|---|
 | CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver` | Flags and user/server I/O only |
 | Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources |
+| Placement policy | `backends/placement` | Backend-neutral budget manager and layer placement estimator; device memory availability is caller-supplied |
 | SIMD backend | `backends/simd` | Package name remains `simd`; import path is now backend-owned |
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, loader validation, dequantization, and on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
-| GPU transition package | `gpu` | CUDA + Vulkan + placement/expert cache until the backend split lands |
+| GPU transition package | `gpu` | CUDA + Vulkan + GPU-resident expert cache until the backend split lands |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
 
 ## Weight Format Pipeline

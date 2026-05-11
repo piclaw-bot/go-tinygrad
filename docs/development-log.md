@@ -174,3 +174,13 @@ Continued the Phase 6.5 mechanical refactor by moving shared runtime concerns ou
 - Converted LLaMA and GTE load-time panics into returned errors, and stopped ignoring GPTQ scale/qzero load failures.
 
 Validation covered the new runtime packages, focused model tests, backend/loader/tensor/cmd packages, `go test ./... -run '^$'`, `go vet ./...`, and `git diff --check`.
+
+## Session 5: Placement policy extraction
+
+Continued Phase 6.5 by separating backend-neutral placement policy from GPU device-resource ownership:
+
+- Moved `gpu/budget.go` and `gpu/placement.go` to `backends/placement`.
+- Made placement planning accept caller-supplied available device memory instead of calling CUDA `MemInfo()` directly.
+- Kept `gpu/expert_pool.go` in `gpu` because `ExpertEntry` owns `GPUMLXWeight` resources that must be freed through the GPU backend.
+- Updated expert-pool accounting to depend on `backends/placement.BudgetManager`.
+- Updated Makefile and docs so the fast validation set includes `backends/placement`.

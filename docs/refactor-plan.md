@@ -15,12 +15,13 @@ The immediate goal is not to make the architecture perfect. It is to create enou
 Current Go packages from `go list ./...` after the loader/backend/runtime moves completed so far:
 
 ```text
+backends/placement   -> backend-neutral memory budget and layer placement policy
 backends/simd        -> AVX2/FMA/NEON dispatch and kernels
 cmd/llmchat          -> imports gpu, loader/tokenizer, model
 cmd/llmgen           -> imports loader/tokenizer, model
 cmd/llmserver        -> imports gpu, loader/tokenizer, model
 cmd/tinydemo         -> imports tensor
-gpu                  -> CUDA, Vulkan, budgets, placement, expert pool, PTX/SPIR-V embedding
+gpu                  -> CUDA, Vulkan, GPU-resident expert pool, PTX/SPIR-V embedding
 loader/config        -> config.json and quantize_config JSON helpers
 loader/safetensors   -> mmap safetensors reader, sharded reader, mmap advisor
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode
@@ -41,7 +42,7 @@ model -> backends/simd, gpu, loader/{config,tokenizer,weights}, runtime/{kv,quan
 models/bert -> backends/simd, loader/safetensors, tensor
 loader/weights -> loader/safetensors
 tensor -> backends/simd
-gpu -> purego/unix only
+gpu -> backends/placement, purego/unix only
 ```
 
 Initial assessment before the first moves found root `safetensors/`, root `simd/`, tokenizer code inside `model/`, and GTE/BERT code inside `model/`. Those have now been moved to their target owners. Remaining hotspots:
@@ -59,7 +60,7 @@ gpu/attn_ptx.go       ~560 lines: attention kernels
 ## Main problems found
 
 1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, generic KV/TurboQuant, and MLX/GPTQ CPU quant helpers have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, MoE, model-specific KV sizing, and MTP scaffold.
-2. **Backends are not cleanly separated.** `gpu/` mixes CUDA, Vulkan, budget/placement, expert pool, and memory abstractions. `model/gpu_forward.go` imports and orchestrates GPU details directly.
+2. **Backends are not cleanly separated.** `gpu/` still mixes CUDA, Vulkan, GPU expert pool, and memory abstractions, although backend-neutral budget/placement policy has moved to `backends/placement`. `model/gpu_forward.go` imports and orchestrates GPU details directly.
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
@@ -162,7 +163,7 @@ Move/update directly:
 - `model/kv_cache.go` and the generic staging parts of `model/kv_staging.go` -> `runtime/kv` ✅
 - `model/turboquant.go` -> `runtime/kv` ✅
 - `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go` -> `runtime/quant` ✅; `model/bf16.go` remains with BF16 model semantics for now
-- `gpu/budget.go`, `gpu/placement.go`, `gpu/expert_pool.go` -> `backends/placement` or `runtime/memory` depending on whether they own device resources
+- `gpu/budget.go`, `gpu/placement.go` -> `backends/placement` ✅; `gpu/expert_pool.go` stays in `gpu` because it owns `GPUMLXWeight` device resources
 - `loader/safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now
 
 ### Backends
@@ -213,7 +214,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move. Include `runtime/kv` and `runtime/quant` in the fast package set because they now own shared KV and CPU quantization behavior:
 
 ```sh
-go test ./gpu ./loader/... ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -229,7 +230,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./loader/... ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go test ./models/bert -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2

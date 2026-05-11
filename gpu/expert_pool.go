@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/rcarmo/go-pherence/backends/placement"
 )
 
 // ExpertPool manages a fixed number of MoE expert weight sets on GPU.
 // Experts are cached with LRU eviction and hit/miss tracking.
 type ExpertPool struct {
 	mu     sync.Mutex
-	slots  int                  // max experts on GPU simultaneously
-	cache  map[int]*ExpertEntry // expert_id → cached entry
-	order  []int                // LRU order (most recent at end)
-	budget *BudgetManager       // optional budget tracking
+	slots  int                      // max experts on GPU simultaneously
+	cache  map[int]*ExpertEntry     // expert_id → cached entry
+	order  []int                    // LRU order (most recent at end)
+	budget *placement.BudgetManager // optional budget tracking
 
 	// Stats
 	Hits   atomic.Uint64
@@ -31,7 +33,7 @@ type ExpertEntry struct {
 }
 
 // NewExpertPool creates a pool with the given number of GPU slots.
-func NewExpertPool(slots int, budget *BudgetManager) *ExpertPool {
+func NewExpertPool(slots int, budget *placement.BudgetManager) *ExpertPool {
 	return &ExpertPool{
 		slots:  slots,
 		cache:  make(map[int]*ExpertEntry),
@@ -50,7 +52,7 @@ func (p *ExpertPool) Get(expertID int) *ExpertEntry {
 		p.touchLocked(expertID)
 		p.Hits.Add(1)
 		if p.budget != nil {
-			p.budget.Hit(BudgetExpert)
+			p.budget.Hit(placement.BudgetExpert)
 		}
 		return entry
 	}
@@ -81,7 +83,7 @@ func (p *ExpertPool) Put(entry *ExpertEntry) *ExpertEntry {
 	p.order = append(p.order, entry.ExpertID)
 
 	if p.budget != nil {
-		p.budget.Alloc(BudgetExpert, entry.SizeBytes)
+		p.budget.Alloc(placement.BudgetExpert, entry.SizeBytes)
 	}
 
 	return evicted
@@ -106,8 +108,8 @@ func (p *ExpertPool) evictLRULocked() *ExpertEntry {
 		delete(p.cache, lruID)
 		p.Evicts.Add(1)
 		if p.budget != nil {
-			p.budget.Free(BudgetExpert, entry.SizeBytes)
-			p.budget.Evict(BudgetExpert)
+			p.budget.Free(placement.BudgetExpert, entry.SizeBytes)
+			p.budget.Evict(placement.BudgetExpert)
 		}
 	}
 	return entry
