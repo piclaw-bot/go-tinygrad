@@ -45,7 +45,7 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers |
 | Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming |
-| Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, loader validation, dequantization, and on-the-fly Q4 GEMV helpers |
+| Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
 | GPU transition package | `gpu` | CUDA/PTX path plus GPU-resident expert cache until the CUDA backend split lands |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
@@ -58,10 +58,10 @@ HuggingFace (mlx-community, GPTQ, BF16)
     ▼
 loader/safetensors + loader/weights (GetFloat32, GetBF16, GetInt32, GetRaw)
     │
-    ├─── MLX 4-bit: runtime/quant.LoadMLXWeight → [outDim, inDim/8] uint32 + scales + biases
+    ├─── MLX 4-bit: runtime/quant.LoadMLXWeight validates packed shape + F32/F16/BF16 scales/biases
     │    └─── GPU: transpose → GPTQ kernel + bias correction
     │
-    ├─── GPTQ 4-bit: loader reads qweight/g_idx/scales → runtime/quant dequant or GemvQ4Sym
+    ├─── GPTQ 4-bit: loader reads qweight/g_idx/scales/qzeros → runtime/quant validates before dequant or GemvQ4Sym
     │    └─── GPU: direct tiled GEMV
     │
     └─── BF16/F16/F32: load → tensor (optional BF16 native path)

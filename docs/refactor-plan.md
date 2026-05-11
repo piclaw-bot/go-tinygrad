@@ -165,7 +165,7 @@ Move/update directly:
 
 - `model/kv_cache.go` and the generic staging parts of `model/kv_staging.go` -> `runtime/kv` ✅
 - `model/turboquant.go` -> `runtime/kv` ✅
-- `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go` -> `runtime/quant` ✅; `model/bf16.go` remains with BF16 model semantics for now
+- `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go` -> `runtime/quant` ✅; runtime now validates MLX scale/bias dtypes, GPTQ qweight/g_idx/scales/qzeros, and Q4 GEMV call inputs; `model/bf16.go` remains with BF16 model semantics for now
 - `gpu/budget.go`, `gpu/placement.go` -> `backends/placement` ✅; `gpu/expert_pool.go` stays in `gpu` because it owns `GPUMLXWeight` device resources
 - `loader/safetensors/mmap_advisor.go` -> `runtime/memory` ✅; safetensors keeps only file/eager-load integration tests
 

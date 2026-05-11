@@ -23,7 +23,7 @@ Loaded as one mega module + optional native BF16 module.
 ### Memory Management
 
 - **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer
-- **ExpertPool**: LRU cache for MoE expert weights with auto-sized VRAM budget
+- **ExpertPool**: LRU cache for MoE expert weights with auto-sized VRAM budget; disabled and replacement cases return GPU resources for explicit release
 - **BudgetManager**: 4-tier memory tracking (resident/layer/stream/expert), now owned by `backends/placement`
 - **MmapAdvisor**: `runtime/memory` page-level madvise tracking for eager loading and future weight streaming
 - **Layer placement**: `backends/placement` auto-fit/manual policy (`--gpu-layers N`) with caller-supplied device memory availability

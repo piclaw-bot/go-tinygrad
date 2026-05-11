@@ -210,3 +210,13 @@ Reviewed the public and internal Markdown after the placement, runtime memory, a
 - Updated kernel inventory wording to avoid stale exact F32/BF16 tables and reflect the current CUDA/Vulkan/SIMD ownership split.
 - Clarified CPU SIMD coverage as runtime-gated core hot paths with remaining GEMV/RoPE/GELU gaps, rather than claiming complete coverage.
 - Clarified native BF16 as scaffolding/helpers where the F32-compatible path is still used as needed.
+
+## Session 9: Runtime/backend hardening audit
+
+Audited the newly split runtime/backend packages for concrete edge cases and stale assumptions:
+
+- Hardened `runtime/memory.MmapAdvisor` so repeated prefetch/evict calls do not skew hot-byte accounting, invalid ranges are ignored safely, cold ranges are not merged into hot ranges, and `madvise` errors propagate to safetensors eager loading.
+- Hardened `backends/placement.BudgetManager` and `PlanLayerPlacement` against negative budgets, huge device-memory values, negative model dimensions, and overflow-prone arithmetic.
+- Hardened `gpu.ExpertPool` for disabled zero-slot pools, nil entries, replacement behavior, and replacement budget accounting.
+- Hardened `runtime/quant` validation: MLX scale/bias tensors must be F32/F16/BF16, GPTQ qweight/g_idx/scales/qzeros are validated before use, and public Q4 GEMV calls validate their slices/dimensions instead of panicking.
+- Updated focused regression tests for each fix and kept the fast validation gate green.

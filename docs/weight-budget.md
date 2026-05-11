@@ -39,10 +39,10 @@ Tier 3: mmap (disk)       OS page cache, madvise control
 
 Backend-neutral budget and layer-placement policy now lives in `backends/placement`:
 
-- `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters.
-- `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery.
-- `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints; `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
-- GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting.
+- `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters, with guarded accounting for negative/overflowing inputs.
+- `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery; invalid dimensions are clamped for safe planning.
+- `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints with idempotent hot-byte accounting; `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
+- GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting and handle disabled/replacement cases explicitly.
 
 ## Budget Categories
 

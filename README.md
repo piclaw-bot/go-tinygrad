@@ -108,8 +108,8 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 
 | Format | Detection | Dequant | GPU | Notes |
 |---|---|---|---|---|
-| **MLX affine 4-bit** | `config.json` quantization block | `val × scale + bias` | Transpose → GPTQ kernel | Primary format |
-| **GPTQ INT4** | `quantize_config.json` | `(val - 8) × scale` | Native tiled GEMV | Symmetric |
+| **MLX affine 4-bit** | `config.json` quantization block | `val × scale + bias` | Transpose → GPTQ kernel | Primary format; runtime validates packed shape and F32/F16/BF16 scale/bias dtypes |
+| **GPTQ INT4** | `quantize_config.json` | `(val - 8) × scale` | Native tiled GEMV | Symmetric; runtime validates qweight/g_idx/scales/qzeros and Q4 GEMV inputs |
 | **BF16** | safetensors dtype | Direct load | F32 on GPU | Half bandwidth |
 | **F16** | safetensors dtype | F16→F32 at load | F32 on GPU | |
 | **F32** | safetensors dtype | Direct load | Native | |
@@ -159,7 +159,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`models/bert/`** — GTE/BERT encoder path
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights
-- **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dequantization, on-the-fly Q4 GEMV helpers, and loader validation
+- **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
 - **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
 

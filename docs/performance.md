@@ -33,8 +33,8 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | Kernel | Time | Accuracy | Shared mem |
 |---|---|---|---|
 | SGEMM 16×16 | 348 GFLOPS @ 1024² | — | tiled |
-| Q4 GEMV (GPTQ) | ~300µs @ 3584² | 1.7e-6 maxDiff | CUDA tiled + 8× unroll; CPU scalar owner is `runtime/quant` |
-| Q4 GEMV (MLX) | ~300µs @ 3584² | 6.7e-6 maxDiff | CUDA 8× unroll; CPU scalar owner is `runtime/quant` |
+| Q4 GEMV (GPTQ) | ~300µs @ 3584² | 1.7e-6 maxDiff | CUDA tiled + 8× unroll; CPU scalar owner is `runtime/quant` with upfront shape validation |
+| Q4 GEMV (MLX) | ~300µs @ 3584² | 6.7e-6 maxDiff | CUDA 8× unroll; CPU scalar owner is `runtime/quant` with dtype/shape validation |
 | LM Head GEMV | ~5ms @ 152K×3584 | — | 2D grid |
 | RMSNorm | ~2µs @ 3584 | Newton-refined rsqrt | 256-thread reduce |
 | BF16 RMSNorm | ~2µs @ 3584 | native cvt on Ampere+ | 256-thread reduce |
