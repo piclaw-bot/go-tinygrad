@@ -266,3 +266,10 @@ Continued the asset-only CUDA backend split:
 
 - Moved the standalone `SgemmPTX` source string into `backends/cuda/ptx`.
 - Kept SGEMM launch/runtime state in `gpu`, matching the current `DevBuf` and mega-module ownership boundaries.
+
+## Session 16: Prefetch PTX asset extraction
+
+Continued CUDA source-asset extraction:
+
+- Moved `PrefetchPTX` into `backends/cuda/ptx`.
+- Kept CUDA stream/event/graph helpers and the prefetch function handle in `gpu`, since they are runtime orchestration rather than source assets.
