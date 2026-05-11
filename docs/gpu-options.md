@@ -22,7 +22,8 @@ Loaded as one mega module + optional native BF16 module.
 
 ### Memory Management
 
-- **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer; vector-op GPU fast paths preflight all kernel input/output buffers before launching and fall back to CPU if upload/allocation fails
+- **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer; vector/norm/dense GEMV/LM-head fast paths preflight kernel operands before launching and fall back or no-op safely if upload/allocation fails
+- **Quantized dispatch**: Q4/MLX upload paths validate dimensions, packed-weight sizes, scale layouts, and group indices before allocating GPU buffers
 - **ExpertPool**: LRU cache for MoE expert weights with auto-sized VRAM budget; disabled and replacement cases return GPU resources for explicit release
 - **BudgetManager**: 4-tier memory tracking (resident/layer/stream/expert), now owned by `backends/placement`
 - **MmapAdvisor**: `runtime/memory` page-level madvise tracking for eager loading and future weight streaming

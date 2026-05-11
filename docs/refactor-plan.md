@@ -172,7 +172,7 @@ Move/update directly:
 
 Move/update directly:
 
-- CUDA driver/PTX: embedded PTX source assets have moved to `backends/cuda/ptx` ✅, covering attention/RoPE, core vector/norm/activation kernels, LM head, Q4 GEMV/GEMM, SGEMM, prefetch, BF16, and MLX kernels. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
+- CUDA driver/PTX: embedded PTX source assets have moved to `backends/cuda/ptx` ✅, covering attention/RoPE, core vector/norm/activation kernels, LM head, Q4 GEMV/GEMM, SGEMM, prefetch, BF16, and MLX kernels. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers. Recent audit passes hardened `DevBuf`, stream/copy wrappers, Q4/MLX dispatch validation, and GPU pointer call sites before the larger runtime split.
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
