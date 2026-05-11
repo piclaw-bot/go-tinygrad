@@ -13,19 +13,14 @@ import (
 // DevLMHead computes logits[vocab] = W[vocab,h] · x[h]
 // Uses a dedicated kernel optimized for large M (vocab) and small N (1).
 func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
-	if !kernelsLoaded || fnLMHead == 0 {
+	if logits == nil || x == nil || W == nil || vocab <= 0 || h <= 0 || logits.n < vocab || x.n < h || W.n < vocab*h {
+		return
+	}
+	if !kernelsLoaded || fnLMHead == 0 || !tryGPU(x, W, logits) {
 		DevGemv(logits, x, W, vocab, h)
 		return
 	}
 	EnsureContext()
-	x.ToGPU()
-	W.ToGPU()
-	logits.EnsureGPU()
-
-	if x.gpu == nil || W.gpu == nil || logits.gpu == nil {
-		DevGemv(logits, x, W, vocab, h)
-		return
-	}
 
 	v := uint32(vocab)
 	dim := uint32(h)

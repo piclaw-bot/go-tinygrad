@@ -321,3 +321,11 @@ Hardened CUDA quantized dispatch paths found during the GPU runtime audit:
 - `UploadMLXWeight` now validates dimensions, packed MLX weight length, and scale/bias lengths before transposition/upload.
 - MLX GEMV/GEMM launch helpers now preflight native/GPTQ weight availability and input/output dimensions before dispatch.
 - Low-level CUDA `Buffer.Upload`/`Download` and integer reinterpret helpers now handle empty slices without indexing `data[0]`.
+
+## Session 23: GEMV/LM-head dispatch guard audit
+
+Hardened remaining dense CUDA dispatch helpers:
+
+- `DevGemv`, `DevGemvNN`, and `DevLMHead` now validate nil inputs, dimensions, and backing-buffer lengths before GPU launch or CPU fallback.
+- Dense GEMV and LM-head GPU paths now use the same `tryGPU` preflight as vector and norm helpers, avoiding ignored upload/allocation errors.
+- Added malformed-call regression coverage for GEMV, pre-transposed GEMV, and LM-head dispatch.

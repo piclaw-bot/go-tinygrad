@@ -170,3 +170,15 @@ func TestDevBufBoundsDoNotPanic(t *testing.T) {
 		t.Fatalf("negative buffer len=%d, want 0", neg.Len())
 	}
 }
+
+func TestDevBufGemvMalformedDoesNotPanic(t *testing.T) {
+	out := NewDevBuf(1)
+	x := NewDevBufFrom([]float32{1})
+	w := NewDevBufFrom([]float32{1})
+	DevGemv(out, x, w, 2, 2)
+	DevGemvNN(out, x, w, 2, 2)
+	DevLMHead(out, x, w, 2, 2)
+	DevGemv(nil, x, w, 1, 1)
+	DevGemvNN(out, nil, w, 1, 1)
+	DevLMHead(out, x, nil, 1, 1)
+}

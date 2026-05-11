@@ -342,12 +342,13 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 
 // Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)
 func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
-	if SgemmReady() {
-		if x.ToGPU() == nil && W.ToGPU() == nil && out.ToGPU() == nil {
-			Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
-			out.dev = GPU_DEVICE
-			return
-		}
+	if out == nil || x == nil || W == nil || M <= 0 || K <= 0 || out.n < M || x.n < K || W.n < M*K {
+		return
+	}
+	if SgemmReady() && tryGPU(x, W, out) {
+		Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
+		out.dev = GPU_DEVICE
+		return
 	}
 	// CPU fallback: out[j] = dot(W[j,:], x)
 	x.ToCPU()
@@ -441,12 +442,13 @@ func (b *DevBuf) Free() {
 // GemvNN: out[N] = x[K] @ W[K,N] (W is pre-transposed, column-major for output)
 // This is for the non-Large path where weights are pre-transposed.
 func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
-	if SgemmReady() {
-		if x.ToGPU() == nil && W.ToGPU() == nil && out.ToGPU() == nil {
-			Sgemm(1, N, K, 1.0, x.gpu, W.gpu, out.gpu)
-			out.dev = GPU_DEVICE
-			return
-		}
+	if out == nil || x == nil || W == nil || K <= 0 || N <= 0 || out.n < N || x.n < K || W.n < K*N {
+		return
+	}
+	if SgemmReady() && tryGPU(x, W, out) {
+		Sgemm(1, N, K, 1.0, x.gpu, W.gpu, out.gpu)
+		out.dev = GPU_DEVICE
+		return
 	}
 	// CPU fallback
 	x.ToCPU()
