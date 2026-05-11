@@ -81,6 +81,30 @@ func TestAcceptMTPDraftRejectsWrongVerifierCount(t *testing.T) {
 	}
 }
 
+func TestAcceptMTPDraftFromLogits(t *testing.T) {
+	got, err := AcceptMTPDraftFromLogits([]int{1, 2, 3}, [][]float32{
+		{0, 9, 1, 0}, // verifier token 1 accepts draft[0]
+		{0, 1, 8, 0}, // verifier token 2 accepts draft[1]
+		{0, 0, 1, 7}, // verifier token 3 accepts draft[2]
+		{0, 4, 1, 0}, // bonus token 1
+	})
+	if err != nil {
+		t.Fatalf("AcceptMTPDraftFromLogits: %v", err)
+	}
+	if !got.AllDraftsAccepted || got.BonusToken != 1 || !sameInts(got.OutputTokens, []int{1, 2, 3, 1}) {
+		t.Fatalf("got all=%v bonus=%d output=%v", got.AllDraftsAccepted, got.BonusToken, got.OutputTokens)
+	}
+}
+
+func TestAcceptMTPDraftFromLogitsPropagatesErrors(t *testing.T) {
+	if _, err := AcceptMTPDraftFromLogits([]int{1}, [][]float32{{0, 1}}); err == nil {
+		t.Fatal("AcceptMTPDraftFromLogits accepted missing bonus row")
+	}
+	if _, err := AcceptMTPDraftFromLogits([]int{1}, [][]float32{{0, 1}, nil}); err == nil {
+		t.Fatal("AcceptMTPDraftFromLogits accepted empty verifier logits row")
+	}
+}
+
 func sameInts(a, b []int) bool {
 	if len(a) != len(b) {
 		return false

@@ -16,6 +16,20 @@ type MTPAcceptance struct {
 	FirstRejectedIndex int // -1 when all drafts were accepted
 }
 
+// AcceptMTPDraftFromLogits greedily samples verifier logits and applies
+// AcceptMTPDraft. The verifier must provide G+1 logit rows for G drafted IDs.
+func AcceptMTPDraftFromLogits(drafted []int, verifierLogits [][]float32) (MTPAcceptance, error) {
+	verifier := make([]int, len(verifierLogits))
+	for i, logits := range verifierLogits {
+		id, _, err := ArgmaxLogits(logits)
+		if err != nil {
+			return MTPAcceptance{}, fmt.Errorf("verifier logits row %d: %w", i, err)
+		}
+		verifier[i] = id
+	}
+	return AcceptMTPDraft(drafted, verifier)
+}
+
 // AcceptMTPDraft compares drafted token IDs with verifier greedy token IDs.
 //
 // The verifier must provide G+1 IDs for G drafted IDs: verifier[0:G] checks the

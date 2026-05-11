@@ -77,7 +77,7 @@ Verifier (main model batched forward):
 4. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
 5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
 6. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
-7. **Accept/reject semantics** ✅ — `AcceptMTPDraft` keeps the matching prefix and emits the verifier bonus token on mismatch/all-accepted completion.
+7. **Accept/reject semantics** ✅ — `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` keep the matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
 8. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
 9. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
 10. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
