@@ -96,12 +96,13 @@ func Open(path string) (*File, error) {
 		return nil, fmt.Errorf("safetensors: mmap %s: %w", path, err)
 	}
 
-	headerLen := int(binary.LittleEndian.Uint64(mapped[:8]))
-	if 8+headerLen > size {
+	headerLen64 := binary.LittleEndian.Uint64(mapped[:8])
+	if headerLen64 > uint64(size-8) {
 		syscall.Munmap(mapped)
 		fd.Close()
-		return nil, fmt.Errorf("safetensors: header length %d exceeds file size", headerLen)
+		return nil, fmt.Errorf("safetensors: header length %d exceeds file size", headerLen64)
 	}
+	headerLen := int(headerLen64)
 
 	var header map[string]json.RawMessage
 	if err := json.Unmarshal(mapped[8:8+headerLen], &header); err != nil {
@@ -121,6 +122,11 @@ func Open(path string) (*File, error) {
 			fd.Close()
 			return nil, fmt.Errorf("safetensors: parse tensor %q: %w", key, err)
 		}
+		if err := validateTensorInfo(key, info, size-8-headerLen); err != nil {
+			syscall.Munmap(mapped)
+			fd.Close()
+			return nil, err
+		}
 		tensors[key] = info
 	}
 
@@ -134,6 +140,33 @@ func Open(path string) (*File, error) {
 	}, nil
 }
 
+func validateTensorInfo(name string, info TensorInfo, dataLen int) error {
+	start, end := info.DataOffsets[0], info.DataOffsets[1]
+	if start < 0 || end < start || end > dataLen {
+		return fmt.Errorf("safetensors: tensor %q invalid data offsets [%d,%d] for data length %d", name, start, end, dataLen)
+	}
+	for _, d := range info.Shape {
+		if d < 0 {
+			return fmt.Errorf("safetensors: tensor %q invalid shape %v", name, info.Shape)
+		}
+	}
+	return nil
+}
+
+func (f *File) rawTensor(name string) (TensorInfo, []byte, error) {
+	if f == nil {
+		return TensorInfo{}, nil, fmt.Errorf("safetensors: nil file")
+	}
+	info, ok := f.Tensors[name]
+	if !ok {
+		return TensorInfo{}, nil, fmt.Errorf("safetensors: tensor %q not found", name)
+	}
+	if err := validateTensorInfo(name, info, len(f.data)); err != nil {
+		return TensorInfo{}, nil, err
+	}
+	return info, f.data[info.DataOffsets[0]:info.DataOffsets[1]], nil
+}
+
 // Names returns all tensor names in sorted order.
 func (f *File) Names() []string {
 	names := make([]string, 0, len(f.Tensors))
@@ -145,15 +178,16 @@ func (f *File) Names() []string {
 
 // GetFloat32 returns a tensor's data as float32, converting from the stored dtype.
 func (f *File) GetFloat32(name string) ([]float32, []int, error) {
-	info, ok := f.Tensors[name]
-	if !ok {
-		return nil, nil, fmt.Errorf("safetensors: tensor %q not found", name)
+	info, raw, err := f.rawTensor(name)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	raw := f.data[info.DataOffsets[0]:info.DataOffsets[1]]
 
 	switch info.DType {
 	case "F32":
+		if len(raw)%4 != 0 {
+			return nil, nil, fmt.Errorf("safetensors: tensor %q F32 byte length %d is not divisible by 4", name, len(raw))
+		}
 		n := len(raw) / 4
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
@@ -162,6 +196,9 @@ func (f *File) GetFloat32(name string) ([]float32, []int, error) {
 		return out, info.Shape, nil
 
 	case "F16":
+		if len(raw)%2 != 0 {
+			return nil, nil, fmt.Errorf("safetensors: tensor %q F16 byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
@@ -170,6 +207,9 @@ func (f *File) GetFloat32(name string) ([]float32, []int, error) {
 		return out, info.Shape, nil
 
 	case "BF16":
+		if len(raw)%2 != 0 {
+			return nil, nil, fmt.Errorf("safetensors: tensor %q BF16 byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
@@ -179,6 +219,9 @@ func (f *File) GetFloat32(name string) ([]float32, []int, error) {
 		return out, info.Shape, nil
 
 	case "I64":
+		if len(raw)%8 != 0 {
+			return nil, nil, fmt.Errorf("safetensors: tensor %q I64 byte length %d is not divisible by 8", name, len(raw))
+		}
 		n := len(raw) / 8
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
@@ -187,6 +230,9 @@ func (f *File) GetFloat32(name string) ([]float32, []int, error) {
 		return out, info.Shape, nil
 
 	case "I32":
+		if len(raw)%4 != 0 {
+			return nil, nil, fmt.Errorf("safetensors: tensor %q I32 byte length %d is not divisible by 4", name, len(raw))
+		}
 		n := len(raw) / 4
 		out := make([]float32, n)
 		for i := 0; i < n; i++ {
@@ -326,11 +372,10 @@ func (sf *ShardedFile) Names() []string {
 
 // GetRaw returns raw bytes and shape for a tensor without conversion.
 func (f *File) GetRaw(name string) ([]byte, string, []int, error) {
-	t, ok := f.Tensors[name]
-	if !ok {
-		return nil, "", nil, fmt.Errorf("tensor %q not found", name)
+	t, data, err := f.rawTensor(name)
+	if err != nil {
+		return nil, "", nil, err
 	}
-	data := f.data[t.DataOffsets[0]:t.DataOffsets[1]]
 	return data, t.DType, t.Shape, nil
 }
 
@@ -342,6 +387,9 @@ func (f *File) GetInt32(name string) ([]int32, []int, error) {
 	}
 	if dtype != "I32" {
 		return nil, nil, fmt.Errorf("tensor %q is %s, not I32", name, dtype)
+	}
+	if len(raw)%4 != 0 {
+		return nil, nil, fmt.Errorf("tensor %q I32 byte length %d is not divisible by 4", name, len(raw))
 	}
 	n := len(raw) / 4
 	out := make([]int32, n)
@@ -357,7 +405,10 @@ func (sf *ShardedFile) GetRaw(name string) ([]byte, string, []int, error) {
 	if !ok {
 		return nil, "", nil, fmt.Errorf("tensor %q not in weight map", name)
 	}
-	shard := sf.shards[filename]
+	shard, ok := sf.shards[filename]
+	if !ok || shard == nil {
+		return nil, "", nil, fmt.Errorf("shard %q not loaded", filename)
+	}
 	return shard.GetRaw(name)
 }
 
@@ -366,7 +417,10 @@ func (sf *ShardedFile) GetInt32(name string) ([]int32, []int, error) {
 	if !ok {
 		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
 	}
-	shard := sf.shards[filename]
+	shard, ok := sf.shards[filename]
+	if !ok || shard == nil {
+		return nil, nil, fmt.Errorf("shard %q not loaded", filename)
+	}
 	return shard.GetInt32(name)
 }
 
@@ -382,6 +436,9 @@ func (f *File) GetBF16(name string) ([]uint16, []int, error) {
 
 	switch dtype {
 	case "BF16":
+		if len(raw)%2 != 0 {
+			return nil, nil, fmt.Errorf("tensor %q BF16 byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out := make([]uint16, n)
 		for i := 0; i < n; i++ {
@@ -390,6 +447,9 @@ func (f *File) GetBF16(name string) ([]uint16, []int, error) {
 		return out, shape, nil
 
 	case "F32":
+		if len(raw)%4 != 0 {
+			return nil, nil, fmt.Errorf("tensor %q F32 byte length %d is not divisible by 4", name, len(raw))
+		}
 		n := len(raw) / 4
 		out := make([]uint16, n)
 		for i := 0; i < n; i++ {
@@ -399,6 +459,9 @@ func (f *File) GetBF16(name string) ([]uint16, []int, error) {
 		return out, shape, nil
 
 	case "F16":
+		if len(raw)%2 != 0 {
+			return nil, nil, fmt.Errorf("tensor %q F16 byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out := make([]uint16, n)
 		for i := 0; i < n; i++ {

@@ -378,3 +378,13 @@ Hardened mmap residency range bounding:
 
 - `MmapAdvisor.boundedRange` now clamps oversized byte counts before page alignment so huge caller ranges cannot overflow alignment arithmetic.
 - Added regression coverage for huge range prefetch clamping to the mapped file size.
+
+## Session 30: Safetensors malformed-file audit
+
+Hardened safetensors loader edge cases:
+
+- Header length is checked before converting to `int`, avoiding overflow on malformed files.
+- Tensor data offsets are validated at open time and again before raw slicing.
+- F32/F16/BF16/I32/I64 conversion paths now reject byte lengths that are not element-aligned instead of silently truncating.
+- Sharded raw/I32 lookups now return errors for missing shard objects instead of nil-pointer panics.
+- Added small synthetic safetensors regression tests for invalid offsets, misaligned raw lengths, and missing shards.

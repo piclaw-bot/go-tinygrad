@@ -1,6 +1,7 @@
 package safetensors
 
 import (
+	"encoding/binary"
 	"math"
 	"os"
 	"sort"
@@ -122,5 +123,45 @@ func TestFloat16Conversion(t *testing.T) {
 		} else if math.Abs(float64(got-tt.want)) > 0.001 {
 			t.Errorf("f16(0x%04x) = %v, want %v", tt.bits, got, tt.want)
 		}
+	}
+}
+
+func writeTestSafetensors(t *testing.T, header string, data []byte) string {
+	t.Helper()
+	path := t.TempDir() + "/model.safetensors"
+	var lenBuf [8]byte
+	binary.LittleEndian.PutUint64(lenBuf[:], uint64(len(header)))
+	if err := os.WriteFile(path, append(append(lenBuf[:], []byte(header)...), data...), 0644); err != nil {
+		t.Fatalf("write safetensors: %v", err)
+	}
+	return path
+}
+
+func TestOpenRejectsInvalidTensorOffsets(t *testing.T) {
+	path := writeTestSafetensors(t, `{"bad":{"dtype":"F32","shape":[1],"data_offsets":[0,8]}}`, []byte{1, 2, 3, 4})
+	if _, err := Open(path); err == nil {
+		t.Fatal("Open accepted tensor offsets past data region")
+	}
+}
+
+func TestGetFloat32RejectsMisalignedRawLength(t *testing.T) {
+	path := writeTestSafetensors(t, `{"bad":{"dtype":"F32","shape":[1],"data_offsets":[0,3]}}`, []byte{1, 2, 3})
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	if _, _, err := f.GetFloat32("bad"); err == nil {
+		t.Fatal("GetFloat32 accepted non-multiple-of-4 F32 data")
+	}
+}
+
+func TestShardedMissingShardReturnsError(t *testing.T) {
+	sf := &ShardedFile{mapping: map[string]string{"x": "missing.safetensors"}, shards: map[string]*File{}}
+	if _, _, _, err := sf.GetRaw("x"); err == nil {
+		t.Fatal("GetRaw accepted missing shard")
+	}
+	if _, _, err := sf.GetInt32("x"); err == nil {
+		t.Fatal("GetInt32 accepted missing shard")
 	}
 }
