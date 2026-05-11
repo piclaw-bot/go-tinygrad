@@ -11,7 +11,9 @@ func TestFloatKVCheckpointRestore(t *testing.T) {
 	v[0] = append(v[0], 7, 8)
 	k[1] = append(k[1], 11)
 	v[1] = append(v[1], 21)
-	cp.Restore(k, v)
+	if err := cp.Restore(k, v); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
 
 	if got, want := len(k[0]), 2; got != want {
 		t.Fatalf("k[0] len=%d want %d", got, want)
@@ -54,6 +56,25 @@ func TestFloatKVCheckpointKeepAppended(t *testing.T) {
 	}
 }
 
+func TestFloatKVCheckpointRestoreReportsInvalidCheckpoint(t *testing.T) {
+	k := [][]float32{{1}}
+	v := [][]float32{{2}}
+	cp := FloatKVCheckpoint{KLen: []int{2}, VLen: []int{1}}
+	if err := cp.Restore(k, v); err == nil {
+		t.Fatal("Restore accepted checkpoint longer than current cache")
+	}
+}
+
+func TestCompressedKVCheckpointRestoreReportsInvalidCheckpoint(t *testing.T) {
+	cache := NewCompressedKVCache(2, 1, 2, nil, true)
+	cache.Append([]float32{1, 2}, []float32{3, 4})
+	cp := cache.Checkpoint()
+	cp.compressedKLen = 1
+	if err := cache.Restore(cp); err == nil {
+		t.Fatal("Restore accepted checkpoint with impossible compressed length")
+	}
+}
+
 func TestCompressedKVCheckpointRestoreAcrossCompression(t *testing.T) {
 	cfg := DefaultTurboQuantConfig()
 	cfg.ResidualWindow = 2
@@ -74,7 +95,9 @@ func TestCompressedKVCheckpointRestoreAcrossCompression(t *testing.T) {
 		t.Fatalf("expected compressed candidate state, seq=%d compressed=%d", cache.SeqLen(), cache.CompressedCount())
 	}
 
-	cache.Restore(cp)
+	if err := cache.Restore(cp); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
 	if cache.SeqLen() != 2 {
 		t.Fatalf("restored seq len=%d want 2", cache.SeqLen())
 	}
@@ -113,13 +136,13 @@ func TestCompressedKVCheckpointKeepAppendedAcrossCompression(t *testing.T) {
 	gotV := cache.GetV()
 	wantK := []float32{1, 2, 3, 4, 5, 6, 7, 8}
 	wantV := []float32{10, 20, 30, 40, 50, 60, 70, 80}
-	// The first two positions may have been re-compressed after replay, but the
-	// kept staged residual rows must remain exact and the rejected row must vanish.
-	if got, want := gotK[4:], wantK[4:]; !closeFloat32s(got, want, 0.1) {
-		t.Fatalf("kept K suffix=%v want %v (full K=%v)", got, want, gotK)
+	// KeepAppended may replay kept staged rows through Append, so tiny quantization
+	// differences are acceptable if the residual window recompresses rows again.
+	if !closeFloat32s(gotK, wantK, 0.1) {
+		t.Fatalf("kept K=%v want %v", gotK, wantK)
 	}
-	if got, want := gotV[4:], wantV[4:]; !closeFloat32s(got, want, 0.1) {
-		t.Fatalf("kept V suffix=%v want %v (full V=%v)", got, want, gotV)
+	if !closeFloat32s(gotV, wantV, 0.1) {
+		t.Fatalf("kept V=%v want %v", gotV, wantV)
 	}
 }
 
@@ -129,7 +152,9 @@ func TestCompressedKVCheckpointSliceHelpers(t *testing.T) {
 	caches := []*CompressedKVCache{cache, nil}
 	cp := CheckpointCompressedKV(caches)
 	cache.Append([]float32{5, 6}, []float32{7, 8})
-	RestoreCompressedKV(caches, cp)
+	if err := RestoreCompressedKV(caches, cp); err != nil {
+		t.Fatalf("RestoreCompressedKV: %v", err)
+	}
 	if got, want := cache.SeqLen(), 1; got != want {
 		t.Fatalf("seq len=%d want %d", got, want)
 	}

@@ -25,8 +25,8 @@ func CheckpointFloatKV(kvCacheK, kvCacheV [][]float32) FloatKVCheckpoint {
 }
 
 // Restore truncates the uncompressed per-layer KV cache to this checkpoint.
-func (cp FloatKVCheckpoint) Restore(kvCacheK, kvCacheV [][]float32) {
-	_ = cp.KeepAppended(kvCacheK, kvCacheV, nil, 0)
+func (cp FloatKVCheckpoint) Restore(kvCacheK, kvCacheV [][]float32) error {
+	return cp.KeepAppended(kvCacheK, kvCacheV, nil, 0)
 }
 
 // KeepAppended keeps the first keepTokens staged tokens after this checkpoint
@@ -97,13 +97,15 @@ func (c *CompressedKVCache) Checkpoint() CompressedKVCheckpoint {
 }
 
 // Restore rolls this compressed KV cache back to a previous checkpoint.
-func (c *CompressedKVCache) Restore(cp CompressedKVCheckpoint) {
-	_ = c.KeepAppended(cp, 0)
+func (c *CompressedKVCache) Restore(cp CompressedKVCheckpoint) error {
+	return c.KeepAppended(cp, 0)
 }
 
 // KeepAppended keeps the first keepTokens staged tokens after this checkpoint
 // and discards later candidate tokens. This works even when candidate appends
-// crossed the residual window and triggered TurboQuant compression.
+// crossed the residual window and triggered TurboQuant compression. Kept staged
+// rows are replayed through Append after rollback, so if they again cross the
+// residual window they may be quantized once more by the cache policy.
 func (c *CompressedKVCache) KeepAppended(cp CompressedKVCheckpoint, keepTokens int) error {
 	if c == nil || !cp.valid {
 		return nil
@@ -121,21 +123,22 @@ func (c *CompressedKVCache) KeepAppended(cp CompressedKVCheckpoint, keepTokens i
 		allV := c.GetV()
 		start := cp.seqLen * c.kvDim
 		end := (cp.seqLen + keepTokens) * c.kvDim
-		if end > len(allK) || end > len(allV) {
+		if start > len(allK) || start > len(allV) || end > len(allK) || end > len(allV) {
 			return fmt.Errorf("compressed KV keep range [%d:%d] exceeds K/V lengths %d/%d", start, end, len(allK), len(allV))
 		}
 		keepK = append([]float32(nil), allK[start:end]...)
 		keepV = append([]float32(nil), allV[start:end]...)
 	}
 
+	if cp.compressedKLen > len(c.CompressedK) || cp.compressedVLen > len(c.CompressedV) {
+		return fmt.Errorf("checkpoint compressed lengths K/V=%d/%d exceed current %d/%d", cp.compressedKLen, cp.compressedVLen, len(c.CompressedK), len(c.CompressedV))
+	}
 	c.FullK = append(c.FullK[:0], cp.fullK...)
 	c.FullV = append(c.FullV[:0], cp.fullV...)
-	if cp.compressedKLen <= len(c.CompressedK) {
-		c.CompressedK = c.CompressedK[:cp.compressedKLen]
-	}
-	if cp.compressedVLen <= len(c.CompressedV) {
-		c.CompressedV = c.CompressedV[:cp.compressedVLen]
-	}
+	// Compressed entries are append-only; a checkpoint only needs the previous
+	// lengths because candidate appends never mutate existing compressed entries.
+	c.CompressedK = c.CompressedK[:cp.compressedKLen]
+	c.CompressedV = c.CompressedV[:cp.compressedVLen]
 	c.scratchK = c.scratchK[:0]
 	c.scratchV = c.scratchV[:0]
 	c.seqLen = cp.seqLen
@@ -158,8 +161,8 @@ func CheckpointCompressedKV(caches []*CompressedKVCache) []CompressedKVCheckpoin
 }
 
 // RestoreCompressedKV restores all compressed layer caches from checkpoints.
-func RestoreCompressedKV(caches []*CompressedKVCache, cp []CompressedKVCheckpoint) {
-	_ = KeepCompressedKVAppended(caches, cp, 0)
+func RestoreCompressedKV(caches []*CompressedKVCache, cp []CompressedKVCheckpoint) error {
+	return KeepCompressedKVAppended(caches, cp, 0)
 }
 
 // KeepCompressedKVAppended keeps the first keepTokens staged positions for all
