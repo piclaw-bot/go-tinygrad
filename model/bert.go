@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rcarmo/go-pherence/safetensors"
+	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 

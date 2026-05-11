@@ -130,7 +130,7 @@ residual+layernorm, tensor object overhead.
 |---|---|---|
 | `tensor/` — unit tests | 22 | all ops, lazy eval, fusion |
 | `tensor/` — numpy reference | 20 | bit-level reproducibility |
-| `safetensors/` | 3 | load, list, F16 conversion |
+| `loader/safetensors/` | 3 | load, list, F16 conversion |
 | `model/` | 2 | load weights, end-to-end embed |
 | **Total** | **47** | |
 

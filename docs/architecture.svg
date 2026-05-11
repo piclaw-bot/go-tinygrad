@@ -95,7 +95,7 @@
   </g>
   <g transform="translate(480,248)">
     <rect x="0" y="0" width="420" height="90" rx="8" class="zone"/>
-    <text x="12" y="14" class="zone-label">Safetensors (safetensors/)</text>
+    <text x="12" y="14" class="zone-label">Safetensors (loader/safetensors/)</text>
     <rect x="12" y="22" width="120" height="30" rx="5" class="box-amber"/>
     <text x="72" y="41" class="label" text-anchor="middle">F16 / BF16 / F32</text>
     <rect x="144" y="22" width="120" height="30" rx="5" class="box-amber"/>

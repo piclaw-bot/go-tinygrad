@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rcarmo/go-pherence/safetensors"
+	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )

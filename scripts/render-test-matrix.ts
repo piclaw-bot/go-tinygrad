@@ -41,7 +41,7 @@ const sections: Section[] = [
     ]
   },
   {
-    title: "Safetensors (safetensors/) — CPU",
+    title: "Safetensors (loader/safetensors/) — CPU",
     rows: [
       { name: "F16/BF16/F32 + Sharded",     cpu: "pass", gpu: "na",   nv: "na", target: "cpu",  tests: "3",  perf: "HuggingFace",    note: "Up to 15GB" },
       { name: "GPTQ INT4 Dequantization",    cpu: "pass", gpu: "na",   nv: "na", target: "simd", tests: "✓",  perf: "∥ 30s→14s",      note: "AutoRound" },

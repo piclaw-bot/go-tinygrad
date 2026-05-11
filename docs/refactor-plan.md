@@ -73,7 +73,7 @@ cmd/
 loader/
   config/              # config.json and quantize_config parsing
   tokenizer/           # tokenizer.json, chat templates, special-token rules
-  safetensors/         # moved or wrapped current safetensors package
+  safetensors/         # moved current safetensors package
   weights/             # common tensor-name lookup/source interfaces
   detect/              # architecture/quant format detection
 
@@ -145,7 +145,7 @@ Move or wrap:
 - `model/tokenizer.go` -> `loader/tokenizer`
 - config parsing from `model/llama.go`, `model/bert.go`, `model/mtp_drafter.go` -> `loader/config`
 - tensor source interface currently local to `LoadLlama` -> `loader/weights`
-- `safetensors/` -> either `loader/safetensors` or `formats/safetensors`; update call sites directly rather than keeping an old import-path wrapper unless the move is too large for one commit
+- `safetensors/` -> `loader/safetensors`; call sites import the new owner directly, no old import-path wrapper
 
 ### Runtime KV/quant/memory
 
@@ -155,7 +155,7 @@ Move or wrap:
 - `model/turboquant.go` -> `runtime/kv` or `runtime/quant` depending on interface split
 - `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go`, `model/bf16.go` -> `runtime/quant` plus `backends/cpu` kernels where appropriate
 - `gpu/budget.go`, `gpu/placement.go`, `gpu/expert_pool.go` -> `backends/placement` or `runtime/memory` depending on whether they own device resources
-- `safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now
+- `loader/safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now
 
 ### Backends
 
@@ -205,7 +205,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move:
 
 ```sh
-go test ./gpu ./safetensors ./simd ./tensor ./cmd/...
+go test ./gpu ./loader/safetensors ./simd ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -221,7 +221,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./safetensors ./simd ./tensor ./cmd/...
+go test ./gpu ./loader/safetensors ./simd ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2
 go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2

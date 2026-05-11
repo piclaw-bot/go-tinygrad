@@ -76,7 +76,7 @@
   <rect x="8" y="172" width="904" height="22" rx="2" class="row-cpu"/>
   <text x="24" y="187" class="cell">NumPy Reference Tests</text><circle cx="246" cy="183" r="5" class="pass"/><circle cx="350" cy="183" r="5" class="na"/><circle cx="480" cy="183" r="5" class="na"/><text x="555" y="187" class="perf">20</text><text x="610" y="187" class="perf">&amp;lt;1e-5 diff</text><text x="800" y="187" class="note">Ground truth</text>
   <rect x="8" y="198" width="904" height="20" rx="3" class="sec-bg"/>
-  <text x="16" y="212" class="sec-title">Safetensors (safetensors/) — CPU</text>
+  <text x="16" y="212" class="sec-title">Safetensors (loader/safetensors/) — CPU</text>
   <rect x="8" y="218" width="904" height="22" rx="2" class="row-cpu"/>
   <text x="24" y="233" class="cell">F16/BF16/F32 + Sharded</text><circle cx="246" cy="229" r="5" class="pass"/><circle cx="350" cy="229" r="5" class="na"/><circle cx="480" cy="229" r="5" class="na"/><text x="555" y="233" class="perf">3</text><text x="610" y="233" class="perf">HuggingFace</text><text x="800" y="233" class="note">Up to 15GB</text>
   <rect x="8" y="240" width="904" height="22" rx="2" class="row-simd"/>

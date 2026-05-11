@@ -113,7 +113,7 @@ const layers = [
     ]
   },
   {
-    label: "Safetensors (safetensors/)", y: 248, h: 90, x: 456, w: 420,
+    label: "Safetensors (loader/safetensors/)", y: 248, h: 90, x: 456, w: 420,
     boxes: [
       { x: 12, w: 120, cls: "box-amber", label: "F16 / BF16 / F32" },
       { x: 144, w: 120, cls: "box-amber", label: "Sharded Models" },

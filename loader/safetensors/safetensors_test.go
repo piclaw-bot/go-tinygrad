@@ -96,11 +96,11 @@ func TestFloat16Conversion(t *testing.T) {
 		bits uint16
 		want float32
 	}{
-		{0x0000, 0},           // +0
-		{0x8000, -0},          // -0 (bit pattern)
-		{0x3C00, 1.0},         // 1.0
-		{0xC000, -2.0},        // -2.0
-		{0x3555, 0.333251953}, // ~1/3
+		{0x0000, 0},                     // +0
+		{0x8000, -0},                    // -0 (bit pattern)
+		{0x3C00, 1.0},                   // 1.0
+		{0xC000, -2.0},                  // -2.0
+		{0x3555, 0.333251953},           // ~1/3
 		{0x7C00, float32(math.Inf(1))},  // +Inf
 		{0xFC00, float32(math.Inf(-1))}, // -Inf
 	}
