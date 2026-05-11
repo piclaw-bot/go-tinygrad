@@ -281,3 +281,10 @@ Continued CUDA source-asset extraction:
 - Moved emulated BF16 PTX source strings into `backends/cuda/ptx`.
 - Moved native SM86 BF16 PTX source strings into `backends/cuda/ptx`.
 - Kept BF16 launch helpers, function handles, and native module loading in `gpu` because those still belong to CUDA runtime orchestration.
+
+## Session 18: MLX PTX asset extraction
+
+Finished the current CUDA PTX source-asset sweep:
+
+- Moved MLX GEMV, batched MLX GEMM, and MLX correction PTX source strings into `backends/cuda/ptx`.
+- Kept `GPUMLXWeight`, upload/transposition logic, launch helpers, and function handles in `gpu`, because they still own CUDA resource lifetimes and runtime dispatch.
