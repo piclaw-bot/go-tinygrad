@@ -63,19 +63,32 @@ func (p *ExpertPool) Get(expertID int) *ExpertEntry {
 // Put adds an expert to the pool, evicting the LRU entry if full.
 // Returns the evicted entry (if any) so the caller can free its GPU resources.
 func (p *ExpertPool) Put(entry *ExpertEntry) *ExpertEntry {
+	if entry == nil {
+		return nil
+	}
+	if p.slots <= 0 {
+		// A zero-slot pool is disabled. Return the entry so callers that just
+		// uploaded GPU resources can release it via FreeExpertEntry.
+		return entry
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Already cached?
-	if _, ok := p.cache[entry.ExpertID]; ok {
+	// Already cached? Replace the old GPU resources and return them for release.
+	if old, ok := p.cache[entry.ExpertID]; ok {
 		p.cache[entry.ExpertID] = entry
 		p.touchLocked(entry.ExpertID)
-		return nil
+		if p.budget != nil {
+			p.budget.Free(placement.BudgetExpert, old.SizeBytes)
+			p.budget.Alloc(placement.BudgetExpert, entry.SizeBytes)
+		}
+		return old
 	}
 
 	var evicted *ExpertEntry
-	// Evict if full
-	if len(p.cache) >= p.slots && p.slots > 0 {
+	// Evict if full.
+	if len(p.cache) >= p.slots {
 		evicted = p.evictLRULocked()
 	}
 

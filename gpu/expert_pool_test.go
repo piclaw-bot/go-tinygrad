@@ -91,6 +91,42 @@ func TestExpertPoolWithBudget(t *testing.T) {
 	t.Log(budget.Report())
 }
 
+func TestExpertPoolDisabled(t *testing.T) {
+	pool := NewExpertPool(0, nil)
+	entry := &ExpertEntry{ExpertID: 1, SizeBytes: 100}
+	if evicted := pool.Put(entry); evicted != entry {
+		t.Fatalf("disabled pool should return inserted entry for release, got %#v", evicted)
+	}
+	if pool.Size() != 0 {
+		t.Fatalf("disabled pool cached %d entries", pool.Size())
+	}
+	if pool.Get(1) != nil {
+		t.Fatal("disabled pool should not return entries")
+	}
+	if evicted := pool.Put(nil); evicted != nil {
+		t.Fatalf("nil entry should be ignored, got %#v", evicted)
+	}
+}
+
+func TestExpertPoolReplaceReturnsOldEntry(t *testing.T) {
+	budget := placement.NewBudgetManager(0, 0, 0, 10)
+	pool := NewExpertPool(2, budget)
+	old := &ExpertEntry{ExpertID: 7, SizeBytes: 2 * 1024 * 1024}
+	if evicted := pool.Put(old); evicted != nil {
+		t.Fatalf("initial insert evicted %#v", evicted)
+	}
+	newEntry := &ExpertEntry{ExpertID: 7, SizeBytes: 3 * 1024 * 1024}
+	if evicted := pool.Put(newEntry); evicted != old {
+		t.Fatalf("replacement should return old entry, got %#v", evicted)
+	}
+	if got := pool.Get(7); got != newEntry {
+		t.Fatalf("replacement not cached: %#v", got)
+	}
+	if budget.ExpertUsed != 3*1024*1024 {
+		t.Fatalf("budget after replacement=%d, want 3MB", budget.ExpertUsed)
+	}
+}
+
 func TestExpertPoolLRUOrder(t *testing.T) {
 	pool := NewExpertPool(3, nil)
 
