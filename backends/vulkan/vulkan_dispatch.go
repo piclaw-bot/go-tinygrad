@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // Vulkan compute dispatch: command buffers, descriptor binding, shader execution.
 //
@@ -62,9 +62,9 @@ func VkKernelCreate(spirv []byte, numBuffers int, pushConstantSize int) (*VkComp
 	bindings := make([]descBinding, numBuffers)
 	for i := range bindings {
 		bindings[i] = descBinding{
-			binding:   uint32(i),
-			descType:  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			descCount: 1,
+			binding:    uint32(i),
+			descType:   VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			descCount:  1,
 			stageFlags: 0x20, // COMPUTE
 		}
 	}
@@ -91,17 +91,17 @@ func VkKernelCreate(spirv []byte, numBuffers int, pushConstantSize int) (*VkComp
 
 	// Pipeline layout with push constants
 	plInfo := struct {
-		sType, pNext, flags                         uint32
-		setLayoutCount                              uint32
-		pSetLayouts                                 unsafe.Pointer
-		pushConstantRangeCount                      uint32
-		pPushConstantRanges                         unsafe.Pointer
+		sType, pNext, flags    uint32
+		setLayoutCount         uint32
+		pSetLayouts            unsafe.Pointer
+		pushConstantRangeCount uint32
+		pPushConstantRanges    unsafe.Pointer
 	}{
-		sType:                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		setLayoutCount:             1,
-		pSetLayouts:                unsafe.Pointer(&descSetLayout),
-		pushConstantRangeCount:     1,
-		pPushConstantRanges:        unsafe.Pointer(&pushRange),
+		sType:                  VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount:         1,
+		pSetLayouts:            unsafe.Pointer(&descSetLayout),
+		pushConstantRangeCount: 1,
+		pPushConstantRanges:    unsafe.Pointer(&pushRange),
 	}
 	if pushConstantSize == 0 {
 		plInfo.pushConstantRangeCount = 0
@@ -145,7 +145,7 @@ func VkKernelCreate(spirv []byte, numBuffers int, pushConstantSize int) (*VkComp
 
 	// Descriptor pool
 	poolSize := struct {
-		descType uint32
+		descType  uint32
 		descCount uint32
 	}{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, uint32(numBuffers)}
 	poolInfo := struct {
@@ -278,13 +278,13 @@ func (k *VkComputeKernel) Dispatch(groupsX, groupsY, groupsZ uint32, bufs []*VkB
 
 	// Submit
 	submitInfo := struct {
-		sType, pNext                              uint32
-		waitSemaphoreCount                        uint32
-		pWaitSemaphores, pWaitDstStageMask        uintptr
-		commandBufferCount                        uint32
-		pCommandBuffers                           unsafe.Pointer
-		signalSemaphoreCount                      uint32
-		pSignalSemaphores                         uintptr
+		sType, pNext                       uint32
+		waitSemaphoreCount                 uint32
+		pWaitSemaphores, pWaitDstStageMask uintptr
+		commandBufferCount                 uint32
+		pCommandBuffers                    unsafe.Pointer
+		signalSemaphoreCount               uint32
+		pSignalSemaphores                  uintptr
 	}{
 		sType:              VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		commandBufferCount: 1,

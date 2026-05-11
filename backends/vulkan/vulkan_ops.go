@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // Vulkan compute operations for inference.
 // Each operation has a GLSL source (for documentation/regeneration)
@@ -21,11 +21,11 @@ import (
 
 // Vulkan kernel cache
 var (
-	vkKernelOnce   sync.Once
-	vkVecAddF32    *VkComputeKernel
-	vkVecAddBF16   *VkComputeKernel
-	vkRMSNormF32   *VkComputeKernel
-	vkRMSNormBF16  *VkComputeKernel
+	vkKernelOnce  sync.Once
+	vkVecAddF32   *VkComputeKernel
+	vkVecAddBF16  *VkComputeKernel
+	vkRMSNormF32  *VkComputeKernel
+	vkRMSNormBF16 *VkComputeKernel
 )
 
 // initVkKernels compiles all Vulkan compute shaders.
@@ -72,21 +72,22 @@ func VkVecAddBF16(dst, a, b *VkBuf, n int) error {
 // layout(set=0, binding=1) buffer B { uint b[]; };
 // layout(set=0, binding=2) buffer C { uint c[]; };
 // layout(push_constant) uniform P { uint n; };  // n = number of uint32 pairs
-// void main() {
-//     uint i = gl_GlobalInvocationID.x;
-//     if (i >= n) return;
-//     uint pa = a[i], pb = b[i];
-//     // Unpack 2× BF16, widen to F32
-//     float a0 = uintBitsToFloat(pa << 16);       // lower BF16
-//     float a1 = uintBitsToFloat(pa & 0xFFFF0000); // upper BF16
-//     float b0 = uintBitsToFloat(pb << 16);
-//     float b1 = uintBitsToFloat(pb & 0xFFFF0000);
-//     // Add in F32
-//     float c0 = a0 + b0;
-//     float c1 = a1 + b1;
-//     // Pack back: narrow F32→BF16
-//     c[i] = (floatBitsToUint(c0) >> 16) | (floatBitsToUint(c1) & 0xFFFF0000);
-// }
+//
+//	void main() {
+//	    uint i = gl_GlobalInvocationID.x;
+//	    if (i >= n) return;
+//	    uint pa = a[i], pb = b[i];
+//	    // Unpack 2× BF16, widen to F32
+//	    float a0 = uintBitsToFloat(pa << 16);       // lower BF16
+//	    float a1 = uintBitsToFloat(pa & 0xFFFF0000); // upper BF16
+//	    float b0 = uintBitsToFloat(pb << 16);
+//	    float b1 = uintBitsToFloat(pb & 0xFFFF0000);
+//	    // Add in F32
+//	    float c0 = a0 + b0;
+//	    float c1 = a1 + b1;
+//	    // Pack back: narrow F32→BF16
+//	    c[i] = (floatBitsToUint(c0) >> 16) | (floatBitsToUint(c1) & 0xFFFF0000);
+//	}
 var spirvBF16VecAdd = buildSPIRVBF16VecAdd()
 
 func buildSPIRVBF16VecAdd() []byte {

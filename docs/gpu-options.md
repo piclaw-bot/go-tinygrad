@@ -30,7 +30,7 @@ Loaded as one mega module + optional native BF16 module.
 
 ## Vulkan Compute (any GPU)
 
-Portable backend for non-NVIDIA hardware:
+Portable backend for non-NVIDIA hardware. Vulkan code and shaders now live under `backends/vulkan`:
 
 - **Targets**: Intel iGPU (UHD/Iris/Arc), AMD RDNA, ARM Mali, Qualcomm Adreno, MoltenVK
 - **API**: 35 Vulkan functions, device auto-selection, compute queue + command pool
@@ -52,7 +52,7 @@ AVX2+FMA (amd64) and NEON (arm64):
 if NVIDIA GPU available:
     → CUDA PTX (fastest, 21+ kernels)
 elif Vulkan device available:
-    → Vulkan SPIR-V (portable, 8 shaders)
+    → backends/vulkan SPIR-V (portable shaders)
 else:
     → CPU SIMD (AVX2 or NEON assembly)
     → Go scalar (universal fallback)

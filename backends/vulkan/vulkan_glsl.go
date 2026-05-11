@@ -173,7 +173,8 @@
 //     // scores[head * seqLen + t] = sum * scale;
 // }
 
-package gpu
+package vulkan
+
 // This file contains GLSL source as documentation.
 // The actual SPIR-V binaries are in vulkan_spirv.go.
 // To compile: glslangValidator -V -S comp <shader>.glsl -o <shader>.spv

@@ -193,3 +193,11 @@ Moved mmap residency policy to a runtime owner:
 - Updated `loader/safetensors.File` to hold `*memory.MmapAdvisor` and create it via `memory.NewMmapAdvisor`.
 - Split tests so generic advisor range/merge behavior lives in `runtime/memory`, while safetensors keeps file/eager-load integration tests.
 - Updated docs to describe `runtime/memory` as the owner for mmap advice and future streaming policy.
+
+## Session 7: Vulkan backend extraction
+
+Started the backend split by moving Vulkan-only scaffolding out of the transitional `gpu` package:
+
+- Moved `gpu/vulkan*.go` and `gpu/shaders/` to `backends/vulkan`.
+- Changed the package name to `vulkan`, keeping CUDA/PTX files and GPU expert resources in `gpu`.
+- Updated README, architecture, GPU options, refactor plan, and Makefile validation targets to include `backends/vulkan`.

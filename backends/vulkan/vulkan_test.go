@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 import (
 	"math"
@@ -46,13 +46,19 @@ func TestVulkanVecAddF32(t *testing.T) {
 
 	n := 1024
 	a, err := VkBufAlloc(n * 4)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer a.Free()
 	b, err := VkBufAlloc(n * 4)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer b.Free()
 	c, err := VkBufAlloc(n * 4)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer c.Free()
 
 	aData := make([]float32, n)
@@ -76,7 +82,9 @@ func TestVulkanVecAddF32(t *testing.T) {
 	for i := range cData {
 		want := aData[i] + bData[i]
 		d := float32(math.Abs(float64(cData[i] - want)))
-		if d > maxDiff { maxDiff = d }
+		if d > maxDiff {
+			maxDiff = d
+		}
 	}
 	t.Logf("VkVecAddF32: maxDiff=%e (%d elements, device=%s)", maxDiff, n, VulkanDeviceName())
 	if maxDiff > 0.001 {

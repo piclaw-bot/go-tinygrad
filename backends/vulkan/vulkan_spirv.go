@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // SPIR-V compute shaders for Vulkan inference.
 //
@@ -49,10 +49,11 @@ func assembleSPIRV(glslSource string) ([]byte, error) {
 // layout(set=0, binding=1) buffer B { float b[]; };
 // layout(set=0, binding=2) buffer C { float c[]; };
 // layout(push_constant) uniform Params { uint n; };
-// void main() {
-//     uint i = gl_GlobalInvocationID.x;
-//     if (i < n) c[i] = a[i] + b[i];
-// }
+//
+//	void main() {
+//	    uint i = gl_GlobalInvocationID.x;
+//	    if (i < n) c[i] = a[i] + b[i];
+//	}
 var spirvVecAdd = buildSPIRVVecAdd()
 
 // Pre-compiled SPIR-V for F32 GEMV (matrix-vector multiply)
@@ -109,8 +110,8 @@ func buildSPIRVVecAdd() []byte {
 	w(0x00040048, 29, 0, 35, 0)
 
 	// Types
-	w(0x00020013, 2)     // void
-	w(0x00030021, 3, 2)  // function type void()
+	w(0x00020013, 2)        // void
+	w(0x00030021, 3, 2)     // function type void()
 	w(0x00040015, 6, 32, 0) // uint32
 	w(0x00040017, 7, 6, 3)  // uvec3
 	w(0x00040020, 8, 1, 7)  // ptr<Input, uvec3>
@@ -145,19 +146,19 @@ func buildSPIRVVecAdd() []byte {
 	w(0x00020014, 40)
 
 	// Push constant: struct { uint n; }
-	w(0x0003001E, 42, 6)           // struct { uint }
-	w(0x00040020, 43, 9, 42)      // ptr<PushConstant>
-	w(0x0004003B, 43, 44, 9)      // variable
-	w(0x00040020, 45, 9, 6)       // ptr<PushConstant, uint>
-	w(0x00040047, 42, 2)          // Block
-	w(0x00040048, 42, 0, 35, 0)   // Offset 0
+	w(0x0003001E, 42, 6)        // struct { uint }
+	w(0x00040020, 43, 9, 42)    // ptr<PushConstant>
+	w(0x0004003B, 43, 44, 9)    // variable
+	w(0x00040020, 45, 9, 6)     // ptr<PushConstant, uint>
+	w(0x00040047, 42, 2)        // Block
+	w(0x00040048, 42, 0, 35, 0) // Offset 0
 
 	// Function main
 	w(0x00050036, 2, 4, 0, 3) // OpFunction void main
 	w(0x000200F8, 5)          // OpLabel
 
 	// %12 = AccessChain gl_GlobalInvocationID[0] → uint
-	w(0x00040020, 9, 1, 6)   // ptr<Input, uint>
+	w(0x00040020, 9, 1, 6)       // ptr<Input, uint>
 	w(0x00050041, 9, 12, 10, 11) // AccessChain
 	w(0x0004003D, 6, 13, 12)     // Load uint
 
@@ -167,7 +168,7 @@ func buildSPIRVVecAdd() []byte {
 
 	// if (i < n)
 	w(0x0005008B, 40, 48, 13, 47) // ULessThan
-	w(0x000300F7, 49, 0)           // SelectionMerge
+	w(0x000300F7, 49, 0)          // SelectionMerge
 	w(0x000400FA, 48, 50, 49)     // BranchConditional
 
 	// True block
@@ -175,21 +176,21 @@ func buildSPIRVVecAdd() []byte {
 
 	// a[i]
 	w(0x00050041, 35, 36, 20, 11, 13) // AccessChain A.data[i]
-	w(0x0004003D, 15, 37, 36)          // Load float
+	w(0x0004003D, 15, 37, 36)         // Load float
 
 	// b[i]
 	w(0x00050041, 35, 38, 25, 11, 13)
 	w(0x0004003D, 15, 39, 38)
 
 	// c[i] = a[i] + b[i]
-	w(0x00050081, 15, 41, 37, 39)       // FAdd
-	w(0x00050041, 35, 32, 30, 11, 13)   // AccessChain C.data[i]
-	w(0x0003003E, 32, 41)                // Store
+	w(0x00050081, 15, 41, 37, 39)     // FAdd
+	w(0x00050041, 35, 32, 30, 11, 13) // AccessChain C.data[i]
+	w(0x0003003E, 32, 41)             // Store
 
 	w(0x000200F9, 49) // Branch to merge
 	w(0x000200F8, 49) // Merge label
-	w(0x000100FD)      // Return
-	w(0x00010038)      // FunctionEnd
+	w(0x000100FD)     // Return
+	w(0x00010038)     // FunctionEnd
 
 	return b
 }

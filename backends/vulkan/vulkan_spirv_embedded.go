@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // Auto-generated SPIR-V binaries from gpu/shaders/*.glsl
 // Compiled with: glslangValidator -V -S comp <shader>.glsl -o <shader>.spv

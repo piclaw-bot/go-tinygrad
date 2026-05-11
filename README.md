@@ -154,12 +154,13 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
 - **`backends/placement/`** — backend-neutral memory budget and layer placement policy
 - **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
+- **`backends/vulkan/`** — Vulkan loader/device/buffer/shader dispatch scaffolding and embedded SPIR-V assets
 - **`models/bert/`** — GTE/BERT encoder path
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dequantization, on-the-fly Q4 GEMV helpers, and loader validation
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
-- **`gpu/`** — transitional CUDA/Vulkan package pending the backend split
+- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
 
 - **Lazy tensor DAG** with elementwise fusion
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)

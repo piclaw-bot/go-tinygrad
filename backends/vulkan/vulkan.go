@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // Vulkan compute backend for inference on any GPU.
 //

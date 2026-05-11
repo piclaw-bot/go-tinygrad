@@ -1,4 +1,4 @@
-package gpu
+package vulkan
 
 // Vulkan compute buffer and shader management.
 //
