@@ -58,7 +58,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 ### GPU: CUDA PTX (NVIDIA)
 
-27 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen:
+27 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen. Runtime dispatch/resource ownership remains in `gpu`; embedded PTX source assets live in `backends/cuda/ptx`:
 
 - **Quantized GEMV**: INT4 dequant+multiply with shared memory tiling (GPTQ + MLX)
 - **Batched GEMM**: multi-token prefill, reads weights once for all tokens
@@ -71,7 +71,6 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 Portable compute backend scaffolding for Intel iGPU, AMD, ARM Mali, Adreno:
 
-- `backends/cuda/ptx` owns pure CUDA PTX source assets that have been separated from runtime dispatch
 - `backends/vulkan` owns the Vulkan loader, device/buffer helpers, dispatch scaffolding, and embedded SPIR-V assets
 - 35 Vulkan API functions via `purego` (no SDK required)
 - GLSL/SPIR-V shader coverage for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths

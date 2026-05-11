@@ -135,7 +135,7 @@ func tryGPU(bufs ...*DevBuf) bool {
 func DevAdd(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
 		out.ToGPU()
@@ -159,7 +159,7 @@ func DevAdd(out, a, b *DevBuf) {
 func DevMul(out, a, b *DevBuf) {
 	initKernels()
 	n := a.n
-	if kernelsLoaded && tryGPU(a, out) {
+	if kernelsLoaded && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
 		out.ToGPU()

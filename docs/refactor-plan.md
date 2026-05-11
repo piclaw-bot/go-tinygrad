@@ -172,7 +172,7 @@ Move/update directly:
 
 Move/update directly:
 
-- CUDA driver/PTX: pure PTX source assets from `backends/cuda/ptx/attn.go` and `backends/cuda/ptx/kernels.go` have moved to `backends/cuda/ptx` ✅. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
+- CUDA driver/PTX: embedded PTX source assets have moved to `backends/cuda/ptx` ✅, covering attention/RoPE, core vector/norm/activation kernels, LM head, Q4 GEMV/GEMM, SGEMM, prefetch, BF16, and MLX kernels. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
@@ -205,7 +205,7 @@ Each step should be one small commit with validation after it.
 1. **Add docs and package stubs only.** Land this plan and any README notes. No behavior changes.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
 3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit. ✅
-4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. Pure CUDA PTX source assets have started moving to `backends/cuda/ptx` ✅. CUDA runtime dispatch still remains in `gpu` until the split can preserve model upload/DevBuf semantics cleanly.
+4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. Embedded CUDA PTX source assets have moved to `backends/cuda/ptx` ✅. CUDA runtime dispatch still remains in `gpu` until the split can preserve model upload/DevBuf semantics cleanly.
 5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Gemma4 diagnostic tests are build-tagged ✅; later model-package split should move them next to their architecture package.

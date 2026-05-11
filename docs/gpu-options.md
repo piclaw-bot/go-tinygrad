@@ -4,7 +4,7 @@ go-pherence currently has a production CUDA backend plus Vulkan backend scaffold
 
 ## CUDA PTX (NVIDIA)
 
-Primary GPU backend. 27 hand-written PTX kernels:
+Primary GPU backend. 27 hand-written PTX kernels. Source strings are owned by `backends/cuda/ptx`; runtime loading, launch helpers, `DevBuf`, and GPU-resident resources remain in the transitional `gpu` package:
 
 | Category | Kernels | Notes |
 |---|---|---|
@@ -22,7 +22,7 @@ Loaded as one mega module + optional native BF16 module.
 
 ### Memory Management
 
-- **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer
+- **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer; vector-op GPU fast paths preflight all kernel input/output buffers before launching and fall back to CPU if upload/allocation fails
 - **ExpertPool**: LRU cache for MoE expert weights with auto-sized VRAM budget; disabled and replacement cases return GPU resources for explicit release
 - **BudgetManager**: 4-tier memory tracking (resident/layer/stream/expert), now owned by `backends/placement`
 - **MmapAdvisor**: `runtime/memory` page-level madvise tracking for eager loading and future weight streaming

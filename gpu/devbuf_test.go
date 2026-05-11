@@ -23,7 +23,8 @@ func TestDevBufAdd(t *testing.T) {
 	if SgemmReady() {
 		initKernels()
 		if kernelsLoaded {
-			a.ToGPU(); b.ToGPU()
+			a.ToGPU()
+			b.ToGPU()
 			DevAdd(out, a, b)
 			Sync()
 			for i, v := range out.Data() {
@@ -89,7 +90,8 @@ func TestDevBufRMSNorm(t *testing.T) {
 	if SgemmReady() {
 		initKernels()
 		if kernelsLoaded {
-			x.ToGPU(); w.ToGPU()
+			x.ToGPU()
+			w.ToGPU()
 			DevRMSNorm(out, x, w, 1e-6)
 			Sync()
 			d = out.Data()
@@ -120,7 +122,8 @@ func TestDevBufGemv(t *testing.T) {
 	}
 
 	if SgemmReady() {
-		x.ToGPU(); W.ToGPU()
+		x.ToGPU()
+		W.ToGPU()
 		DevGemv(out, x, W, 3, 4)
 		Sync()
 		for i, v := range out.Data() {

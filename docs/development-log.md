@@ -295,3 +295,10 @@ Cleaned up stale file naming after the PTX asset extraction:
 
 - Renamed remaining `gpu/*_ptx.go` files to runtime-oriented names because they now contain launch helpers/function handles, not embedded PTX source strings.
 - Updated stale comments and refactor-plan references so `gpu` is described as runtime dispatch/resource ownership and `backends/cuda/ptx` as PTX source ownership.
+
+## Session 20: GPU vector-op upload guard audit
+
+Fixed a GPU fast-path guard bug found during the post-PTX-split audit:
+
+- `gpu.DevAdd` and `gpu.DevMul` now include both input buffers in the `tryGPU` preflight.
+- Previously the fast path only checked `a` and `out`, then uploaded `b` while ignoring the error; if `b` failed to upload, the kernel argument setup could dereference a nil GPU pointer instead of falling back to CPU.
