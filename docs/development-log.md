@@ -251,3 +251,11 @@ Continued the CUDA PTX asset split:
 
 - Moved the `LMHeadPTX` source string from the GPU dispatch file to `backends/cuda/ptx`.
 - Left `gpu.DevLMHead` and its CUDA function handle in `gpu`, preserving runtime behavior while shrinking mixed source/dispatch files.
+
+## Session 14: Q4 PTX asset extraction
+
+Continued separating CUDA source assets from runtime dispatch:
+
+- Moved the optimized Q4 GEMV PTX source to `backends/cuda/ptx`.
+- Moved the batched Q4 GEMM PTX source to `backends/cuda/ptx`.
+- Kept `gpu.GemmQ4`, `gpu.BatchGEMMReady`, and CUDA function handles in `gpu` because they still own runtime launch semantics.
