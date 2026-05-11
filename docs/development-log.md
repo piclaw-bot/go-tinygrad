@@ -302,3 +302,12 @@ Fixed a GPU fast-path guard bug found during the post-PTX-split audit:
 
 - `gpu.DevAdd` and `gpu.DevMul` now include both input buffers in the `tryGPU` preflight.
 - Previously the fast path only checked `a` and `out`, then uploaded `b` while ignoring the error; if `b` failed to upload, the kernel argument setup could dereference a nil GPU pointer instead of falling back to CPU.
+
+## Session 21: DevBuf bounds and fallback audit
+
+Hardened GPU runtime helpers against malformed dimensions and failed uploads:
+
+- Added nil-safe GPU preflight and common-length bounding for vector helpers.
+- `DevRMSNorm` and `DevRMSNormNoScale` now require successful upload of all kernel operands before launching, instead of ignoring `ToGPU` errors.
+- Bounded `DevToBF16`, `DevSoftmax`, `DevGELUTanhMul`, `DevCopy`, and `DevBuf.Slice` to avoid out-of-range slices or overlong GPU launches on malformed inputs.
+- Added regression coverage for mismatched buffer lengths and overlong operation lengths.

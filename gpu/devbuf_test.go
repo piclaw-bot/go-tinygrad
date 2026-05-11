@@ -135,3 +135,38 @@ func TestDevBufGemv(t *testing.T) {
 	}
 	t.Log("DevGemv OK")
 }
+
+func TestDevBufBoundsDoNotPanic(t *testing.T) {
+	short := NewDevBufFrom([]float32{2, 4})
+	long := NewDevBufFrom([]float32{10, 20, 30, 40})
+	out := NewDevBuf(2)
+
+	DevAdd(out, short, long)
+	if got := out.Data(); got[0] != 12 || got[1] != 24 {
+		t.Fatalf("bounded add = %v", got)
+	}
+
+	DevMul(out, short, long)
+	if got := out.Data(); got[0] != 20 || got[1] != 80 {
+		t.Fatalf("bounded mul = %v", got)
+	}
+
+	DevScale(out, long, 0.5)
+	if got := out.Data(); got[0] != 5 || got[1] != 10 {
+		t.Fatalf("bounded scale = %v", got)
+	}
+
+	DevCopy(out, long)
+	if got := out.Data(); got[0] != 10 || got[1] != 20 {
+		t.Fatalf("bounded copy = %v", got)
+	}
+
+	DevToBF16(long, 100)
+	DevSoftmax(long, 100)
+	DevGELUTanhMul(short, long, 100)
+	_ = long.Slice(-1, 2)
+	_ = long.Slice(3, 100)
+	if neg := NewDevBuf(-10); neg.Len() != 0 {
+		t.Fatalf("negative buffer len=%d, want 0", neg.Len())
+	}
+}

@@ -46,6 +46,9 @@ func initKernels() { loadMegaModule() }
 
 // NewDevBuf creates a CPU buffer.
 func NewDevBuf(n int) *DevBuf {
+	if n < 0 {
+		n = 0
+	}
 	return &DevBuf{cpu: make([]float32, n), n: n, dev: CPU}
 }
 
@@ -122,11 +125,30 @@ func (b *DevBuf) OnGPU() bool { return b.dev == GPU_DEVICE && b.gpu != nil }
 // tryGPU attempts to move buffers to GPU. Returns true if all succeeded.
 func tryGPU(bufs ...*DevBuf) bool {
 	for _, b := range bufs {
-		if b.ToGPU() != nil || b.gpu == nil {
+		if b == nil || b.ToGPU() != nil || b.gpu == nil {
 			return false
 		}
 	}
 	return true
+}
+
+func commonLen(bufs ...*DevBuf) int {
+	if len(bufs) == 0 {
+		return 0
+	}
+	n := -1
+	for _, b := range bufs {
+		if b == nil {
+			return 0
+		}
+		if n < 0 || b.n < n {
+			n = b.n
+		}
+	}
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // --- Ops: dispatch to GPU if possible, CPU fallback ---
@@ -134,7 +156,10 @@ func tryGPU(bufs ...*DevBuf) bool {
 // Add: out = a + b (element-wise)
 func DevAdd(out, a, b *DevBuf) {
 	initKernels()
-	n := a.n
+	n := commonLen(a, b, out)
+	if n <= 0 {
+		return
+	}
 	if kernelsLoaded && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
@@ -158,7 +183,10 @@ func DevAdd(out, a, b *DevBuf) {
 // Mul: out = a * b (element-wise)
 func DevMul(out, a, b *DevBuf) {
 	initKernels()
-	n := a.n
+	n := commonLen(a, b, out)
+	if n <= 0 {
+		return
+	}
 	if kernelsLoaded && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
@@ -181,7 +209,10 @@ func DevMul(out, a, b *DevBuf) {
 // Scale: out = a * scalar
 func DevScale(out, a *DevBuf, s float32) {
 	initKernels()
-	n := a.n
+	n := commonLen(a, out)
+	if n <= 0 {
+		return
+	}
 	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU()
 		out.ToGPU()
@@ -202,8 +233,14 @@ func DevScale(out, a *DevBuf, s float32) {
 // ToBF16: truncate float32 values in-place to BF16 precision.
 func DevToBF16(x *DevBuf, n int) {
 	initKernels()
-	if n <= 0 {
+	if x == nil {
+		return
+	}
+	if n <= 0 || n > x.n {
 		n = x.n
+	}
+	if n <= 0 {
+		return
 	}
 	if kernelsLoaded && fnToBF16F32 != 0 && tryGPU(x) {
 		x.ToGPU()
@@ -214,9 +251,6 @@ func DevToBF16(x *DevBuf, n int) {
 		return
 	}
 	x.ToCPU()
-	if n > x.n {
-		n = x.n
-	}
 	for i := 0; i < n; i++ {
 		bits := math.Float32bits(x.cpu[i])
 		bits &= 0xFFFF0000
@@ -227,7 +261,10 @@ func DevToBF16(x *DevBuf, n int) {
 // SiLU: out = a * sigmoid(a)
 func DevSiLU(out, a *DevBuf) {
 	initKernels()
-	n := a.n
+	n := commonLen(a, out)
+	if n <= 0 {
+		return
+	}
 	if kernelsLoaded && tryGPU(a, out) {
 		a.ToGPU()
 		out.ToGPU()
@@ -249,14 +286,11 @@ func DevSiLU(out, a *DevBuf) {
 // RMSNorm: out = x * weight * rsqrt(mean(x^2) + eps)
 func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	initKernels()
-	n := weight.n // use weight size as canonical dimension (handles oversized buffers)
-	if n > x.n {
-		n = x.n
+	n := commonLen(x, weight, out) // weight size remains the practical canonical dimension, bounded by x/out.
+	if n <= 0 {
+		return
 	}
-	if kernelsLoaded && n <= 256*8192 {
-		x.ToGPU()
-		weight.ToGPU()
-		out.ToGPU()
+	if kernelsLoaded && n <= 256*8192 && tryGPU(x, weight, out) {
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
@@ -281,10 +315,11 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 // DevRMSNormNoScale: normalize x by RMS without weight. out = x / rms(x)
 func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 	initKernels()
-	n := x.n
-	if kernelsLoaded && fnRmsNormNoScale != 0 && n <= 256*8192 {
-		x.ToGPU()
-		out.ToGPU()
+	n := commonLen(x, out)
+	if n <= 0 {
+		return
+	}
+	if kernelsLoaded && fnRmsNormNoScale != 0 && n <= 256*8192 && tryGPU(x, out) {
 		nn := uint32(n)
 		LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -332,6 +367,15 @@ func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
 
 // Softmax in-place (CPU only for now — sequential reduction)
 func DevSoftmax(x *DevBuf, n int) {
+	if x == nil {
+		return
+	}
+	if n <= 0 || n > x.n {
+		n = x.n
+	}
+	if n <= 0 {
+		return
+	}
 	x.ToCPU()
 	d := x.cpu[:n]
 	max := d[0]
@@ -352,16 +396,23 @@ func DevSoftmax(x *DevBuf, n int) {
 
 // Copy copies src data to dst (same device).
 func DevCopy(dst, src *DevBuf) {
-	if src.gpu != nil && dst.gpu != nil && src.n >= 2048 {
+	if dst == nil || src == nil {
+		return
+	}
+	n := commonLen(dst, src)
+	if n <= 0 {
+		return
+	}
+	if src.gpu != nil && dst.gpu != nil && n >= 2048 {
 		src.ToGPU()
 		dst.ToGPU()
-		cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(src.n*4), 0) // stream 0 = default
+		cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(n*4), 0) // stream 0 = default
 		dst.dev = GPU_DEVICE
 		return
 	}
 	src.ToCPU()
 	dst.ToCPU()
-	copy(dst.cpu, src.cpu[:dst.n])
+	copy(dst.cpu[:n], src.cpu[:n])
 }
 
 // MarkDirty marks CPU data as authoritative (will re-upload on next GPU access).
@@ -555,7 +606,10 @@ var (
 // DevSiLUMul computes out = silu(a) * b in one kernel launch
 func DevSiLUMul(out, a, b *DevBuf) {
 	initKernels()
-	n := a.n
+	n := commonLen(a, b, out)
+	if n <= 0 {
+		return
+	}
 	if fusedSiLUMulOK && tryGPU(a, b, out) {
 		nn := uint32(n)
 		LaunchKernel(fnFusedSiLUMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -577,6 +631,13 @@ func DevSiLUMul(out, a, b *DevBuf) {
 // DevGELUTanhMul: gate[i] = gelu_tanh(gate[i]) * up[i] in-place
 func DevGELUTanhMul(gate, up *DevBuf, n int) {
 	initKernels()
+	maxN := commonLen(gate, up)
+	if n <= 0 || n > maxN {
+		n = maxN
+	}
+	if n <= 0 {
+		return
+	}
 	if kernelsLoaded && fnGELUTanhMul != 0 && tryGPU(gate, up) {
 		nn := uint32(n)
 		LaunchKernel(fnGELUTanhMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -607,6 +668,12 @@ var (
 // The slice shares CPU memory with the parent. GPU pointer is offset accordingly.
 // The caller must not outlive the parent buffer.
 func (b *DevBuf) Slice(offset, n int) *DevBuf {
+	if b == nil || offset < 0 || n < 0 || offset > b.n {
+		return NewDevBuf(0)
+	}
+	if offset+n > b.n {
+		n = b.n - offset
+	}
 	s := &DevBuf{n: n, dev: b.dev, ownGPU: false}
 	if b.cpu != nil && offset+n <= len(b.cpu) {
 		s.cpu = b.cpu[offset : offset+n]
