@@ -106,14 +106,48 @@ func LoadMLXWeight(f interface {
 	GetFloat32(name string) ([]float32, []int, error)
 	GetRaw(name string) ([]byte, string, []int, error)
 }, prefix string, outDim, inDim, groupSize, bits int) (*MLXQuantWeight, error) {
+	if bits <= 0 || bits > 32 || 32%bits != 0 {
+		return nil, fmt.Errorf("invalid MLX bits=%d", bits)
+	}
+	if groupSize <= 0 {
+		return nil, fmt.Errorf("invalid MLX groupSize=%d", groupSize)
+	}
 	packFactor := 32 / bits
-	numGroups := inDim / groupSize
-
-	// Load packed weight: [outDim, inDim/packFactor] as uint32
+	// Load packed weight: [outDim, inDim/packFactor] as uint32. Prefer the
+	// safetensors shape when available so callers cannot accidentally use a
+	// matching element count with the wrong logical row/column dimensions.
 	raw, dtype, shape, err := f.GetRaw(prefix + ".weight")
 	if err != nil {
 		return nil, fmt.Errorf("load %s.weight: %w", prefix, err)
 	}
+	if len(raw)%4 != 0 {
+		return nil, fmt.Errorf("MLX weight raw byte length %d is not divisible by 4", len(raw))
+	}
+
+	if len(shape) == 2 {
+		shapeOut, shapePackedIn := shape[0], shape[1]
+		if shapeOut <= 0 || shapePackedIn <= 0 {
+			return nil, fmt.Errorf("MLX weight invalid shape %v", shape)
+		}
+		shapeIn := shapePackedIn * packFactor
+		if shapeIn%groupSize != 0 {
+			return nil, fmt.Errorf("MLX weight shape %v implies inDim=%d not divisible by groupSize=%d", shape, shapeIn, groupSize)
+		}
+		outDim = shapeOut
+		inDim = shapeIn
+	} else if len(shape) != 0 {
+		return nil, fmt.Errorf("MLX weight shape rank %d unsupported for %s.weight", len(shape), prefix)
+	}
+	if inDim <= 0 || outDim <= 0 {
+		return nil, fmt.Errorf("invalid MLX dims outDim=%d inDim=%d", outDim, inDim)
+	}
+	if inDim%packFactor != 0 {
+		return nil, fmt.Errorf("MLX inDim=%d is not divisible by packFactor=%d", inDim, packFactor)
+	}
+	if inDim%groupSize != 0 {
+		return nil, fmt.Errorf("MLX inDim=%d is not divisible by groupSize=%d", inDim, groupSize)
+	}
+	numGroups := inDim / groupSize
 
 	var weight []uint32
 	if dtype == "U32" || dtype == "I32" {
@@ -126,19 +160,9 @@ func LoadMLXWeight(f interface {
 		return nil, fmt.Errorf("MLX weight dtype %s not supported (expected U32/I32)", dtype)
 	}
 
-	// Verify shape
 	expectedN := outDim * (inDim / packFactor)
 	if len(weight) != expectedN {
-		// Try to infer dims from shape
-		if len(shape) == 2 {
-			outDim = shape[0]
-			inDim = shape[1] * packFactor
-			numGroups = inDim / groupSize
-			expectedN = outDim * (inDim / packFactor)
-		}
-		if len(weight) != expectedN {
-			return nil, fmt.Errorf("MLX weight shape mismatch: got %d, expected %d (%dx%d)", len(weight), expectedN, outDim, inDim/packFactor)
-		}
+		return nil, fmt.Errorf("MLX weight shape mismatch: got %d, expected %d (%dx%d)", len(weight), expectedN, outDim, inDim/packFactor)
 	}
 
 	// Load scales: [outDim, numGroups]
@@ -170,35 +194,66 @@ func loadMLXFloat(f interface {
 	GetFloat32(name string) ([]float32, []int, error)
 	GetRaw(name string) ([]byte, string, []int, error)
 }, name string, expectedN int) ([]float32, error) {
-	// Try direct F32 first
-	data, _, err := f.GetFloat32(name)
+	// Try direct F32 first.
+	data, shape, err := f.GetFloat32(name)
 	if err == nil {
+		if err := validateMLXFloatLen(name, len(data), shape, expectedN); err != nil {
+			return nil, err
+		}
 		return data, nil
 	}
 
-	// Try raw with dtype conversion
-	raw, dtype, _, err := f.GetRaw(name)
+	// Try raw with dtype conversion.
+	raw, dtype, shape, err := f.GetRaw(name)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", name, err)
 	}
+	if len(raw)%2 != 0 {
+		return nil, fmt.Errorf("%s raw byte length %d is not divisible by 2", name, len(raw))
+	}
 
+	var out []float32
 	switch dtype {
 	case "F16":
 		n := len(raw) / 2
-		out := make([]float32, n)
+		out = make([]float32, n)
 		for i := 0; i < n; i++ {
 			out[i] = Float16ToFloat32(binary.LittleEndian.Uint16(raw[i*2:]))
 		}
-		return out, nil
 	case "BF16":
 		n := len(raw) / 2
-		out := make([]float32, n)
+		out = make([]float32, n)
 		for i := 0; i < n; i++ {
 			bits := uint32(binary.LittleEndian.Uint16(raw[i*2:])) << 16
 			out[i] = math.Float32frombits(bits)
 		}
-		return out, nil
 	default:
 		return nil, fmt.Errorf("unsupported dtype %s for %s", dtype, name)
 	}
+	if err := validateMLXFloatLen(name, len(out), shape, expectedN); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func validateMLXFloatLen(name string, got int, shape []int, expectedN int) error {
+	if expectedN < 0 {
+		return fmt.Errorf("%s invalid expected length %d", name, expectedN)
+	}
+	if len(shape) > 0 {
+		shapeN := 1
+		for _, d := range shape {
+			if d <= 0 {
+				return fmt.Errorf("%s invalid shape %v", name, shape)
+			}
+			shapeN *= d
+		}
+		if shapeN != got {
+			return fmt.Errorf("%s shape %v has %d elements, raw data has %d", name, shape, shapeN, got)
+		}
+	}
+	if got != expectedN {
+		return fmt.Errorf("%s length mismatch: got %d, expected %d", name, got, expectedN)
+	}
+	return nil
 }

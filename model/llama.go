@@ -152,7 +152,18 @@ type LlamaLayer struct {
 // Set to true before LoadLlama when using GPU forward pass (GPU Q4 GEMV needs packed weights).
 var ForceOnTheFly bool
 
-func LoadLlama(dir string) (*LlamaModel, error) {
+func LoadLlama(dir string) (model *LlamaModel, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			model = nil
+			if e, ok := r.(error); ok {
+				err = fmt.Errorf("load llama %s: %w", dir, e)
+			} else {
+				err = fmt.Errorf("load llama %s: %v", dir, r)
+			}
+		}
+	}()
+
 	// Load config
 	var cfg LlamaConfig
 	cfgData, err := loaderconfig.ReadModelConfig(dir, &cfg)
@@ -323,7 +334,10 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				scales[i] = quant.Float16ToFloat32(h)
 			}
 		} else {
-			scales, _, _ = f.GetFloat32(name + ".scales")
+			scales, _, err = f.GetFloat32(name + ".scales")
+			if err != nil {
+				panic(fmt.Sprintf("loadQW %s.scales: %v", name, err))
+			}
 		}
 		return &QuantWeight{QWeight: qw, GIdx: gIdx, Scales: scales, InDim: inDim, OutDim: outDim}
 	}
@@ -368,14 +382,20 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 				scales[i] = quant.Float16ToFloat32(h)
 			}
 		} else {
-			scales, _, _ = f.GetFloat32(name + ".scales")
+			scales, _, err = f.GetFloat32(name + ".scales")
+			if err != nil {
+				panic(fmt.Sprintf("loadQ %s.scales: %v", name, err))
+			}
 		}
 
 		var data []float32
 		if cfg.QuantSym {
 			data = quant.DequantGPTQSym(qw, gIdx, scales, inDim, outDim)
 		} else {
-			qz, _, _ := f.GetInt32(name + ".qzeros")
+			qz, _, err := f.GetInt32(name + ".qzeros")
+			if err != nil {
+				panic(fmt.Sprintf("loadQ %s.qzeros: %v", name, err))
+			}
 			data = quant.DequantGPTQ(qw, qz, gIdx, scales, inDim, outDim, false)
 		}
 		// data is [outDim, inDim] row-major

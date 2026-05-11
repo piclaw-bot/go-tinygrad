@@ -67,7 +67,18 @@ type BertLayer struct {
 }
 
 // LoadGTESmall loads the GTE-small model from a safetensors file.
-func LoadGTESmall(path string) (*BertModel, error) {
+func LoadGTESmall(path string) (model *BertModel, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			model = nil
+			if e, ok := r.(error); ok {
+				err = fmt.Errorf("load GTE-small %s: %w", path, e)
+			} else {
+				err = fmt.Errorf("load GTE-small %s: %v", path, r)
+			}
+		}
+	}()
+
 	f, err := safetensors.Open(path)
 	if err != nil {
 		return nil, err
