@@ -24,7 +24,7 @@ cmd/llmserver        -> imports gpu, loader/tokenizer, model
 cmd/tinydemo         -> imports tensor
 gpu                  -> CUDA/PTX path plus GPU-resident expert pool
 loader/config        -> config.json and quantize_config JSON helpers
-loader/safetensors   -> mmap safetensors reader, sharded reader, mmap advisor
+loader/safetensors   -> mmap safetensors reader and sharded reader
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
@@ -33,7 +33,7 @@ models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging
 runtime/memory       -> mmap residency advice and range tracking
 runtime/quant        -> MLX/GPTQ CPU quant formats, dequantization, Q4 GEMV helpers
-tensor               -> tensor graph/runtime; transitional direct import of backends/simd
+tensor               -> tensor graph/runtime; transitional direct import of backends/simd; hardened malformed-input guards
 ```
 
 Current import direction:
@@ -66,8 +66,9 @@ gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
-6. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
-7. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
+6. **Tensor/runtime guards are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. Keep these guards intact during later backend/model moves.
+7. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
+8. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
 ## Target layout
 
@@ -216,6 +217,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move. Include `runtime/kv` and `runtime/quant` in the fast package set because they now own shared KV and CPU quantization behavior:
 
 ```sh
+go test ./tensor -count=1
 go test ./gpu ./loader/... ./backends/cuda/ptx ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
@@ -232,6 +234,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
+go test ./tensor -count=1
 go test ./gpu ./loader/... ./backends/cuda/ptx ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go test ./models/bert -count=1

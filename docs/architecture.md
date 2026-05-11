@@ -48,7 +48,20 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
 | GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; embedded PTX source assets now live in backend ownership under `backends/cuda/ptx` |
-| Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
+| Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, realization, rewrite/fusion, NN helpers, and modules |
+
+
+## Shared Runtime Hardening Baseline
+
+The Phase 6.5 audit now treats guard behavior in shared packages as part of the architecture, not incidental cleanup:
+
+- `tensor` constructors and shape helpers reject negative or overflowing dimensions before allocation.
+- Tensor entrypoints are nil-safe or explicitly panic with domain errors before dereferencing internal fields.
+- Realization, broadcast, reduction, rewrite, and fusion paths validate malformed UOps, source lists, buffer lengths, and reduction metadata before indexing.
+- Embedding, matmul, linear, softmax, layernorm, GELU, and module wrappers validate dimensions and optional parameters before slicing or dispatching SIMD kernels.
+- `runtime/quant`, `runtime/kv`, `runtime/memory`, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
+
+Later package moves should preserve this policy and keep focused regression tests close to the package that owns the guard.
 
 ## Weight Format Pipeline
 

@@ -164,9 +164,9 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
 - **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
 
-- **Lazy tensor DAG** with elementwise fusion
-- **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)
-- **Safetensors loader** — `loader/safetensors`, mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized
+- **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
+- **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs
+- **Safetensors loader** — `loader/safetensors`, mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized, with bounded offset/shape checks
 - **Tokenizer** — `loader/tokenizer`, BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
 - **LLaMA decoder** — RoPE (global + local + partial), GQA, KV cache, SiLU/GELU MLP
 - **Mixture of Experts** — router top-k, parallel expert MLP, ExpertPool with LRU GPU caching
@@ -186,6 +186,24 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **Chunked LM head** — splits across available VRAM
 - **GPU DevBuf** — device-agnostic buffers, lazy CPU↔GPU transfer
 - **Chat templates** — Gemma4 (`<|turn>`), Qwen3 (`<|im_start|>`)
+
+
+### Validation / Hardening Status
+
+Recent Phase 6.5 audit passes made malformed-input behavior explicit across the shared runtime layers:
+
+- `tensor/` validates shapes, reductions, broadcasting, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, embeddings, matmul/linear helpers, and module wrappers.
+- `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts and no-ops or returns nil on malformed in-memory weights.
+- `runtime/kv` and `runtime/memory` guard cache dimensions, staging rollback, TurboQuant bit widths, and mmap range overflow.
+- `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, and copy wrappers before dispatch.
+
+Fast refactor validation remains focused to avoid accidentally loading large local model fixtures:
+
+```bash
+go test ./tensor -count=1
+go test ./gpu ./loader/... ./backends/cuda/ptx ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/... -run '^$'
+go vet ./...
+```
 
 ## Documentation
 

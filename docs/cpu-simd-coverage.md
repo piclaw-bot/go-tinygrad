@@ -52,7 +52,7 @@ go test ./model -run '^$' -bench 'BenchmarkCPUHot' -benchmem
 - `RuntimeCapabilities()` in the `backends/simd` package centralizes architecture/runtime feature reporting.
 - `simd.HasSgemmAsm`, `simd.HasDotAsm`, and `simd.HasVecAsm` expose runtime-safe capability gates.
 - `Sdot`/`Saxpy` now dispatch through small Go wrappers and fall back to scalar code if AVX2/FMA or NEON is unavailable, or if callers pass mismatched lengths.
-- SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels.
+- SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels; tensor matmul helpers also avoid passing zero-length slice pointers to SIMD entrypoints.
 - Vector entrypoints (`VecAdd`, `VecMul`, `VecScaleAdd`, `RMSNorm*`, `ToBF16`, BF16 helpers) now dispatch through Go wrappers and fall back to scalar code when runtime SIMD gates are false.
 - Activation wrappers (`VecSiLUMul`, `GELUTanhMul`) intentionally call Go math directly until polynomial SIMD approximations are implemented; prior assembly stubs only bounced back into Go.
 

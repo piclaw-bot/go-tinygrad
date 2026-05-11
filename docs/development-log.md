@@ -128,11 +128,11 @@ residual+layernorm, tensor object overhead.
 
 | Package | Tests | Coverage |
 |---|---|---|
-| `tensor/` — unit tests | 22 | all ops, lazy eval, fusion |
+| `tensor/` — unit tests | growing | all ops, lazy eval, fusion, shape/realization/rewrite/NN validation |
 | `tensor/` — numpy reference | 20 | bit-level reproducibility |
 | `loader/safetensors/` | 3 | load, list, F16 conversion |
 | `models/bert/` | 2 | load weights, end-to-end embed |
-| **Total** | **47** | |
+| **Total** | evolving | focused package gates preferred during Phase 6.5 | |
 
 
 ## Session 2: Gemma4 MTP speculative decoding scaffolding
@@ -511,3 +511,13 @@ Hardened tensor module wrappers:
 - `NewLinear`, `NewLayerNorm`, and `NewEmbedding` now reject invalid dimensions before initialization.
 - Module `Forward` methods now reject nil module receivers explicitly.
 - Tensor property accessors are nil-safe, returning zero values for nil tensors.
+
+
+## Session 46: Documentation sweep after tensor hardening
+
+Reviewed and refreshed documentation after the tensor/runtime/backend malformed-input audit passes:
+
+- README now calls out the shared validation/hardening baseline and the focused fast validation gate.
+- Architecture docs now treat tensor/runtime guard behavior as an explicit package-boundary policy for later refactor moves.
+- Refactor plan now records tensor hardening as part of the Phase 6.5 baseline and fixes the stale `loader/safetensors` mmap-advisor ownership note.
+- CPU SIMD coverage notes now mention zero-length tensor matmul guard behavior before assembly dispatch.
