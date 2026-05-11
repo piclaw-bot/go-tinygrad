@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/gpu"
-	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 

@@ -4,8 +4,8 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/gpu"
-	"github.com/rcarmo/go-pherence/simd"
 )
 
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.

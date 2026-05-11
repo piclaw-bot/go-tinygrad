@@ -1,4 +1,4 @@
-// simd/vec_amd64.s — AVX2/FMA vector operations for inference
+// backends/simd/vec_amd64.s — AVX2/FMA vector operations for inference
 //
 // All functions process 16 floats/iteration (2× YMM), 8-wide tail, scalar remainder.
 // FMA used for dot products and multiply-add patterns.

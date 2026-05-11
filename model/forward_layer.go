@@ -1,6 +1,6 @@
 package model
 
-import "github.com/rcarmo/go-pherence/simd"
+import "github.com/rcarmo/go-pherence/backends/simd"
 
 // ForwardLayer runs a single transformer layer on CPU and returns the updated hidden state.
 // This is used by the hybrid GPU/CPU forward pass for layers that don't fit in GPU VRAM.

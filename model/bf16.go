@@ -3,7 +3,7 @@ package model
 // BF16 precision for models trained in BF16 (Gemma3).
 // Now delegates to SIMD assembly implementations.
 
-import "github.com/rcarmo/go-pherence/simd"
+import "github.com/rcarmo/go-pherence/backends/simd"
 
 func toBF16(x float32) float32 {
 	buf := []float32{x}

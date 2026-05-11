@@ -6,8 +6,8 @@ import (
 
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
 
+	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/gpu"
-	"github.com/rcarmo/go-pherence/simd"
 )
 
 func TestGemma4InputNormBufferIsolation(t *testing.T) {

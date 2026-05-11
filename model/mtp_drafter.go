@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rcarmo/go-pherence/backends/simd"
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/weights"
-	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 

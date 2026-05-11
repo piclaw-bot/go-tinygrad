@@ -1,4 +1,4 @@
-// simd/vec_arm64.s — ARM64 NEON vector operations for inference
+// backends/simd/vec_arm64.s — ARM64 NEON vector operations for inference
 //
 // All functions process 8 floats/iteration (2× V registers), 4-wide tail, scalar remainder.
 

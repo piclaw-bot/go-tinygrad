@@ -6,7 +6,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/rcarmo/go-pherence/simd"
+	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
 // LoadSwitchMLXExperts loads a switch_mlp-style 3D packed tensor and

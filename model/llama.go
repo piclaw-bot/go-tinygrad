@@ -15,7 +15,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/rcarmo/go-pherence/simd"
+	"github.com/rcarmo/go-pherence/backends/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 

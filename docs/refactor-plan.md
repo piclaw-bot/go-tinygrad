@@ -96,7 +96,7 @@ runtime/
 
 backends/
   cpu/                 # scalar/SIMD-backed CPU inference operations
-  simd/                # moved or wrapped current simd package
+  backends/simd/                # moved current SIMD package
   cuda/                # CUDA driver bindings, PTX kernels, device buffers
   vulkan/              # Vulkan device/shader/dispatch path
   placement/           # layer/expert/budget policy spanning backends
@@ -121,7 +121,8 @@ This refactor is allowed to break package-level APIs. Prefer updating call sites
 The desired dependency direction is:
 
 ```text
-cmd -> runtime/generation -> loader -> models -> runtime/{kv,quant} -> backends -> tensor/simd
+cmd -> runtime/generation -> loader -> models -> runtime/{kv,quant} -> backends -> tensor
+# transitional: tensor may import backends/simd until CPU backend interfaces are split
 ```
 
 More precise rules:
@@ -163,7 +164,7 @@ Move or wrap:
 
 - CUDA driver/PTX: `gpu/cuda_purego.go`, `gpu/devbuf.go`, `gpu/*_ptx.go`, `gpu/mega_module.go`, `gpu/streams.go`, `gpu/q4_gpu.go`, `gpu/sgemm.go` -> `backends/cuda`
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan`
-- SIMD: `simd/` -> `backends/simd` eventually; migrate tensor/model imports directly in a dedicated commit
+- `simd/` -> `backends/simd`; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
 
 ### Models
@@ -205,7 +206,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move:
 
 ```sh
-go test ./gpu ./loader/safetensors ./simd ./tensor ./cmd/...
+go test ./gpu ./loader/safetensors ./backends/simd ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -221,7 +222,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./loader/safetensors ./simd ./tensor ./cmd/...
+go test ./gpu ./loader/safetensors ./backends/simd ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2
 go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2

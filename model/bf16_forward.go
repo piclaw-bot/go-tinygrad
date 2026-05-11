@@ -12,7 +12,7 @@ package model
 //   - Better for ARM SBCs with limited memory bandwidth
 
 import (
-	"github.com/rcarmo/go-pherence/simd"
+	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
 // BF16Hidden wraps a BF16 hidden state buffer.

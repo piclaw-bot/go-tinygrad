@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/rcarmo/go-pherence/simd"
+	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
 func benchSeq(n int) []float32 {
