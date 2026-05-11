@@ -1,6 +1,6 @@
 # Source-tree refactor plan
 
-Status: planned, blocking new MTP/backend functionality until the validation gate is complete.
+Status: in progress, blocking new MTP/backend functionality until the validation gate is complete.
 
 This document captures the Phase 6.5 assessment and target package design. The refactor should be mostly mechanical at first: move code into ownership boundaries, keep CLI behavior stable where practical, but allow intentional package/API breaking changes instead of preserving old wrappers.
 
@@ -12,7 +12,7 @@ The immediate goal is not to make the architecture perfect. It is to create enou
 
 ## Current map
 
-Current Go packages from `go list ./...` after the first Phase 6.5 moves:
+Current Go packages from `go list ./...` after the loader/backend/runtime moves completed so far:
 
 ```text
 backends/simd        -> AVX2/FMA/NEON dispatch and kernels
@@ -26,9 +26,10 @@ loader/safetensors   -> mmap safetensors reader, sharded reader, mmap advisor
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
-                        quant formats, MoE, MTP scaffold, model-specific KV sizing
+                        MoE, MTP scaffold, model-specific KV sizing
 models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging
+runtime/quant        -> MLX/GPTQ CPU quant formats, dequantization, Q4 GEMV helpers
 tensor               -> tensor graph/runtime; transitional direct import of backends/simd
 ```
 
@@ -36,7 +37,7 @@ Current import direction:
 
 ```text
 cmd -> loader/tokenizer, model, gpu
-model -> backends/simd, gpu, loader/{config,tokenizer,weights}, runtime/kv, tensor
+model -> backends/simd, gpu, loader/{config,tokenizer,weights}, runtime/{kv,quant}, tensor
 models/bert -> backends/simd, loader/safetensors, tensor
 loader/weights -> loader/safetensors
 tensor -> backends/simd
@@ -57,10 +58,10 @@ gpu/attn_ptx.go       ~560 lines: attention kernels
 
 ## Main problems found
 
-1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, and generic KV/TurboQuant have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, quant formats, MoE, model-specific KV sizing, and MTP scaffold.
+1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, generic KV/TurboQuant, and MLX/GPTQ CPU quant helpers have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, MoE, model-specific KV sizing, and MTP scaffold.
 2. **Backends are not cleanly separated.** `gpu/` mixes CUDA, Vulkan, budget/placement, expert pool, and memory abstractions. `model/gpu_forward.go` imports and orchestrates GPU details directly.
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
-4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config` and `loader/weights`, but still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
+4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
 6. **Tests mix durable validation with diagnostics.** Many Gemma4 trace/sensitivity tests are correctly gated with `GEMMA4_TRACE_TEST=1`, but they live beside normal unit tests and make the package look larger and riskier than it is.
 7. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
@@ -200,7 +201,7 @@ Each step should be one small commit with validation after it.
 
 1. **Add docs and package stubs only.** Land this plan and any README notes. No behavior changes.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
-3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit.
+3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit. ✅
 4. **Backend split.** Separate CUDA and Vulkan into `backends/cuda` and `backends/vulkan`, updating model/runtime imports directly.
 5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
@@ -209,7 +210,7 @@ Each step should be one small commit with validation after it.
 
 ## Validation gate
 
-Run after every non-trivial move:
+Run after every non-trivial move. Include `runtime/kv` and `runtime/quant` in the fast package set because they now own shared KV and CPU quantization behavior:
 
 ```sh
 go test ./gpu ./loader/... ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...

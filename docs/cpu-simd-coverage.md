@@ -21,8 +21,8 @@ The SIMD implementation now lives at import path `github.com/rcarmo/go-pherence/
 | GQA attention scores | `simd.Sdot` per head/token | ✅ | ✅ | Intermediate improvement; still allocates scores per head |
 | GQA attention output | `simd.Saxpy` per cached-token V head | ✅ | ✅ | Caller-owned output/score scratch; full fused attention still future work |
 | F32 GEMV dense | `simd.SgemmNN` when pre-transposed | ✅ | ✅ | `gemvNT` path uses `simd.Sdot` row-wise |
-| MLX4 GEMV | scalar unpack/dequant loop | ❌ | ❌ | Biggest CPU gap for quantized models and MoE experts |
-| GPTQ Q4 GEMV | scalar unpack/dequant loop | ❌ | ❌ | Needs AVX2/NEON nibble unpack + FMA |
+| MLX4 GEMV | `runtime/quant` scalar unpack/dequant loop | ❌ | ❌ | Biggest CPU gap for quantized models and MoE experts |
+| GPTQ Q4 GEMV | `runtime/quant` scalar unpack/dequant loop | ❌ | ❌ | Needs AVX2/NEON nibble unpack + FMA |
 | MoE CPU experts | parallel goroutines + MLX4 scalar GEMV | partial | partial | Activation now goes through SIMD wrapper; GEMV dominates |
 | BERT/GTE encoder | workspace + SGEMM/SIMD vec ops | ✅ | ✅ | Already comparatively mature |
 | TurboQuant rotation/dequant | scalar matvec + bit unpack | ❌ | ❌ | Needs scratch reuse and SIMD matvec/unpack |

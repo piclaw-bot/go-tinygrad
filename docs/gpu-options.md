@@ -34,17 +34,17 @@ Portable backend for non-NVIDIA hardware:
 
 - **Targets**: Intel iGPU (UHD/Iris/Arc), AMD RDNA, ARM Mali, Qualcomm Adreno, MoltenVK
 - **API**: 35 Vulkan functions, device auto-selection, compute queue + command pool
-- **Shaders**: 8 GLSL compute shaders (F32 + BF16 variants)
+- **Shaders**: GLSL/SPIR-V coverage for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths
 - **BF16**: emulated via uint16 bitshift (no extensions needed)
-- **Status**: init + buffer + dispatch pipeline working; SPIR-V needs glslangValidator
+- **Status**: init + buffer path and embedded SPIR-V are present; Vulkan op dispatch wiring is still pending in Phase 3.6
 
 ## CPU SIMD Assembly
 
 AVX2+FMA (amd64) and NEON (arm64):
 
-- 13 F32 operations + 5 BF16 operations per architecture
-- All hot paths covered: RMSNorm, VecAdd, Dot, SiLU, BF16 widen/narrow
-- Scalar Go fallback for other architectures
+- Runtime-gated AVX2/FMA and NEON wrappers with scalar fallback
+- Covered hot paths include vector add/mul/scale, dot/Saxpy, RMSNorm variants, BF16 widen/narrow, and SGEMM wrappers
+- Remaining CPU SIMD gaps include fused GELU, RoPEPartial, and MLX/GPTQ Q4 GEMV kernels
 
 ## Backend Selection
 

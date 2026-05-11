@@ -18,6 +18,8 @@ provided, the CLI prints a warning; GPU KV-cache compression is not wired yet.
 
 ## Current implementation
 
+- `runtime/kv` owns `TurboQuantState`, `CompressedKVCache`, and generic float/compressed KV checkpoint/rollback helpers.
+- The transitional `model` package owns model-specific KV dimension derivation and CPU generation wiring.
 - Per-layer `CompressedKVCache` wrapper for CPU `LlamaModel.Generate`.
 - Recent tokens stay full precision via a 128-token residual window.
 - Older tokens are compressed on append.

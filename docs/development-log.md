@@ -161,3 +161,16 @@ Started the blocking source-tree refactor before adding more MTP/backend functio
 - Moved the GTE/BERT encoder path from `model` to `models/bert`.
 
 Compatibility wrappers are intentionally avoided; package/API breaks are part of this internal refactor while CLI behavior remains stable.
+
+## Session 4: Runtime KV/quant extraction and hardening
+
+Continued the Phase 6.5 mechanical refactor by moving shared runtime concerns out of the transitional decoder package:
+
+- Moved generic TurboQuant state, compressed KV cache, and float/compressed KV staging helpers from `model` to `runtime/kv`.
+- Kept model-specific KV width derivation in `model` so Gemma4 variable/shared KV layout remains architecture-owned.
+- Moved MLX/GPTQ CPU quantization helpers from `model` to `runtime/quant`, including MLX affine weights, GPTQ dequantization, and scalar Q4 GEMV helpers.
+- Updated model loader/forward, MoE, GPU fallback, benchmarks, and diagnostics to import `runtime/kv` and `runtime/quant` directly.
+- Hardened `runtime/quant.LoadMLXWeight` with packed-weight config validation, shape inference, and scale/bias length checks.
+- Converted LLaMA and GTE load-time panics into returned errors, and stopped ignoring GPTQ scale/qzero load failures.
+
+Validation covered the new runtime packages, focused model tests, backend/loader/tensor/cmd packages, `go test ./... -run '^$'`, `go vet ./...`, and `git diff --check`.

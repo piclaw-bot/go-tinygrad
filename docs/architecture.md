@@ -42,7 +42,7 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | SIMD backend | `backends/simd` | Package name remains `simd`; import path is now backend-owned |
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers |
-| Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dequantization, and on-the-fly Q4 GEMV helpers |
+| Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, loader validation, dequantization, and on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
 | GPU transition package | `gpu` | CUDA + Vulkan + placement/expert cache until the backend split lands |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
@@ -58,7 +58,7 @@ loader/safetensors + loader/weights (GetFloat32, GetBF16, GetInt32, GetRaw)
     ├─── MLX 4-bit: runtime/quant.LoadMLXWeight → [outDim, inDim/8] uint32 + scales + biases
     │    └─── GPU: transpose → GPTQ kernel + bias correction
     │
-    ├─── GPTQ 4-bit: loadQW → [inDim/8, outDim] int32 + g_idx + scales
+    ├─── GPTQ 4-bit: loader reads qweight/g_idx/scales → runtime/quant dequant or GemvQ4Sym
     │    └─── GPU: direct tiled GEMV
     │
     └─── BF16/F16/F32: load → tensor (optional BF16 native path)
@@ -91,7 +91,7 @@ Gemma4 MTP support is currently scaffolded but not wired into public generation 
 - Assistant projection helpers: token embedding row copy, masked ordering lookup, `PreProjectInto`, and `PostProjectInto`.
 - Main-model verifier primitives: raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax.
 - Acceptance helpers: `AcceptMTPDraft`, `AcceptMTPDraftFromLogits`, and LiteRT-style bonus-token accounting.
-- KV staging helpers for candidate rollback/commit in both uncompressed and TurboQuant-backed caches.
+- `runtime/kv` staging helpers for candidate rollback/commit in both uncompressed and TurboQuant-backed caches.
 
 Remaining architecture work is the batched verifier forward path and q-only drafter forward loop with external/main-model KV state.
 
