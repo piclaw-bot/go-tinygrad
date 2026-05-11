@@ -28,6 +28,9 @@ type Buffer struct {
 
 // Float32Data returns the buffer as a float32 slice (unsafe, no copy).
 func (b *Buffer) Float32Data() []float32 {
+	if b == nil {
+		return nil
+	}
 	if b.DType != Float32 {
 		panic("Float32Data on non-float32 buffer")
 	}

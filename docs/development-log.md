@@ -456,3 +456,11 @@ Hardened tensor operation entrypoints:
 - `Data` is nil-safe and returns nil for a nil tensor.
 - Broadcast now rejects malformed shapes before attempting expansion.
 - Added regression coverage for nil tensor operations.
+
+## Session 39: Tensor unsafe slice helper audit
+
+Hardened tensor byte/float reinterpret helpers:
+
+- `byteSliceToFloat32` and `float32ToByteSlice` now return nil for empty inputs instead of indexing element zero.
+- `Buffer.Float32Data` is nil-safe for nil buffers.
+- Added regression coverage for empty/zero-size tensor data paths.
