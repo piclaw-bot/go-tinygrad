@@ -346,3 +346,10 @@ Reduced hidden upload/retry hazards around `DevBuf.GPUPtr()` call sites:
 - Cached GPU pointers in batched prefill RoPE/KV-copy paths instead of repeatedly calling `GPUPtr()` inside one operation.
 - Cached Gemma4 PLI and KV cache GPU pointers in the main GPU forward path before dispatch/copy decisions.
 - KV copy paths now require source and destination GPU pointers to be non-nil before calling `CopyDtoD`, avoiding nil-pointer dereferences when lazy upload fails.
+
+## Session 26: Runtime KV staging bounds audit
+
+Hardened staged float KV rollback:
+
+- `FloatKVCheckpoint.KeepAppended` now rejects negative per-layer KV dimensions instead of allowing negative slice targets.
+- Added regression coverage for malformed negative `kvDims` input.

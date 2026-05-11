@@ -59,6 +59,15 @@ func TestFloatKVCheckpointKeepAppended(t *testing.T) {
 	}
 }
 
+func TestFloatKVCheckpointKeepAppendedRejectsNegativeKVDim(t *testing.T) {
+	k := [][]float32{{1, 2}}
+	v := [][]float32{{3, 4}}
+	cp := FloatKVCheckpoint{KLen: []int{1}, VLen: []int{1}}
+	if err := cp.KeepAppended(k, v, []int{-1}, 1); err == nil {
+		t.Fatal("KeepAppended accepted negative kvDim")
+	}
+}
+
 func TestFloatKVCheckpointRestoreReportsInvalidCheckpoint(t *testing.T) {
 	k := [][]float32{{1}}
 	v := [][]float32{{2}}

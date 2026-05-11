@@ -41,8 +41,11 @@ func (cp FloatKVCheckpoint) KeepAppended(kvCacheK, kvCacheV [][]float32, kvDims 
 			continue
 		}
 		kvDim := kvDimAt(kvDims, i)
+		if kvDim < 0 {
+			return fmt.Errorf("layer %d K kvDim=%d must be >= 0", i, kvDim)
+		}
 		target := n + keepTokens*kvDim
-		if target > len(kvCacheK[i]) {
+		if target < 0 || target > len(kvCacheK[i]) {
 			return fmt.Errorf("layer %d K target len=%d exceeds current len=%d", i, target, len(kvCacheK[i]))
 		}
 		kvCacheK[i] = kvCacheK[i][:target]
@@ -52,8 +55,11 @@ func (cp FloatKVCheckpoint) KeepAppended(kvCacheK, kvCacheV [][]float32, kvDims 
 			continue
 		}
 		kvDim := kvDimAt(kvDims, i)
+		if kvDim < 0 {
+			return fmt.Errorf("layer %d V kvDim=%d must be >= 0", i, kvDim)
+		}
 		target := n + keepTokens*kvDim
-		if target > len(kvCacheV[i]) {
+		if target < 0 || target > len(kvCacheV[i]) {
 			return fmt.Errorf("layer %d V target len=%d exceeds current len=%d", i, target, len(kvCacheV[i]))
 		}
 		kvCacheV[i] = kvCacheV[i][:target]
