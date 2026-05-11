@@ -31,12 +31,21 @@ type GPUMLXWeight struct {
 // UploadMLXWeight uploads MLX quantized weight to GPU VRAM.
 // It can upload the GPTQ-transposed fast path, native MLX buffers, or both.
 func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int, wantNative bool) (*GPUMLXWeight, error) {
+	if inDim <= 0 || outDim <= 0 || groupSize <= 0 || inDim%groupSize != 0 || inDim%8 != 0 {
+		return nil, fmt.Errorf("invalid MLX dims inDim=%d outDim=%d groupSize=%d", inDim, outDim, groupSize)
+	}
+	numGroups := inDim / groupSize
+	packedPerRow := inDim / 8
+	if len(weight) < outDim*packedPerRow {
+		return nil, fmt.Errorf("weight length=%d, want at least %d", len(weight), outDim*packedPerRow)
+	}
+	if len(scales) < outDim*numGroups || len(biases) < outDim*numGroups {
+		return nil, fmt.Errorf("scale/bias length=%d/%d, want at least %d", len(scales), len(biases), outDim*numGroups)
+	}
 	if !SgemmReady() {
 		return nil, fmt.Errorf("GPU not available")
 	}
 	EnsureContext()
-
-	numGroups := inDim / groupSize
 
 	// Also upload biases for the correction term
 	// MLX dequant: val * scale + bias
@@ -77,8 +86,6 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	}
 
 	// Transpose to GPTQ layout for fast kernel path
-	packFactor := 8
-	packedPerRow := inDim / packFactor
 	transposed := make([]int32, packedPerRow*outDim)
 	for row := 0; row < outDim; row++ {
 		for col := 0; col < packedPerRow; col++ {
@@ -158,6 +165,10 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	return w, nil
 }
 
+func validGPUMLXWeight(w *GPUMLXWeight) bool {
+	return w != nil && w.InDim > 0 && w.OutDim > 0 && w.Groups > 0 && w.GroupSz > 0 && (w.AsGPTQ != nil || (w.QWeight != nil && w.Scales != nil && w.Biases != nil))
+}
+
 // Free releases GPU buffers owned by the MLX quantized weight.
 func (w *GPUMLXWeight) Free() {
 	if w == nil {
@@ -187,24 +198,27 @@ func (w *GPUMLXWeight) Free() {
 
 // reinterpretI32asF32 reinterprets []int32 as []float32 (same bits).
 func reinterpretI32asF32(data []int32) []float32 {
+	if len(data) == 0 {
+		return nil
+	}
 	return unsafe.Slice((*float32)(unsafe.Pointer(&data[0])), len(data))
 }
 
 // GemvMLX performs GPU GEMV with MLX quantized weights using optimized kernel.
 func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
-	if w == nil {
+	if !validGPUMLXWeight(w) || x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim {
 		return
 	}
 	// Fast path: use transposed weights with GPTQ kernel
 	// Note: this gives (val-8)*scale instead of val*scale+bias
 	// The 8*scale+bias correction is small and applied separately
 	if w.AsGPTQ != nil && q4Ready {
-		x.ToGPU()                // ensure CPU-modified data is uploaded
+		if !tryGPU(x) {
+			return
+		}
 		GemvQ4(out, x, w.AsGPTQ) // GPTQ path
 		// Apply bias correction: out += sum_g(group_sum_x * (8*scale+bias))
-		if w.Correction != nil && fnMLXCorrect != 0 {
-			x.ToGPU()
-			out.ToGPU()
+		if w.Correction != nil && fnMLXCorrect != 0 && tryGPU(x, out) {
 			EnsureContext()
 			outDim := uint32(w.OutDim)
 			inDim := uint32(w.InDim)
@@ -222,16 +236,10 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		}
 		return
 	}
-	if fnMLXGemv == 0 {
+	if fnMLXGemv == 0 || !tryGPU(x, out) {
 		return
 	}
 	EnsureContext()
-	x.ToGPU()
-	out.EnsureGPU()
-
-	if x.gpu == nil || out.gpu == nil {
-		return
-	}
 
 	outDim := uint32(w.OutDim)
 	inDim := uint32(w.InDim)
@@ -256,16 +264,13 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 
 // GemmMLX performs batched GPU GEMM with MLX quantized weights.
 func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
-	if w == nil || fnMLXGemm == 0 || B <= 0 {
+	if !validGPUMLXWeight(w) || input == nil || out == nil || fnMLXGemm == 0 || B <= 0 {
+		return
+	}
+	if input.n < B*w.InDim || out.n < B*w.OutDim || !tryGPU(input, out) {
 		return
 	}
 	EnsureContext()
-	input.ToGPU()
-	out.EnsureGPU()
-
-	if input.gpu == nil || out.gpu == nil {
-		return
-	}
 
 	outDim := uint32(w.OutDim)
 	inDim := uint32(w.InDim)
@@ -292,18 +297,15 @@ var fnMLXCorrect CUfunction
 var fnMLXGemm CUfunction
 
 func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
-	if w == nil || fnMLXGemv == 0 || w.QWeight == nil {
+	if !validGPUMLXWeight(w) || fnMLXGemv == 0 || w.QWeight == nil {
 		// Fall back to GPTQ path if native buffers unavailable
 		GemvMLX(out, x, w)
 		return
 	}
-	EnsureContext()
-	x.ToGPU()
-	out.EnsureGPU()
-
-	if x.gpu == nil || out.gpu == nil {
+	if x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim || !tryGPU(x, out) {
 		return
 	}
+	EnsureContext()
 
 	outDim := uint32(w.OutDim)
 	inDim := uint32(w.InDim)

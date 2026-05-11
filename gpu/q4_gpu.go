@@ -28,11 +28,30 @@ type GPUQuantWeight struct {
 
 // UploadQuantWeight uploads INT4 quantized weight to GPU VRAM.
 func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim int) (*GPUQuantWeight, error) {
+	if inDim <= 0 || outDim <= 0 || inDim%8 != 0 {
+		return nil, fmt.Errorf("invalid Q4 dims inDim=%d outDim=%d", inDim, outDim)
+	}
+	wantQWeight := (inDim / 8) * outDim
+	if len(qweight) < wantQWeight {
+		return nil, fmt.Errorf("qweight length=%d, want at least %d", len(qweight), wantQWeight)
+	}
+	if len(gIdx) < inDim {
+		return nil, fmt.Errorf("gIdx length=%d, want at least %d", len(gIdx), inDim)
+	}
+	if len(scales) == 0 || len(scales)%outDim != 0 {
+		return nil, fmt.Errorf("scales length=%d is not a positive multiple of outDim=%d", len(scales), outDim)
+	}
+	groups := len(scales) / outDim
+	for i := 0; i < inDim; i++ {
+		g := int(gIdx[i])
+		if g < 0 || g >= groups {
+			return nil, fmt.Errorf("gIdx[%d]=%d out of range [0,%d)", i, g, groups)
+		}
+	}
 	if !Q4Ready() {
 		return nil, fmt.Errorf("Q4 kernel not ready")
 	}
 
-	groups := len(scales) / outDim
 	w := &GPUQuantWeight{InDim: inDim, OutDim: outDim, Groups: groups}
 
 	qwBuf, err := Malloc(len(qweight))
@@ -90,17 +109,16 @@ func (w *GPUQuantWeight) Free() {
 	}
 }
 
+func validGPUQuantWeight(w *GPUQuantWeight) bool {
+	return w != nil && w.InDim > 0 && w.OutDim > 0 && w.Groups > 0 && w.QWeight != nil && w.Scales != nil && w.GIdx != nil
+}
+
 // GemvQ4 computes out[outDim] = x[inDim] @ dequant(W) on GPU.
 func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
-	if !q4Ready {
-		gemvQ4CPU(out, x, w)
+	if !validGPUQuantWeight(w) || x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim {
 		return
 	}
-
-	// x already on GPU (caller uploads)
-	out.EnsureGPU()
-
-	if x.gpu == nil || out.gpu == nil {
+	if !q4Ready || !tryGPU(x, out) {
 		gemvQ4CPU(out, x, w)
 		return
 	}
@@ -124,6 +142,9 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 
 // CPU fallback for INT4 GEMV
 func gemvQ4CPU(out, x *DevBuf, w *GPUQuantWeight) {
+	if !validGPUQuantWeight(w) || x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim {
+		return
+	}
 	x.ToCPU()
 	out.ToCPU()
 	xd := x.cpu
@@ -154,6 +175,9 @@ func gemvQ4CPU(out, x *DevBuf, w *GPUQuantWeight) {
 
 // Helpers for int32 <-> float32 reinterpret (same bit pattern, different type)
 func int32ToFloat32(data []int32) []float32 {
+	if len(data) == 0 {
+		return nil
+	}
 	return unsafe.Slice((*float32)(unsafe.Pointer(&data[0])), len(data))
 }
 

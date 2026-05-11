@@ -20,7 +20,10 @@ import (
 // GemmQ4 performs batched matrix multiply: out[B×outDim] = input[B×inDim] × W_q4[inDim×outDim]
 // where W is INT4 quantized with group scales.
 func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
-	if !q4Ready || w == nil || B <= 0 {
+	if !q4Ready || fnGemmQ4 == 0 || !validGPUQuantWeight(w) || input == nil || out == nil || B <= 0 {
+		return
+	}
+	if input.n < B*w.InDim || out.n < B*w.OutDim || !tryGPU(input, out) {
 		return
 	}
 	EnsureContext()
@@ -29,9 +32,6 @@ func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
 	inDim := uint32(w.InDim)
 	outDim := uint32(w.OutDim)
 	groups := uint32(w.Groups)
-
-	input.ToGPU()
-	out.ToGPU()
 
 	// Grid: one block per (output column, batch row) pair
 	// Block: 256 threads, each handles part of the dot product

@@ -311,3 +311,13 @@ Hardened GPU runtime helpers against malformed dimensions and failed uploads:
 - `DevRMSNorm` and `DevRMSNormNoScale` now require successful upload of all kernel operands before launching, instead of ignoring `ToGPU` errors.
 - Bounded `DevToBF16`, `DevSoftmax`, `DevGELUTanhMul`, `DevCopy`, and `DevBuf.Slice` to avoid out-of-range slices or overlong GPU launches on malformed inputs.
 - Added regression coverage for mismatched buffer lengths and overlong operation lengths.
+
+## Session 22: Q4/MLX CUDA dispatch guard audit
+
+Hardened CUDA quantized dispatch paths found during the GPU runtime audit:
+
+- `UploadQuantWeight` now validates dimensions, packed-weight length, scale layout, and group-index ranges before allocating GPU buffers.
+- Q4 GEMV/GEMM launch helpers now reject nil/malformed weights, undersized input/output buffers, and failed buffer uploads before touching CUDA kernel arguments.
+- `UploadMLXWeight` now validates dimensions, packed MLX weight length, and scale/bias lengths before transposition/upload.
+- MLX GEMV/GEMM launch helpers now preflight native/GPTQ weight availability and input/output dimensions before dispatch.
+- Low-level CUDA `Buffer.Upload`/`Download` and integer reinterpret helpers now handle empty slices without indexing `data[0]`.

@@ -196,6 +196,9 @@ type Buffer struct {
 
 // Malloc allocates GPU memory for n float32s.
 func Malloc(n int) (*Buffer, error) {
+	if n <= 0 {
+		return &Buffer{}, nil
+	}
 	EnsureContext()
 	var ptr CUdeviceptr
 	size := uint64(n * 4)
@@ -216,6 +219,12 @@ func (b *Buffer) Free() {
 
 // Upload copies host data to GPU.
 func (b *Buffer) Upload(data []float32) error {
+	if b == nil {
+		return fmt.Errorf("nil GPU buffer")
+	}
+	if len(data) == 0 {
+		return nil
+	}
 	EnsureContext()
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
@@ -227,6 +236,12 @@ func (b *Buffer) Upload(data []float32) error {
 
 // Download copies GPU data to host.
 func (b *Buffer) Download(data []float32) error {
+	if b == nil {
+		return fmt.Errorf("nil GPU buffer")
+	}
+	if len(data) == 0 {
+		return nil
+	}
 	EnsureContext()
 	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
 	runtime.KeepAlive(data)

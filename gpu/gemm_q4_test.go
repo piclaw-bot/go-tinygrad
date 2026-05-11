@@ -48,7 +48,7 @@ func TestGemmQ4Batch(t *testing.T) {
 			for i := 0; i < inDim; i++ {
 				packed := qweight[(i/8)*outDim+col]
 				shift := uint((i % 8) * 4)
-				val := int32((packed >> shift) & 0xF) - 8
+				val := int32((packed>>shift)&0xF) - 8
 				scale := scales[gidx[i]*int32(outDim)+int32(col)]
 				w := float32(val) * scale
 				sum += input[b*inDim+i] * w
@@ -167,4 +167,32 @@ func TestGemmQ4VsGemv(t *testing.T) {
 	if maxDiff > 0.001 {
 		t.Fatalf("GEMV/GEMM mismatch: %e", maxDiff)
 	}
+}
+
+func TestUploadQuantWeightValidation(t *testing.T) {
+	if _, err := UploadQuantWeight(nil, nil, nil, 0, 8); err == nil {
+		t.Fatalf("expected invalid dimension error")
+	}
+	if !Q4Ready() {
+		t.Skip("Q4 kernel not ready; dimension validation checked before readiness")
+	}
+	if _, err := UploadQuantWeight(make([]int32, 1), make([]int32, 8), make([]float32, 8), 16, 8); err == nil {
+		t.Fatalf("expected short qweight error")
+	}
+	if _, err := UploadQuantWeight(make([]int32, 16), make([]int32, 16), make([]float32, 7), 16, 8); err == nil {
+		t.Fatalf("expected invalid scales error")
+	}
+	badG := make([]int32, 16)
+	badG[3] = 1
+	if _, err := UploadQuantWeight(make([]int32, 16), badG, make([]float32, 8), 16, 8); err == nil {
+		t.Fatalf("expected bad group index error")
+	}
+}
+
+func TestQuantDispatchMalformedDoesNotPanic(t *testing.T) {
+	out := NewDevBuf(1)
+	x := NewDevBufFrom([]float32{1})
+	GemvQ4(out, x, nil)
+	GemmQ4(out, x, nil, 2)
+	GemvQ4OrGemm(out, x, nil, 2)
 }
