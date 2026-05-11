@@ -1,13 +1,27 @@
 package tensor
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // bufferPool reuses allocated buffers to reduce GC pressure.
 // Key: buffer size in bytes. Value: pool of []byte slices.
 var bufferPool sync.Map // map[int]*sync.Pool
 
 func pooledAlloc(dtype DType, n int) *Buffer {
-	size := n * dtype.ByteSize()
+	if n < 0 {
+		panic("pooledAlloc: negative length")
+	}
+	byteSize := dtype.ByteSize()
+	if byteSize <= 0 {
+		panic(fmt.Sprintf("pooledAlloc: invalid dtype %s", dtype.String()))
+	}
+	maxInt := int(^uint(0) >> 1)
+	if n > maxInt/byteSize {
+		panic("pooledAlloc: size overflow")
+	}
+	size := n * byteSize
 	pool, _ := bufferPool.LoadOrStore(size, &sync.Pool{
 		New: func() any { return make([]byte, size) },
 	})

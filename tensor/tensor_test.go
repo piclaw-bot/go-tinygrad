@@ -462,3 +462,9 @@ func TestRealizeValidationRejectsMalformedUOps(t *testing.T) {
 	})
 	assertPanics(t, func() { _ = guessInputShape(&UOp{}) })
 }
+
+func TestPooledAllocValidation(t *testing.T) {
+	assertPanics(t, func() { _ = pooledAlloc(Float32, -1) })
+	assertPanics(t, func() { _ = pooledAlloc(DType{Name: "bad", Bits: 0}, 1) })
+	assertPanics(t, func() { _ = pooledAlloc(Float32, int(^uint(0)>>1)) })
+}

@@ -472,3 +472,10 @@ Hardened tensor realization internals:
 - `realize` now rejects nil UOps, nil sources, and invalid shapes before dispatch.
 - `allocBuffer`, unary/binary eval, broadcast eval, reduce eval, and input-shape guessing now validate malformed internal inputs before indexing.
 - Added regression coverage for malformed UOp/eval helpers.
+
+## Session 41: Tensor buffer pool allocation audit
+
+Hardened tensor buffer allocation:
+
+- `pooledAlloc` now rejects negative lengths, zero-byte dtypes, and integer-overflowing allocation sizes before creating pool keys or byte slices.
+- Added regression coverage for malformed pooled allocation inputs.
