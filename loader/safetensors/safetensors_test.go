@@ -8,13 +8,7 @@ import (
 )
 
 func TestOpenGTESmall(t *testing.T) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(t)
 
 	f, err := Open(path)
 	if err != nil {
@@ -67,14 +61,29 @@ func TestOpenGTESmall(t *testing.T) {
 	t.Logf("First 5 values: %v", data[:5])
 }
 
-func TestListTensors(t *testing.T) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
+func gteSmallPath(t *testing.T) string {
+	t.Helper()
+	if path := os.Getenv("SAFETENSORS_PATH"); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
 		t.Skipf("model not found: %s", path)
 	}
+	for _, path := range []string{
+		"../../../gte-go/models/gte-small/model.safetensors",
+		"../../gte-go/models/gte-small/model.safetensors",
+		"../gte-go/models/gte-small/model.safetensors",
+	} {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	t.Skip("GTE-small safetensors fixture not found")
+	return ""
+}
+
+func TestListTensors(t *testing.T) {
+	path := gteSmallPath(t)
 
 	f, err := Open(path)
 	if err != nil {

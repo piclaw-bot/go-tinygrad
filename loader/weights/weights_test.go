@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestOpenSafetensorsReportsStatError(t *testing.T) {
+func TestOpenSafetensorsReportsShardedOpenError(t *testing.T) {
 	dir := t.TempDir()
 	indexPath := filepath.Join(dir, "model.safetensors.index.json")
 	if err := os.Mkdir(indexPath, 0o755); err != nil {

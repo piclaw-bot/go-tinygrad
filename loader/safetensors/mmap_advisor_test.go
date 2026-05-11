@@ -1,6 +1,8 @@
 package safetensors
 
 import (
+	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 )
@@ -94,16 +96,8 @@ func TestMmapAdvisorMerge(t *testing.T) {
 }
 
 func TestMmapAdvisorWithFile(t *testing.T) {
-	// Use an actual safetensors file if available
-	path := "../../models/smollm2-135m/model.safetensors"
-	f, err := Open(path)
-	if err != nil {
-		path = "../models/smollm2-135m/model.safetensors"
-		f, err = Open(path)
-		if err != nil {
-			t.Skipf("model not found: %v", err)
-		}
-	}
+	// Use an actual safetensors file if available.
+	f := openOptionalSafetensors(t, smolLM2Candidates())
 	defer f.Close()
 
 	if f.mmapData == nil {
@@ -129,16 +123,35 @@ func TestMmapAdvisorWithFile(t *testing.T) {
 	t.Logf("after merge: %d ranges (was %d)", nMerged, nRanges)
 }
 
-func TestEagerLoadWithFile(t *testing.T) {
-	path := "../../models/smollm2-135m/model.safetensors"
-	f, err := Open(path)
-	if err != nil {
-		path = "../models/smollm2-135m/model.safetensors"
-		f, err = Open(path)
-		if err != nil {
-			t.Skipf("model not found: %v", err)
+func openOptionalSafetensors(t *testing.T, candidates []string) *File {
+	t.Helper()
+	var lastErr error
+	for _, path := range candidates {
+		f, err := Open(path)
+		if err == nil {
+			return f
 		}
+		lastErr = err
 	}
+	t.Skipf("model not found: %v", lastErr)
+	return nil
+}
+
+func smolLM2Candidates() []string {
+	var out []string
+	if dir := os.Getenv("SMOLLM_PATH"); dir != "" {
+		out = append(out, filepath.Join(dir, "model.safetensors"))
+	}
+	out = append(out,
+		"../../models/smollm2-135m/model.safetensors",
+		"../../../models/smollm2-135m/model.safetensors",
+		"../models/smollm2-135m/model.safetensors",
+	)
+	return out
+}
+
+func TestEagerLoadWithFile(t *testing.T) {
+	f := openOptionalSafetensors(t, smolLM2Candidates())
 	defer f.Close()
 
 	bytes, err := f.EagerLoad()

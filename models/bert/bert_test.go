@@ -7,13 +7,7 @@ import (
 )
 
 func TestLoadGTESmall(t *testing.T) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(t)
 
 	m, err := LoadGTESmall(path)
 	if err != nil {
@@ -30,13 +24,7 @@ func TestLoadGTESmall(t *testing.T) {
 }
 
 func TestForwardGTESmall(t *testing.T) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(t)
 
 	m, err := LoadGTESmall(path)
 	if err != nil {
@@ -77,14 +65,29 @@ func TestForwardGTESmall(t *testing.T) {
 	t.Logf("Norm: %v, non-zero: %d/384", norm, nonZero)
 }
 
+func gteSmallPath(tb testing.TB) string {
+	tb.Helper()
+	if path := os.Getenv("SAFETENSORS_PATH"); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+		tb.Skipf("model not found: %s", path)
+	}
+	for _, path := range []string{
+		"../../../gte-go/models/gte-small/model.safetensors",
+		"../../gte-go/models/gte-small/model.safetensors",
+		"../gte-go/models/gte-small/model.safetensors",
+	} {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	tb.Skip("GTE-small safetensors fixture not found")
+	return ""
+}
+
 func BenchmarkGTESmallEmbed(b *testing.B) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		b.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(b)
 	m, err := LoadGTESmall(path)
 	if err != nil {
 		b.Fatalf("load: %v", err)
@@ -105,13 +108,7 @@ func BenchmarkGTESmallEmbed(b *testing.B) {
 }
 
 func TestForwardFastCorrectness(t *testing.T) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(t)
 	m, err := LoadGTESmall(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -139,13 +136,7 @@ func TestForwardFastCorrectness(t *testing.T) {
 }
 
 func BenchmarkGTESmallEmbedFast(b *testing.B) {
-	path := os.Getenv("SAFETENSORS_PATH")
-	if path == "" {
-		path = "../../gte-go/models/gte-small/model.safetensors"
-	}
-	if _, err := os.Stat(path); err != nil {
-		b.Skipf("model not found: %s", path)
-	}
+	path := gteSmallPath(b)
 	m, err := LoadGTESmall(path)
 	if err != nil {
 		b.Fatalf("load: %v", err)
