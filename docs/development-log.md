@@ -487,3 +487,11 @@ Hardened tensor graph rewrite and fusion paths:
 - Patterns, pattern matchers, graph rewrite traversal, and rules now handle nil patterns/UOps/rules without nil-deref panics.
 - Fusion setup rejects nil roots and invalid shapes; fused kernel execution validates kernel structure and leaf buffer sizes.
 - Added regression coverage for nil rewrite inputs and malformed fused kernels.
+
+## Session 43: Tensor embedding/matmul validation audit
+
+Hardened tensor neural-network helpers:
+
+- `Embedding` now validates nil/2D weights and token ID bounds while preserving empty ID handling.
+- `MatMul`/`MatMulTransposed` reject nil tensors and avoid taking `&slice[0]` on zero-sized matrices before SIMD calls.
+- `Linear` and `LinearPreT` validate bias shape before in-place bias addition.

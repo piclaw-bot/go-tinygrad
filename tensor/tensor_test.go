@@ -478,3 +478,26 @@ func TestFusionValidationRejectsMalformedKernels(t *testing.T) {
 		(&fusedKernel{n: 2, ops: []fusedOp{{isLeaf: true, bufIdx: 0}}, bufs: []*Buffer{{Data: float32ToByteSlice([]float32{1}), DType: Float32, Length: 1}}}).execute()
 	})
 }
+
+func TestEmbeddingValidation(t *testing.T) {
+	assertPanics(t, func() { _ = Embedding(nil, []int{0}) })
+	w := FromFloat32([]float32{1, 2, 3, 4}, []int{2, 2})
+	assertPanics(t, func() { _ = Embedding(w, []int{-1}) })
+	assertPanics(t, func() { _ = Embedding(w, []int{2}) })
+	got := Embedding(w, nil)
+	if shape := got.Shape(); len(shape) != 2 || shape[0] != 0 || shape[1] != 2 {
+		t.Fatalf("empty embedding shape=%v", shape)
+	}
+}
+
+func TestMatMulAndLinearValidation(t *testing.T) {
+	assertPanics(t, func() { _ = (*Tensor)(nil).MatMul(Ones([]int{1, 1})) })
+	assertPanics(t, func() { _ = Ones([]int{1, 1}).MatMul(nil) })
+	assertPanics(t, func() { _ = Ones([]int{1}).MatMulTransposed(Ones([]int{1, 1})) })
+	assertPanics(t, func() { _ = Ones([]int{1, 2}).Linear(Ones([]int{3, 2}), Ones([]int{2})) })
+	assertPanics(t, func() { _ = Ones([]int{1, 2}).LinearPreT(Ones([]int{2, 3}), Ones([]int{2})) })
+	got := Ones([]int{0, 2}).MatMul(Ones([]int{2, 3}))
+	if shape := got.Shape(); len(shape) != 2 || shape[0] != 0 || shape[1] != 3 {
+		t.Fatalf("zero-row matmul shape=%v", shape)
+	}
+}

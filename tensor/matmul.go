@@ -10,6 +10,9 @@ import (
 // MatMul computes matrix multiplication: C = A @ B.
 // A is [M, K], B is [K, N], result is [M, N].
 func (t *Tensor) MatMul(other *Tensor) *Tensor {
+	if t == nil || other == nil {
+		panic("matmul: nil tensor")
+	}
 	a, b := t, other
 	aDims := a.Shape()
 	bDims := b.Shape()
@@ -36,7 +39,7 @@ func (t *Tensor) MatMul(other *Tensor) *Tensor {
 	cData := make([]float32, m*n)
 
 	// Use SIMD GEMM: C = A @ B is sgemm(NoTrans, NoTrans, m, n, k, 1, A, k, B, n, 0, C, n)
-	if simd.HasSgemmAsm {
+	if simd.HasSgemmAsm && len(aData) > 0 && len(bData) > 0 && len(cData) > 0 {
 		simd.SgemmNN(m, n, k, 1.0,
 			unsafe.Pointer(&aData[0]), unsafe.Pointer(&bData[0]), unsafe.Pointer(&cData[0]),
 			k, n, n)
@@ -60,9 +63,15 @@ func (t *Tensor) MatMul(other *Tensor) *Tensor {
 // A is [M, K], B is [N, K] (transposed), result is [M, N].
 // This is the common pattern for linear layers: Y = X @ W^T.
 func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
+	if t == nil || other == nil {
+		panic("matmul_t: nil tensor")
+	}
 	a, b := t, other
 	aDims := a.Shape()
 	bDims := b.Shape()
+	if len(aDims) < 2 || len(bDims) < 2 {
+		panic("matmul_t requires at least 2D tensors")
+	}
 
 	m := aDims[len(aDims)-2]
 	k := aDims[len(aDims)-1]
@@ -80,7 +89,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
 	cData := make([]float32, m*n)
 
 	// C = A @ B^T is sgemm(NoTrans, Trans)
-	if simd.HasSgemmAsm {
+	if simd.HasSgemmAsm && len(aData) > 0 && len(bData) > 0 && len(cData) > 0 {
 		// Use gather on amd64, GEBP on arm64
 		simd.SgemmNT(m, n, k, 1.0,
 			unsafe.Pointer(&aData[0]), unsafe.Pointer(&bData[0]), unsafe.Pointer(&cData[0]),
@@ -107,9 +116,13 @@ func (t *Tensor) Linear(weight, bias *Tensor) *Tensor {
 	if bias != nil {
 		// Broadcast add: [M, N] + [N] → need to broadcast bias
 		result.Realize()
+		bDims := bias.Shape()
+		n := result.Shape()[1]
+		if len(bDims) != 1 || bDims[0] != n {
+			panic("linear: bias shape mismatch")
+		}
 		bData := bias.Data()
 		rData := result.Data()
-		n := result.Shape()[1]
 		m := result.Shape()[0]
 		for i := 0; i < m; i++ {
 			for j := 0; j < n; j++ {
@@ -126,9 +139,13 @@ func (t *Tensor) LinearPreT(weightT, bias *Tensor) *Tensor {
 	result := t.MatMul(weightT)
 	if bias != nil {
 		result.Realize()
+		bDims := bias.Shape()
+		n := result.Shape()[1]
+		if len(bDims) != 1 || bDims[0] != n {
+			panic("linear: bias shape mismatch")
+		}
 		bData := bias.Data()
 		rData := result.Data()
-		n := result.Shape()[1]
 		m := result.Shape()[0]
 		for i := 0; i < m; i++ {
 			for j := 0; j < n; j++ {
