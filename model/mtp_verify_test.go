@@ -1,6 +1,10 @@
 package model
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rcarmo/go-pherence/runtime/kv"
+)
 
 func TestMTPVerifierTokens(t *testing.T) {
 	tokens, err := MTPVerifierTokens(7, []int{10, 11})
@@ -62,7 +66,7 @@ func TestMTPVerifierResultCommitFloatKV(t *testing.T) {
 	}
 	k := [][]float32{{1, 2, 10, 11, 12, 13, 14, 15}}
 	v := [][]float32{{3, 4, 20, 21, 22, 23, 24, 25}}
-	cp := FloatKVCheckpoint{KLen: []int{2}, VLen: []int{2}}
+	cp := kv.FloatKVCheckpoint{KLen: []int{2}, VLen: []int{2}}
 	if err := result.CommitFloatKV(m, k, v, cp); err != nil {
 		t.Fatalf("CommitFloatKV: %v", err)
 	}
@@ -72,9 +76,9 @@ func TestMTPVerifierResultCommitFloatKV(t *testing.T) {
 }
 
 func TestMTPVerifierResultCommitCompressedKV(t *testing.T) {
-	cache := NewCompressedKVCache(2, 1, 2, nil, true)
+	cache := kv.NewCompressedKVCache(2, 1, 2, nil, true)
 	cache.Append([]float32{1, 2}, []float32{10, 20})
-	cp := CheckpointCompressedKV([]*CompressedKVCache{cache})
+	cp := kv.CheckpointCompressedKV([]*kv.CompressedKVCache{cache})
 	cache.Append([]float32{3, 4}, []float32{30, 40})
 	cache.Append([]float32{5, 6}, []float32{50, 60})
 	cache.Append([]float32{7, 8}, []float32{70, 80})
@@ -82,7 +86,7 @@ func TestMTPVerifierResultCommitCompressedKV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMTPVerifierResult: %v", err)
 	}
-	if err := result.CommitCompressedKV([]*CompressedKVCache{cache}, cp); err != nil {
+	if err := result.CommitCompressedKV([]*kv.CompressedKVCache{cache}, cp); err != nil {
 		t.Fatalf("CommitCompressedKV: %v", err)
 	}
 	if got, want := cache.SeqLen(), 3; got != want {

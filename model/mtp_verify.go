@@ -1,6 +1,10 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rcarmo/go-pherence/runtime/kv"
+)
 
 // MTPVerifierTokens returns the token sequence the main verifier must process:
 // the previous/input token followed by G drafter candidates.
@@ -65,7 +69,7 @@ func NewMTPVerifierResult(inputToken int, drafted []int, logits [][]float32, fin
 
 // CommitFloatKV applies the verifier result's acceptance to staged uncompressed
 // KV caches. The checkpoint must be from immediately before the verifier pass.
-func (r MTPVerifierResult) CommitFloatKV(m *LlamaModel, kvCacheK, kvCacheV [][]float32, cp FloatKVCheckpoint) error {
+func (r MTPVerifierResult) CommitFloatKV(m *LlamaModel, kvCacheK, kvCacheV [][]float32, cp kv.FloatKVCheckpoint) error {
 	if m == nil {
 		return fmt.Errorf("nil model")
 	}
@@ -75,6 +79,6 @@ func (r MTPVerifierResult) CommitFloatKV(m *LlamaModel, kvCacheK, kvCacheV [][]f
 // CommitCompressedKV applies the verifier result's acceptance to staged
 // compressed/TurboQuant KV caches. The checkpoints must be from immediately
 // before the verifier pass.
-func (r MTPVerifierResult) CommitCompressedKV(caches []*CompressedKVCache, cp []CompressedKVCheckpoint) error {
+func (r MTPVerifierResult) CommitCompressedKV(caches []*kv.CompressedKVCache, cp []kv.CompressedKVCheckpoint) error {
 	return CommitAcceptedCompressedKV(caches, cp, r.Acceptance)
 }

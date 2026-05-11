@@ -1,6 +1,10 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rcarmo/go-pherence/runtime/kv"
+)
 
 // MTPAcceptance describes the deterministic accept/reject result for one
 // speculative verification pass. VerifiedCount intentionally excludes the bonus
@@ -26,7 +30,7 @@ func (a MTPAcceptance) KVKeepTokens() int {
 // CommitAcceptedFloatKV keeps the accepted verifier KV prefix plus bonus token.
 // The checkpoint must have been taken immediately before the staged verifier
 // pass whose logits produced acceptance.
-func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp FloatKVCheckpoint, kvDims []int, acceptance MTPAcceptance) error {
+func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp kv.FloatKVCheckpoint, kvDims []int, acceptance MTPAcceptance) error {
 	return cp.KeepAppended(kvCacheK, kvCacheV, kvDims, acceptance.KVKeepTokens())
 }
 
@@ -34,8 +38,8 @@ func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp FloatKVCheckpoint,
 // token for compressed/TurboQuant-backed caches. The checkpoints must have been
 // taken immediately before the staged verifier pass whose logits produced
 // acceptance.
-func CommitAcceptedCompressedKV(caches []*CompressedKVCache, cp []CompressedKVCheckpoint, acceptance MTPAcceptance) error {
-	return KeepCompressedKVAppended(caches, cp, acceptance.KVKeepTokens())
+func CommitAcceptedCompressedKV(caches []*kv.CompressedKVCache, cp []kv.CompressedKVCheckpoint, acceptance MTPAcceptance) error {
+	return kv.KeepCompressedKVAppended(caches, cp, acceptance.KVKeepTokens())
 }
 
 // AcceptMTPDraftFromLogits greedily samples verifier logits and applies

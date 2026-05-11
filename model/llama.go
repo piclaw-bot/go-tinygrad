@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rcarmo/go-pherence/runtime/kv"
+
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
 	"github.com/rcarmo/go-pherence/loader/weights"
@@ -101,7 +103,7 @@ type LlamaModel struct {
 	// headDim because Gemma4 uses per-layer head dimensions, so each distinct
 	// headDim needs its own orthogonal rotation matrix.
 	EnableTurboQuant bool
-	TurboQuantStates map[int]*TurboQuantState
+	TurboQuantStates map[int]*kv.TurboQuantState
 }
 
 // LlamaLayer holds weights for one decoder layer.
@@ -870,24 +872,24 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 	// Allocate KV cache (with optional TurboQuant compression)
 	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * layerKVDim]
 	kvCacheV := make([][]float32, cfg.NumLayers)
-	var compressedKV []*CompressedKVCache
+	var compressedKV []*kv.CompressedKVCache
 	if m.EnableTurboQuant || os.Getenv("TURBO_QUANT") == "1" {
-		tqCfg := DefaultTurboQuantConfig()
+		tqCfg := kv.DefaultTurboQuantConfig()
 		if m.TurboQuantStates == nil {
-			m.TurboQuantStates = make(map[int]*TurboQuantState)
+			m.TurboQuantStates = make(map[int]*kv.TurboQuantState)
 		}
-		getTQ := func(layerHeadDim int) *TurboQuantState {
+		getTQ := func(layerHeadDim int) *kv.TurboQuantState {
 			if tq := m.TurboQuantStates[layerHeadDim]; tq != nil {
 				return tq
 			}
-			tq := NewTurboQuantState(layerHeadDim, cfg.NumLayers, tqCfg)
+			tq := kv.NewTurboQuantState(layerHeadDim, cfg.NumLayers, tqCfg)
 			m.TurboQuantStates[layerHeadDim] = tq
 			return tq
 		}
 		fmt.Printf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
 			tqCfg.KeyBits, tqCfg.ValueBits, tqCfg.ResidualWindow)
 
-		compressedKV = make([]*CompressedKVCache, cfg.NumLayers)
+		compressedKV = make([]*kv.CompressedKVCache, cfg.NumLayers)
 		for l := range compressedKV {
 			layerHD := headDim
 			if m.Layers[l].HeadDimLocal > 0 {
@@ -895,7 +897,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 			layerKVDim := numKVHeads * layerHD
 			tq := getTQ(layerHD)
-			compressedKV[l] = NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tq, tq.IsProtectedLayer(l))
+			compressedKV[l] = kv.NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tq, tq.IsProtectedLayer(l))
 		}
 	} else {
 		for l := range kvCacheK {

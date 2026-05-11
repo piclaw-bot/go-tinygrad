@@ -1,6 +1,6 @@
 # TurboQuant KV Cache Compression
 
-TurboQuant is an optional CPU-backend KV cache compression path for long-context
+TurboQuant lives in `runtime/kv` and is an optional CPU-backend KV cache compression path for long-context
 inference.
 
 ## Usage

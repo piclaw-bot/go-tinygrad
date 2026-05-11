@@ -154,6 +154,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
 - **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
 - **`models/bert/`** — GTE/BERT encoder path
+- **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
 - **`gpu/`** — transitional CUDA/Vulkan package pending the backend split
 
@@ -169,7 +170,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **Per-layer input gating** — PLI with GELU gate, projection, norm (Gemma4)
 - **KV sharing** — shared layers reuse source-layer KV cache (Gemma4)
 - **MTP speculative decoding scaffolding** — Gemma4 assistant drafter loader, projection helpers, verifier primitives, acceptance accounting, and staged KV commit/rollback (end-to-end generation wiring pending)
-- **TurboQuant KV compression** — optional CPU KV cache compression via `--turbo-quant`
+- **TurboQuant KV compression** — `runtime/kv`, optional CPU KV cache compression via `--turbo-quant`
 - **Layer scalar** — per-layer output scaling (Gemma4)
 - **Embedding scaling** — `× √hidden_size` (Gemma3/4)
 - **Batched prefill** — GEMM for multi-token prompt processing

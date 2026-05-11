@@ -1,4 +1,4 @@
-package model
+package kv
 
 // CompressedKVCache wraps a per-layer KV cache with TurboQuant compression.
 // Recent tokens (within the residual window) stay at full precision.

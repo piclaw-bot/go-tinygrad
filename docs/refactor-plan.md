@@ -26,8 +26,9 @@ loader/safetensors   -> mmap safetensors reader, sharded reader, mmap advisor
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
-                        quant formats, MoE, MTP scaffold, KV cache, TurboQuant
+                        quant formats, MoE, MTP scaffold, model-specific KV sizing
 models/bert          -> GTE/BERT encoder path
+runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging
 tensor               -> tensor graph/runtime; transitional direct import of backends/simd
 ```
 
@@ -35,7 +36,7 @@ Current import direction:
 
 ```text
 cmd -> loader/tokenizer, model, gpu
-model -> backends/simd, gpu, loader/{config,tokenizer,weights}, tensor
+model -> backends/simd, gpu, loader/{config,tokenizer,weights}, runtime/kv, tensor
 models/bert -> backends/simd, loader/safetensors, tensor
 loader/weights -> loader/safetensors
 tensor -> backends/simd
@@ -56,7 +57,7 @@ gpu/attn_ptx.go       ~560 lines: attention kernels
 
 ## Main problems found
 
-1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, and BERT/GTE have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, quant formats, MoE, KV caches, TurboQuant, and MTP scaffold.
+1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, and generic KV/TurboQuant have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, quant formats, MoE, model-specific KV sizing, and MTP scaffold.
 2. **Backends are not cleanly separated.** `gpu/` mixes CUDA, Vulkan, budget/placement, expert pool, and memory abstractions. `model/gpu_forward.go` imports and orchestrates GPU details directly.
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config` and `loader/weights`, but still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
@@ -157,8 +158,8 @@ Move/update directly:
 
 Move/update directly:
 
-- `model/kv_cache.go`, `model/kv_staging.go` -> `runtime/kv`
-- `model/turboquant.go` -> `runtime/kv` or `runtime/quant` depending on interface split
+- `model/kv_cache.go` and the generic staging parts of `model/kv_staging.go` -> `runtime/kv` ✅
+- `model/turboquant.go` -> `runtime/kv` ✅
 - `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go`, `model/bf16.go` -> `runtime/quant` plus `backends/cpu` kernels where appropriate
 - `gpu/budget.go`, `gpu/placement.go`, `gpu/expert_pool.go` -> `backends/placement` or `runtime/memory` depending on whether they own device resources
 - `loader/safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now

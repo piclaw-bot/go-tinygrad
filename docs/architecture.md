@@ -41,7 +41,8 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources |
 | SIMD backend | `backends/simd` | Package name remains `simd`; import path is now backend-owned |
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
-| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, KV/TurboQuant; still being split |
+| KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers |
+| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
 | GPU transition package | `gpu` | CUDA + Vulkan + placement/expert cache until the backend split lands |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
 
