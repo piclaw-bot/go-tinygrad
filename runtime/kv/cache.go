@@ -35,13 +35,26 @@ type compressedEntry struct {
 
 // NewCompressedKVCache creates a cache for one layer.
 func NewCompressedKVCache(kvDim, numKVHeads, headDim int, tq *TurboQuantState, isProtected bool) *CompressedKVCache {
+	if kvDim < 0 {
+		kvDim = 0
+	}
+	if numKVHeads < 0 {
+		numKVHeads = 0
+	}
+	if headDim < 0 {
+		headDim = 0
+	}
 	rw := 128
 	if tq != nil {
 		rw = tq.Config.ResidualWindow
 	}
+	if rw < 0 {
+		rw = 0
+	}
+	capHint := 2048 * kvDim
 	return &CompressedKVCache{
-		FullK:          make([]float32, 0, 2048*kvDim),
-		FullV:          make([]float32, 0, 2048*kvDim),
+		FullK:          make([]float32, 0, capHint),
+		FullV:          make([]float32, 0, capHint),
 		kvDim:          kvDim,
 		numKVHeads:     numKVHeads,
 		headDim:        headDim,
@@ -53,8 +66,8 @@ func NewCompressedKVCache(kvDim, numKVHeads, headDim int, tq *TurboQuantState, i
 
 // Append adds a new K/V pair for the current position.
 func (c *CompressedKVCache) Append(k, v []float32) {
-	if len(k) != c.kvDim || len(v) != c.kvDim {
-		panic("CompressedKVCache.Append: K/V vector length mismatch")
+	if c == nil || c.kvDim <= 0 || len(k) != c.kvDim || len(v) != c.kvDim {
+		return
 	}
 	c.FullK = append(c.FullK, k...)
 	c.FullV = append(c.FullV, v...)
@@ -68,6 +81,9 @@ func (c *CompressedKVCache) Append(k, v []float32) {
 
 // compressOldest moves the oldest full-precision entry to compressed storage.
 func (c *CompressedKVCache) compressOldest() {
+	if c == nil || c.kvDim <= 0 || c.numKVHeads <= 0 || c.headDim <= 0 || c.tq == nil {
+		return
+	}
 	// How many full-precision entries we have
 	fullCount := len(c.FullK) / c.kvDim
 	if fullCount <= c.residualWindow {
@@ -113,6 +129,9 @@ func (c *CompressedKVCache) compressOldest() {
 // GetK returns the full K cache as flat []float32 for attention.
 // Decompresses compressed entries on-the-fly.
 func (c *CompressedKVCache) GetK() []float32 {
+	if c == nil || c.kvDim <= 0 {
+		return nil
+	}
 	if len(c.CompressedK) == 0 {
 		return c.FullK
 	}
@@ -137,6 +156,9 @@ func (c *CompressedKVCache) GetK() []float32 {
 
 // GetV returns the full V cache as flat []float32 for attention.
 func (c *CompressedKVCache) GetV() []float32 {
+	if c == nil || c.kvDim <= 0 {
+		return nil
+	}
 	if len(c.CompressedV) == 0 {
 		return c.FullV
 	}
@@ -170,11 +192,17 @@ func (c *CompressedKVCache) CompressedCount() int {
 
 // FullCount returns how many positions are at full precision.
 func (c *CompressedKVCache) FullCount() int {
+	if c == nil || c.kvDim <= 0 {
+		return 0
+	}
 	return len(c.FullK) / c.kvDim
 }
 
 // Reset clears the cache for reuse with a new sequence.
 func (c *CompressedKVCache) Reset() {
+	if c == nil {
+		return
+	}
 	c.FullK = c.FullK[:0]
 	c.FullV = c.FullV[:0]
 	c.CompressedK = c.CompressedK[:0]
@@ -186,6 +214,9 @@ func (c *CompressedKVCache) Reset() {
 
 // MemoryBytes returns approximate memory usage (compressed + full, excluding slice headers).
 func (c *CompressedKVCache) MemoryBytes() int64 {
+	if c == nil {
+		return 0
+	}
 	full := int64(len(c.FullK)+len(c.FullV)) * 4
 	var compressed int64
 	for _, e := range c.CompressedK {

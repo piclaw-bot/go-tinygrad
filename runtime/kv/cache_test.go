@@ -95,3 +95,41 @@ func TestCompressedKVCacheProtected(t *testing.T) {
 	}
 	t.Logf("Protected layer: %d full, 0 compressed ✓", cache.FullCount())
 }
+
+func TestCompressedKVCacheMalformedInputsDoNotPanic(t *testing.T) {
+	cache := NewCompressedKVCache(-1, -1, -1, nil, false)
+	cache.Append(nil, nil)
+	if got := cache.FullCount(); got != 0 {
+		t.Fatalf("FullCount=%d want 0", got)
+	}
+	if got := cache.GetK(); got != nil {
+		t.Fatalf("GetK=%v want nil", got)
+	}
+	cache.Reset()
+	if got := cache.MemoryBytes(); got != 0 {
+		t.Fatalf("MemoryBytes=%d want 0", got)
+	}
+}
+
+func TestTurboQuantMalformedInputsDoNotPanic(t *testing.T) {
+	cfg := DefaultTurboQuantConfig()
+	cfg.KeyBits = -4
+	cfg.ValueBits = 99
+	cfg.ResidualWindow = -1
+	tq := NewTurboQuantState(-8, -2, cfg)
+	if tq.HeadDim != 0 || tq.NumLayers != 0 {
+		t.Fatalf("sanitized dims head=%d layers=%d", tq.HeadDim, tq.NumLayers)
+	}
+	if tq.Config.KeyBits != 1 || tq.Config.ValueBits != 8 || tq.Config.ResidualWindow != 0 {
+		t.Fatalf("sanitized config=%+v", tq.Config)
+	}
+	packed, _, _ := tq.QuantizeVector(nil, nil, nil, -1)
+	if packed == nil {
+		// Empty-but-non-nil is not required; just ensure no panic and usable output.
+		packed = []byte{}
+	}
+	got := tq.DequantizeVector([]byte{}, 0, 1, nil, -1, 4)
+	if len(got) != 4 {
+		t.Fatalf("DequantizeVector len=%d want 4", len(got))
+	}
+}

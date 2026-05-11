@@ -36,6 +36,17 @@ type TurboQuantState struct {
 
 // NewTurboQuantState initializes TurboQuant for a model.
 func NewTurboQuantState(headDim, numLayers int, cfg TurboQuantConfig) *TurboQuantState {
+	if headDim < 0 {
+		headDim = 0
+	}
+	if numLayers < 0 {
+		numLayers = 0
+	}
+	cfg.KeyBits = clampBits(cfg.KeyBits)
+	cfg.ValueBits = clampBits(cfg.ValueBits)
+	if cfg.ResidualWindow < 0 {
+		cfg.ResidualWindow = 0
+	}
 	tq := &TurboQuantState{
 		Config:    cfg,
 		HeadDim:   headDim,
@@ -71,6 +82,10 @@ func (tq *TurboQuantState) IsProtectedLayer(layerIdx int) bool {
 // Returns: quantized indices (packed), the min value, and the scale for dequantization.
 func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, codebook []float32, bits int) ([]byte, float32, float32) {
 	dim := len(vec)
+	bits = clampBits(bits)
+	if tq == nil || dim == 0 || len(rotation) < dim*dim {
+		return make([]byte, (dim*bits+7)/8), 0, 0
+	}
 
 	// Step 1: rotate
 	rotated := make([]float32, dim)
@@ -123,6 +138,10 @@ func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, cod
 
 // DequantizeVector restores a float32 vector from compressed form.
 func (tq *TurboQuantState) DequantizeVector(packed []byte, vMin, scale float32, rotation []float32, bits int, dim int) []float32 {
+	bits = clampBits(bits)
+	if tq == nil || dim <= 0 || len(rotation) < dim*dim {
+		return make([]float32, maxInt(dim, 0))
+	}
 	// Unpack indices
 	indices := unpackIndices(packed, bits, dim)
 	nLevels := 1 << bits
@@ -150,6 +169,9 @@ func (tq *TurboQuantState) DequantizeVector(packed []byte, vMin, scale float32, 
 // modified Gram-Schmidt. Columns are orthonormal (Q^T Q = I); callers apply Q
 // for rotation and Q^T for inverse rotation.
 func randomOrthogonal(dim int, rng *rand.Rand) []float32 {
+	if dim <= 0 {
+		return nil
+	}
 	// Generate random Gaussian matrix
 	mat := make([]float32, dim*dim)
 	for i := range mat {
@@ -194,6 +216,7 @@ func randomOrthogonal(dim int, rng *rand.Rand) []float32 {
 // After rotation, each coordinate of a unit vector is approximately
 // Normal(0, 1/sqrt(d)) for large d. We use quantiles of this distribution.
 func betaOptimalCodebook(bits int) []float32 {
+	bits = clampBits(bits)
 	n := 1 << bits
 	levels := make([]float32, n)
 	// Use Normal quantiles scaled to the typical range
@@ -220,6 +243,7 @@ func betaOptimalCodebook(bits int) []float32 {
 
 // packIndices packs byte indices into a bit-packed byte array.
 func packIndices(indices []byte, bits int) []byte {
+	bits = clampBits(bits)
 	totalBits := len(indices) * bits
 	packed := make([]byte, (totalBits+7)/8)
 	bitPos := 0
@@ -236,12 +260,17 @@ func packIndices(indices []byte, bits int) []byte {
 
 // unpackIndices unpacks bit-packed indices into byte values.
 func unpackIndices(packed []byte, bits int, n int) []byte {
+	bits = clampBits(bits)
+	if n <= 0 {
+		return nil
+	}
 	indices := make([]byte, n)
 	bitPos := 0
 	for i := 0; i < n; i++ {
 		var val byte
 		for b := 0; b < bits; b++ {
-			if packed[bitPos/8]&(1<<(bitPos%8)) != 0 {
+			byteIdx := bitPos / 8
+			if byteIdx < len(packed) && packed[byteIdx]&(1<<(bitPos%8)) != 0 {
 				val |= 1 << b
 			}
 			bitPos++
@@ -249,4 +278,21 @@ func unpackIndices(packed []byte, bits int, n int) []byte {
 		indices[i] = val
 	}
 	return indices
+}
+
+func clampBits(bits int) int {
+	if bits < 1 {
+		return 1
+	}
+	if bits > 8 {
+		return 8
+	}
+	return bits
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

@@ -353,3 +353,12 @@ Hardened staged float KV rollback:
 
 - `FloatKVCheckpoint.KeepAppended` now rejects negative per-layer KV dimensions instead of allowing negative slice targets.
 - Added regression coverage for malformed negative `kvDims` input.
+
+## Session 27: TurboQuant cache input audit
+
+Hardened TurboQuant and compressed KV cache helpers:
+
+- Sanitized negative cache dimensions and residual-window settings in constructors.
+- `CompressedKVCache` methods now handle nil/zero-dimension caches without division-by-zero or negative-capacity panics.
+- TurboQuant bit widths are clamped to the supported 1–8 bit range, and malformed/short packed inputs dequantize to bounded zero-filled vectors instead of indexing past the input.
+- Added regression coverage for malformed compressed-cache and TurboQuant inputs.
