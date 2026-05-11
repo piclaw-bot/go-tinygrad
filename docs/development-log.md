@@ -407,3 +407,11 @@ Hardened CPU attention/RoPE helpers:
 - `gqaAttention`/`gqaAttentionScale` now handle invalid dimensions and zero sequence length without divide-by-zero or negative-length allocation hazards.
 - `gqaAttentionScaleInto` validates output/scratch/cache lengths and GQA divisibility before slicing.
 - Added malformed-input regression coverage for attention and RoPE helpers.
+
+## Session 33: CPU GEMV helper bounds audit
+
+Hardened low-level CPU GEMV helpers:
+
+- `gemv`, `gemvNT`, and `gemvNTParallel` now validate dimensions and slice lengths before indexing or taking unsafe pointers.
+- Malformed calls zero the destination and return instead of panicking or reading short buffers.
+- Added regression coverage for malformed and valid GEMV helper calls.

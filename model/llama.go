@@ -1410,11 +1410,13 @@ func rmsNormInPlace(x, weight []float32, eps float32) {
 //	pre-transposed [inDim, outDim] (use NN), or
 //	original [outDim, inDim] (use NT via dot products)
 func gemv(out, x []float32, w []float32, inDim, outDim int) {
-
 	for i := range out {
 		out[i] = 0
 	}
-	if len(w) == inDim*outDim {
+	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+		return
+	}
+	if len(w) >= inDim*outDim {
 		// Detect layout: if w is [inDim, outDim] (pre-transposed), use NN
 		// If w is [outDim, inDim] (original), use NT (dot per output)
 		// Heuristic: try NN first (pre-transposed path)
@@ -1436,6 +1438,12 @@ func gemv(out, x []float32, w []float32, inDim, outDim int) {
 
 // gemvNT: out = x @ w^T where w is [outDim, inDim] (original layout)
 func gemvNT(out, x []float32, w []float32, inDim, outDim int) {
+	for i := range out {
+		out[i] = 0
+	}
+	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+		return
+	}
 	for j := 0; j < outDim; j++ {
 		sum := float32(0)
 		row := w[j*inDim : (j+1)*inDim]
@@ -1566,6 +1574,12 @@ func gqaAttentionScaleInto(out, scores, q, kCache, vCache []float32, seqLen, num
 
 // gemvNTParallel is like gemvNT but parallelized across CPU cores.
 func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
+	for i := range out {
+		out[i] = 0
+	}
+	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+		return
+	}
 	nCPU := runtime.NumCPU()
 	if nCPU > 8 {
 		nCPU = 8
