@@ -2,14 +2,11 @@ package model
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
-	"github.com/rcarmo/go-pherence/loader/safetensors"
+	"github.com/rcarmo/go-pherence/loader/weights"
 	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
@@ -68,12 +65,6 @@ type gemma4AssistantConfig struct {
 	UseOrderedEmbeddings bool        `json:"use_ordered_embeddings"`
 }
 
-type drafterSafetensors interface {
-	GetFloat32(name string) ([]float32, []int, error)
-	GetRaw(name string) ([]byte, string, []int, error)
-	Close() error
-}
-
 // LoadGemma4MTPDrafter loads a local Gemma4 assistant drafter asset.
 func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 	var acfg gemma4AssistantConfig
@@ -110,7 +101,7 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 		cfg.HiddenAct = "gelu_pytorch_tanh"
 	}
 
-	f, err := openDrafterSafetensors(dir)
+	f, err := weights.OpenSafetensors(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -315,16 +306,6 @@ func simdDot(a, b []float32) float32 {
 	return sum
 }
 
-func openDrafterSafetensors(dir string) (drafterSafetensors, error) {
-	indexPath := filepath.Join(dir, "model.safetensors.index.json")
-	if _, err := os.Stat(indexPath); err == nil {
-		return safetensors.OpenSharded(indexPath)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("stat %s: %w", indexPath, err)
-	}
-	return safetensors.Open(filepath.Join(dir, "model.safetensors"))
-}
-
 func validateShape(name string, expected, actual []int, n int) error {
 	if len(actual) == 0 {
 		if shapeProduct(expected) != n {
@@ -361,7 +342,7 @@ func shapeProduct(shape []int) int {
 	return prod
 }
 
-func loadIntTensor(f drafterSafetensors, name string, expectedLen int) ([]int, error) {
+func loadIntTensor(f weights.Source, name string, expectedLen int) ([]int, error) {
 	raw, dtype, shape, err := f.GetRaw(name)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", name, err)

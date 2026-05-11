@@ -6,6 +6,7 @@ import (
 
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
+	"github.com/rcarmo/go-pherence/loader/weights"
 
 	"math"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
 )
@@ -202,30 +202,14 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	}
 
 	// Try sharded first, then single file
-	type loader interface {
-		GetFloat32(name string) ([]float32, []int, error)
-		GetInt32(name string) ([]int32, []int, error)
-		GetRaw(name string) ([]byte, string, []int, error)
-		Close() error
-	}
-	var f loader
-	if _, err := os.Stat(dir + "/model.safetensors.index.json"); err == nil {
-		sf, err := safetensors.OpenSharded(dir + "/model.safetensors.index.json")
-		if err != nil {
-			return nil, fmt.Errorf("open sharded: %w", err)
-		}
-		f = sf
-	} else {
-		sf, err := safetensors.Open(dir + "/model.safetensors")
-		if err != nil {
-			return nil, fmt.Errorf("open single: %w", err)
-		}
-		f = sf
+	f, err := weights.OpenSafetensors(dir)
+	if err != nil {
+		return nil, err
 	}
 	defer f.Close()
 
 	if os.Getenv("GO_PHERENCE_EAGER_LOAD") == "1" {
-		if ef, ok := f.(interface{ EagerLoad() (int64, error) }); ok {
+		if ef, ok := f.(weights.EagerSource); ok {
 			t0 := time.Now()
 			bytes, err := ef.EagerLoad()
 			if err != nil {
