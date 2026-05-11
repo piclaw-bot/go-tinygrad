@@ -62,7 +62,7 @@ gpu/attn_ptx.go       ~560 lines: attention kernels
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config` and `loader/weights`, but still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
 6. **Tests mix durable validation with diagnostics.** Many Gemma4 trace/sensitivity tests are correctly gated with `GEMMA4_TRACE_TEST=1`, but they live beside normal unit tests and make the package look larger and riskier than it is.
-7. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves.
+7. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
 ## Target layout
 
