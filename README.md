@@ -71,6 +71,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 Portable compute backend scaffolding for Intel iGPU, AMD, ARM Mali, Adreno:
 
+- `backends/cuda/ptx` owns pure CUDA PTX source assets that have been separated from runtime dispatch
 - `backends/vulkan` owns the Vulkan loader, device/buffer helpers, dispatch scaffolding, and embedded SPIR-V assets
 - 35 Vulkan API functions via `purego` (no SDK required)
 - GLSL/SPIR-V shader coverage for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths
@@ -155,6 +156,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
 - **`backends/placement/`** — backend-neutral memory budget and layer placement policy
 - **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
+- **`backends/cuda/ptx/`** — pure CUDA PTX source assets used by the transitional `gpu` mega-module loader
 - **`backends/vulkan/`** — Vulkan loader/device/buffer/shader dispatch scaffolding and embedded SPIR-V assets
 - **`models/bert/`** — GTE/BERT encoder path
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives

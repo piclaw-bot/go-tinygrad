@@ -236,3 +236,11 @@ Removed dead model-local BF16 forward-path experiment scaffolding:
 - Deleted the unused `model/BF16Hidden` wrapper and `UseBF16` helper, which had no non-self references and was not part of the active CPU/GPU BF16 paths.
 - Kept the active BF16 conversion/math helpers in `model/bf16.go` and backend SIMD/CUDA BF16 kernels intact.
 - Re-ran the focused model gate, fast package gate, no-test compile sweep, vet, and whitespace checks.
+
+## Session 12: CUDA PTX asset extraction start
+
+Started the CUDA backend split with a low-risk asset-only move:
+
+- Moved pure PTX source definitions from `gpu/attn_ptx.go` and `gpu/kernels_ptx.go` into `backends/cuda/ptx`.
+- Updated the CUDA mega-module loader to import those backend-owned PTX assets while keeping runtime dispatch, `DevBuf`, GPU quantized weights, and expert resources in the transitional `gpu` package.
+- Left mixed dispatch/source files such as MLX and BF16 PTX in `gpu` for now because they still define CUDA function handles and runtime helpers.

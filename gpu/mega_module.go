@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
+
+	"github.com/rcarmo/go-pherence/backends/cuda/ptx"
 )
 
 var (
@@ -58,20 +60,20 @@ func loadMegaModule() {
 			ptx  string
 		}{
 			{"sgemm_nn", SgemmPTX},
-			{"vec_add", VecAddPTX},
-			{"vec_mul", VecMulPTX},
-			{"vec_scale", VecScalePTX},
-			{"to_bf16_f32", ToBF16F32PTX},
-			{"vec_silu", VecSiLUPTX},
-			{"rms_norm", RmsNormPTX},
-			{"rope_apply", RoPEPTX},
-			{"rope_partial", RoPEPartialPTX},
-			{"gqa_attention_scores", AttentionScoresPTX},
-			{"row_softmax_debug", SoftmaxRowsPTX},
-			{"gqa_attention", AttentionPTX},
-			{"gelu_tanh_mul", GELUTanhMulPTX},
+			{"vec_add", ptx.VecAddPTX},
+			{"vec_mul", ptx.VecMulPTX},
+			{"vec_scale", ptx.VecScalePTX},
+			{"to_bf16_f32", ptx.ToBF16F32PTX},
+			{"vec_silu", ptx.VecSiLUPTX},
+			{"rms_norm", ptx.RmsNormPTX},
+			{"rope_apply", ptx.RoPEPTX},
+			{"rope_partial", ptx.RoPEPartialPTX},
+			{"gqa_attention_scores", ptx.AttentionScoresPTX},
+			{"row_softmax_debug", ptx.SoftmaxRowsPTX},
+			{"gqa_attention", ptx.AttentionPTX},
+			{"gelu_tanh_mul", ptx.GELUTanhMulPTX},
 			{"gemv_q4sym", GemvQ4OptPTX},
-			{"fused_silu_mul", FusedSiLUMulPTX},
+			{"fused_silu_mul", ptx.FusedSiLUMulPTX},
 			{"prefetch_l2", PrefetchPTX},
 			{"gemm_q4sym", GemmQ4PTX},
 			{"lm_head_gemv", LMHeadPTX},
@@ -83,7 +85,7 @@ func loadMegaModule() {
 			{"bf16_vec_add", BF16VecAddPTX},
 			{"bf16_silu_mul", BF16SiLUMulPTX},
 			{"bf16_gelu_tanh_mul", BF16GELUTanhMulPTX},
-			{"rms_norm_no_scale", RmsNormNoScalePTX},
+			{"rms_norm_no_scale", ptx.RmsNormNoScalePTX},
 		}
 
 		for _, e := range entries {

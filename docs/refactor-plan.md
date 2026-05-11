@@ -173,7 +173,7 @@ Move/update directly:
 
 Move/update directly:
 
-- CUDA driver/PTX: `gpu/cuda_purego.go`, `gpu/devbuf.go`, `gpu/*_ptx.go`, `gpu/mega_module.go`, `gpu/streams.go`, `gpu/q4_gpu.go`, `gpu/sgemm.go` -> `backends/cuda`
+- CUDA driver/PTX: pure PTX source assets from `gpu/attn_ptx.go` and `gpu/kernels_ptx.go` have moved to `backends/cuda/ptx` ✅. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
@@ -206,7 +206,7 @@ Each step should be one small commit with validation after it.
 1. **Add docs and package stubs only.** Land this plan and any README notes. No behavior changes.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
 3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit. ✅
-4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. CUDA/PTX remains in `gpu` until the CUDA split can preserve model upload/DevBuf semantics cleanly.
+4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. Pure CUDA PTX source assets have started moving to `backends/cuda/ptx` ✅. CUDA runtime dispatch still remains in `gpu` until the split can preserve model upload/DevBuf semantics cleanly.
 5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Gemma4 diagnostic tests are build-tagged ✅; later model-package split should move them next to their architecture package.
@@ -217,7 +217,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move. Include `runtime/kv` and `runtime/quant` in the fast package set because they now own shared KV and CPU quantization behavior:
 
 ```sh
-go test ./gpu ./loader/... ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/cuda/ptx ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -233,7 +233,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./loader/... ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/cuda/ptx ./backends/placement ./backends/simd ./backends/vulkan ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go test ./models/bert -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2

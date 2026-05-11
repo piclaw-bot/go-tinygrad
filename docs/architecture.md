@@ -47,7 +47,7 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
-| GPU transition package | `gpu` | CUDA/PTX path plus GPU-resident expert cache until the CUDA backend split lands |
+| GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; pure PTX source assets have started moving to backend ownership in `backends/cuda/ptx` |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
 
 ## Weight Format Pipeline
@@ -117,7 +117,7 @@ loader/safetensors BF16 → GetBF16() → []uint16 (zero conversion)
 
 | Backend | Current status |
 |---|---|
-| CUDA PTX | 27 hand-written kernels across GEMV/GEMM, attention/RoPE, norms, activations, BF16, and utility paths |
+| CUDA PTX | 27 hand-written kernels across GEMV/GEMM, attention/RoPE, norms, activations, BF16, and utility paths; pure PTX source assets are being separated under `backends/cuda/ptx` while dispatch remains in `gpu` |
 | Vulkan SPIR-V | `backends/vulkan` owns shader assets for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths; full forward dispatch is still pending |
 | AVX2 asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback |
 | NEON asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback; hardware verification still pending |
