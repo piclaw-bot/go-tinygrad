@@ -423,3 +423,14 @@ func TestReduceValidationRejectsMalformedAxes(t *testing.T) {
 	assertPanics(t, func() { _ = a.Sum(0, 0) })
 	assertPanics(t, func() { _ = a.ReduceMax(3) })
 }
+
+func TestTensorNilOperations(t *testing.T) {
+	var tns *Tensor
+	if got := tns.Data(); got != nil {
+		t.Fatalf("nil Data=%v, want nil", got)
+	}
+	assertPanics(t, func() { tns.Realize() })
+	assertPanics(t, func() { tns.Add(Ones([]int{1})) })
+	assertPanics(t, func() { Ones([]int{1}).Add(nil) })
+	assertPanics(t, func() { tns.Neg() })
+}

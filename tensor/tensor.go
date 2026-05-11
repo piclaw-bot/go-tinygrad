@@ -145,6 +145,9 @@ func (t *Tensor) Permute(order []int) *Tensor {
 
 // Realize executes the computation graph and returns the tensor with data.
 func (t *Tensor) Realize() *Tensor {
+	if t == nil || t.uop == nil {
+		panic("realize: nil tensor")
+	}
 	if t.uop.buf != nil {
 		return t // already realized
 	}
@@ -154,6 +157,9 @@ func (t *Tensor) Realize() *Tensor {
 
 // Data returns the realized float32 data. Panics if not realized.
 func (t *Tensor) Data() []float32 {
+	if t == nil || t.uop == nil {
+		return nil
+	}
 	if t.uop.buf == nil {
 		t.Realize()
 	}
@@ -163,6 +169,9 @@ func (t *Tensor) Data() []float32 {
 // --- Internal helpers ---
 
 func (t *Tensor) binaryOp(op Ops, other *Tensor) *Tensor {
+	if t == nil || other == nil || t.uop == nil || other.uop == nil {
+		panic("binary op: nil tensor")
+	}
 	if len(t.shape.Dims) == len(other.shape.Dims) {
 		match := true
 		for i := range t.shape.Dims {
@@ -187,6 +196,9 @@ func (t *Tensor) binaryOp(op Ops, other *Tensor) *Tensor {
 }
 
 func (t *Tensor) unaryOp(op Ops) *Tensor {
+	if t == nil || t.uop == nil {
+		panic("unary op: nil tensor")
+	}
 	u := newUOp(op, t.uop.DType, []*UOp{t.uop}, nil)
 	return &Tensor{uop: u, shape: t.shape}
 }

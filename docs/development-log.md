@@ -447,3 +447,12 @@ Hardened tensor reduction helpers:
 
 - `reduceOp` now validates nil receivers, out-of-range axes, negative axes, and duplicate axes before indexing shape dimensions.
 - Added regression coverage for malformed reduction axes.
+
+## Session 38: Tensor nil-operation audit
+
+Hardened tensor operation entrypoints:
+
+- `Realize`, unary ops, and binary ops now report nil tensor receivers/operands explicitly instead of dereferencing nil fields.
+- `Data` is nil-safe and returns nil for a nil tensor.
+- Broadcast now rejects malformed shapes before attempting expansion.
+- Added regression coverage for nil tensor operations.

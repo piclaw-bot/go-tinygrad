@@ -5,6 +5,9 @@ import "fmt"
 // broadcast computes the broadcast shape of two tensors and returns
 // expanded shapes for both inputs.
 func broadcast(a, b Shape) (outDims []int, aExp, bExp Shape, err error) {
+	if shapeSize(a.Dims) < 0 || shapeSize(b.Dims) < 0 {
+		return nil, Shape{}, Shape{}, fmt.Errorf("broadcast: invalid shapes %v and %v", a.Dims, b.Dims)
+	}
 	na, nb := a.Ndim(), b.Ndim()
 	ndim := na
 	if nb > ndim {
