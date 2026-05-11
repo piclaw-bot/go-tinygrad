@@ -9,8 +9,8 @@ type RewriteRule struct {
 
 // PatternMatcher holds rewrite rules indexed by op for fast dispatch.
 type PatternMatcher struct {
-	rules   []RewriteRule
-	byOp    map[Ops][]int // op → indices into rules
+	rules    []RewriteRule
+	byOp     map[Ops][]int // op → indices into rules
 	anyRules []int         // rules with nil Ops (match any)
 }
 
@@ -21,6 +21,9 @@ func NewPatternMatcher(rules ...RewriteRule) *PatternMatcher {
 		byOp:  map[Ops][]int{},
 	}
 	for i, r := range rules {
+		if r.Pat == nil || r.Rewrite == nil {
+			continue
+		}
 		if r.Pat.Ops == nil {
 			pm.anyRules = append(pm.anyRules, i)
 		} else {
@@ -34,6 +37,9 @@ func NewPatternMatcher(rules ...RewriteRule) *PatternMatcher {
 
 // Rewrite tries all matching rules on a UOp and returns the first successful rewrite.
 func (pm *PatternMatcher) Rewrite(u *UOp) *UOp {
+	if pm == nil || u == nil {
+		return nil
+	}
 	// Try op-specific rules first
 	if indices, ok := pm.byOp[u.Op]; ok {
 		for _, i := range indices {
@@ -52,7 +58,13 @@ func (pm *PatternMatcher) Rewrite(u *UOp) *UOp {
 }
 
 func (pm *PatternMatcher) tryRule(i int, u *UOp) *UOp {
+	if pm == nil || i < 0 || i >= len(pm.rules) || u == nil {
+		return nil
+	}
 	r := &pm.rules[i]
+	if r.Pat == nil || r.Rewrite == nil {
+		return nil
+	}
 	bindings, ok := r.Pat.Match(u)
 	if !ok {
 		return nil
@@ -63,11 +75,17 @@ func (pm *PatternMatcher) tryRule(i int, u *UOp) *UOp {
 // GraphRewrite applies a PatternMatcher bottom-up to the entire UOp DAG reachable from root.
 // Returns the rewritten root (may be the same pointer if nothing changed).
 func GraphRewrite(root *UOp, pm *PatternMatcher) *UOp {
+	if root == nil || pm == nil {
+		return root
+	}
 	replaced := map[*UOp]*UOp{}
 	return graphRewriteNode(root, pm, replaced)
 }
 
 func graphRewriteNode(u *UOp, pm *PatternMatcher, replaced map[*UOp]*UOp) *UOp {
+	if u == nil {
+		return nil
+	}
 	if r, ok := replaced[u]; ok {
 		return r
 	}

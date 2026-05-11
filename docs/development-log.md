@@ -479,3 +479,11 @@ Hardened tensor buffer allocation:
 
 - `pooledAlloc` now rejects negative lengths, zero-byte dtypes, and integer-overflowing allocation sizes before creating pool keys or byte slices.
 - Added regression coverage for malformed pooled allocation inputs.
+
+## Session 42: Tensor rewrite/fusion nil-safety audit
+
+Hardened tensor graph rewrite and fusion paths:
+
+- Patterns, pattern matchers, graph rewrite traversal, and rules now handle nil patterns/UOps/rules without nil-deref panics.
+- Fusion setup rejects nil roots and invalid shapes; fused kernel execution validates kernel structure and leaf buffer sizes.
+- Added regression coverage for nil rewrite inputs and malformed fused kernels.

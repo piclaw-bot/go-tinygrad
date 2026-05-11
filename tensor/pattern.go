@@ -2,9 +2,9 @@ package tensor
 
 // UPat is a pattern for matching UOp nodes in graph rewriting.
 type UPat struct {
-	Ops      []Ops  // match any of these ops (nil = any)
-	Name     string // capture name (empty = don't capture)
-	Src      []*UPat // child patterns (nil = don't check children)
+	Ops      []Ops          // match any of these ops (nil = any)
+	Name     string         // capture name (empty = don't capture)
+	Src      []*UPat        // child patterns (nil = don't check children)
 	ArgMatch func(any) bool // optional arg predicate
 }
 
@@ -13,6 +13,9 @@ func Pat(ops ...Ops) *UPat { return &UPat{Ops: ops} }
 
 // Named returns a copy with a capture name.
 func (p *UPat) Named(name string) *UPat {
+	if p == nil {
+		return &UPat{Name: name}
+	}
 	c := *p
 	c.Name = name
 	return &c
@@ -20,6 +23,9 @@ func (p *UPat) Named(name string) *UPat {
 
 // WithSrc sets child patterns.
 func (p *UPat) WithSrc(src ...*UPat) *UPat {
+	if p == nil {
+		return &UPat{Src: src}
+	}
 	c := *p
 	c.Src = src
 	return &c
@@ -36,6 +42,9 @@ func ConstPat(name string) *UPat { return &UPat{Ops: []Ops{OpConst}, Name: name}
 
 // Match attempts to match this pattern against a UOp, returning captured bindings.
 func (p *UPat) Match(u *UOp) (map[string]*UOp, bool) {
+	if p == nil || u == nil {
+		return nil, false
+	}
 	bindings := map[string]*UOp{}
 	if p.match(u, bindings) {
 		return bindings, true
@@ -44,13 +53,21 @@ func (p *UPat) Match(u *UOp) (map[string]*UOp, bool) {
 }
 
 func (p *UPat) match(u *UOp, bindings map[string]*UOp) bool {
+	if p == nil || u == nil {
+		return false
+	}
 	// Check op
 	if p.Ops != nil {
 		found := false
 		for _, op := range p.Ops {
-			if u.Op == op { found = true; break }
+			if u.Op == op {
+				found = true
+				break
+			}
 		}
-		if !found { return false }
+		if !found {
+			return false
+		}
 	}
 
 	// Check arg
@@ -64,7 +81,7 @@ func (p *UPat) match(u *UOp, bindings map[string]*UOp) bool {
 			return false
 		}
 		for i, sp := range p.Src {
-			if !sp.match(u.Src[i], bindings) {
+			if sp == nil || !sp.match(u.Src[i], bindings) {
 				return false
 			}
 		}
@@ -73,7 +90,9 @@ func (p *UPat) match(u *UOp, bindings map[string]*UOp) bool {
 	// Capture
 	if p.Name != "" {
 		if existing, ok := bindings[p.Name]; ok {
-			if existing != u { return false } // same name must bind same node
+			if existing != u {
+				return false
+			} // same name must bind same node
 		}
 		bindings[p.Name] = u
 	}

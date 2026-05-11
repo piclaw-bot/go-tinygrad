@@ -468,3 +468,13 @@ func TestPooledAllocValidation(t *testing.T) {
 	assertPanics(t, func() { _ = pooledAlloc(DType{Name: "bad", Bits: 0}, 1) })
 	assertPanics(t, func() { _ = pooledAlloc(Float32, int(^uint(0)>>1)) })
 }
+
+func TestFusionValidationRejectsMalformedKernels(t *testing.T) {
+	if got := tryFuse(nil, NewShape([]int{1})); got != nil {
+		t.Fatalf("tryFuse(nil)=%v, want nil", got)
+	}
+	assertPanics(t, func() { (&fusedKernel{}).execute() })
+	assertPanics(t, func() {
+		(&fusedKernel{n: 2, ops: []fusedOp{{isLeaf: true, bufIdx: 0}}, bufs: []*Buffer{{Data: float32ToByteSlice([]float32{1}), DType: Float32, Length: 1}}}).execute()
+	})
+}

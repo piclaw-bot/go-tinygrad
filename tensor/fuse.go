@@ -22,7 +22,7 @@ type fusedKernel struct {
 }
 
 func tryFuse(u *UOp, shape Shape) *fusedKernel {
-	if !canFuse(u) {
+	if u == nil || shape.Numel() < 0 || !canFuse(u) {
 		return nil
 	}
 	k := &fusedKernel{n: shape.Numel()}
@@ -30,6 +30,9 @@ func tryFuse(u *UOp, shape Shape) *fusedKernel {
 
 	var walk func(node *UOp) int
 	walk = func(node *UOp) int {
+		if node == nil {
+			panic("fuse: nil node")
+		}
 		if idx, ok := visited[node]; ok {
 			return idx
 		}
@@ -61,11 +64,17 @@ func tryFuse(u *UOp, shape Shape) *fusedKernel {
 }
 
 func (k *fusedKernel) execute() *Buffer {
+	if k == nil || k.n < 0 || len(k.ops) == 0 {
+		panic("fusedKernel: invalid kernel")
+	}
 	out := allocBuffer(Float32, k.n)
 	outData := out.Float32Data()
 
 	bufData := make([][]float32, len(k.bufs))
 	for i, b := range k.bufs {
+		if b == nil || b.Length < k.n {
+			panic("fusedKernel: invalid leaf buffer")
+		}
 		bufData[i] = b.Float32Data()
 	}
 
@@ -119,7 +128,7 @@ func isFusible(op Ops) bool {
 
 // canFuse checks if a UOp tree can be fused (no broadcast, no shape mismatches).
 func canFuse(u *UOp) bool {
-	if !isFusible(u.Op) {
+	if u == nil || !isFusible(u.Op) {
 		return false
 	}
 	// Broadcast ops carry BroadcastArg — not fusible with simple per-element indexing

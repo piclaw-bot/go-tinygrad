@@ -110,3 +110,23 @@ func TestReshapeReshape(t *testing.T) {
 		t.Fatalf("reshape(reshape(x)): expected reshape(x), got %s", result.Op)
 	}
 }
+
+func TestPatternRewriteNilSafety(t *testing.T) {
+	if _, ok := (*UPat)(nil).Match(BufferOp(Float32, []int{1})); ok {
+		t.Fatal("nil pattern matched")
+	}
+	if bindings, ok := Pat(OpAdd).Match(nil); ok || bindings != nil {
+		t.Fatalf("pattern matched nil UOp: %v %v", bindings, ok)
+	}
+	pm := NewPatternMatcher(RewriteRule{}, RewriteRule{Pat: Pat(OpAdd)})
+	if got := pm.Rewrite(nil); got != nil {
+		t.Fatalf("Rewrite(nil)=%v, want nil", got)
+	}
+	u := BufferOp(Float32, []int{1})
+	if got := GraphRewrite(nil, pm); got != nil {
+		t.Fatalf("GraphRewrite nil root=%v", got)
+	}
+	if got := GraphRewrite(u, nil); got != u {
+		t.Fatalf("GraphRewrite nil matcher changed root")
+	}
+}
