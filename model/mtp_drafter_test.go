@@ -179,3 +179,30 @@ func TestGemma4MTPDrafterProjectionHelpers(t *testing.T) {
 		t.Fatal("AssistantTokenEmbeddingInto accepted out-of-range token")
 	}
 }
+
+func TestMTPDrafterHelpersRejectShortBackingData(t *testing.T) {
+	d := &Gemma4MTPDrafter{}
+	d.Config.HiddenSize = 2
+	d.Config.VocabSize = 2
+	d.EmbedTokens = tensor.FromFloat32([]float32{1, 2, 3}, []int{3})
+	buf := make([]float32, 2)
+	if err := d.AssistantTokenEmbeddingInto(buf, 1); err == nil {
+		t.Fatal("AssistantTokenEmbeddingInto accepted short embedding data")
+	}
+
+	d.BackboneHiddenSize = 2
+	d.PreProjection = make([]float32, 7)
+	if err := d.PreProjectInto(buf, []float32{1, 2}, []float32{3, 4}); err == nil {
+		t.Fatal("PreProjectInto accepted short projection")
+	}
+	d.PreProjection = make([]float32, 8)
+	if err := d.PreProjectInto(buf, []float32{1, 2}, []float32{3, 4}); err != nil {
+		t.Fatalf("PreProjectInto valid: %v", err)
+	}
+
+	post := make([]float32, 2)
+	d.PostProjection = make([]float32, 3)
+	if err := d.PostProjectInto(post, []float32{1, 2}); err == nil {
+		t.Fatal("PostProjectInto accepted short projection")
+	}
+}

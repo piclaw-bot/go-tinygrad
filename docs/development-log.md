@@ -423,3 +423,11 @@ Hardened Gemma4 MTP drafter loader helpers:
 - `validateShape` now rejects negative dimensions and detects shape-product overflow via `shapeProduct`.
 - `loadIntTensor` validates caller-provided expected lengths directly instead of trusting the raw shape product as the data length.
 - Added regression coverage for negative and overflowing shape dimensions.
+
+## Session 35: MTP drafter helper backing-data audit
+
+Hardened MTP drafter helper methods:
+
+- `AssistantTokenEmbeddingInto` now verifies the embedding tensor backing data is large enough for the requested row before slicing.
+- `PreProjectInto` and `PostProjectInto` now reject invalid dimensions and short projection buffers before indexing.
+- Added regression coverage for short embedding/projection backing data.

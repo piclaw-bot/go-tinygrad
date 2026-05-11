@@ -233,7 +233,11 @@ func (d *Gemma4MTPDrafter) AssistantTokenEmbeddingInto(dst []float32, tokenID in
 		return fmt.Errorf("token id %d out of range [0,%d)", tokenID, d.Config.VocabSize)
 	}
 	emb := d.EmbedTokens.Data()
-	copy(dst, emb[tokenID*h:(tokenID+1)*h])
+	need := (tokenID + 1) * h
+	if len(emb) < need {
+		return fmt.Errorf("assistant embedding data len=%d, want at least %d", len(emb), need)
+	}
+	copy(dst, emb[tokenID*h:need])
 	return nil
 }
 
@@ -265,8 +269,12 @@ func (d *Gemma4MTPDrafter) PreProjectInto(dst, backboneTokenEmbedding, activatio
 	if len(activation) != bh {
 		return fmt.Errorf("pre-project activation len=%d, want %d", len(activation), bh)
 	}
-	if len(d.PreProjection) != h*2*bh {
-		return fmt.Errorf("pre_projection len=%d, want %d", len(d.PreProjection), h*2*bh)
+	if h <= 0 || bh <= 0 {
+		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
+	}
+	want := h * 2 * bh
+	if len(d.PreProjection) < want {
+		return fmt.Errorf("pre_projection len=%d, want at least %d", len(d.PreProjection), want)
 	}
 	for row := 0; row < h; row++ {
 		w := d.PreProjection[row*2*bh : (row+1)*2*bh]
@@ -288,8 +296,12 @@ func (d *Gemma4MTPDrafter) PostProjectInto(dst, assistantHidden []float32) error
 	if len(assistantHidden) != h {
 		return fmt.Errorf("post-project hidden len=%d, want %d", len(assistantHidden), h)
 	}
-	if len(d.PostProjection) != bh*h {
-		return fmt.Errorf("post_projection len=%d, want %d", len(d.PostProjection), bh*h)
+	if h <= 0 || bh <= 0 {
+		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
+	}
+	want := bh * h
+	if len(d.PostProjection) < want {
+		return fmt.Errorf("post_projection len=%d, want at least %d", len(d.PostProjection), want)
 	}
 	gemvNT(dst, assistantHidden, d.PostProjection, h, bh)
 	return nil
