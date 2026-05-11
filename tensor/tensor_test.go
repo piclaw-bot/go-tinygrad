@@ -415,3 +415,11 @@ func assertPanics(t *testing.T, fn func()) {
 	}()
 	fn()
 }
+
+func TestReduceValidationRejectsMalformedAxes(t *testing.T) {
+	a := FromFloat32([]float32{1, 2, 3, 4}, []int{2, 2})
+	assertPanics(t, func() { _ = a.Sum(-1) })
+	assertPanics(t, func() { _ = a.Sum(2) })
+	assertPanics(t, func() { _ = a.Sum(0, 0) })
+	assertPanics(t, func() { _ = a.ReduceMax(3) })
+}

@@ -192,9 +192,18 @@ func (t *Tensor) unaryOp(op Ops) *Tensor {
 }
 
 func (t *Tensor) reduceOp(op Ops, axes []int) *Tensor {
-	newDims := make([]int, len(t.shape.Dims))
+	if t == nil {
+		panic("reduce: nil tensor")
+	}
+	ndim := len(t.shape.Dims)
+	seen := make([]bool, ndim)
+	newDims := make([]int, ndim)
 	copy(newDims, t.shape.Dims)
 	for _, ax := range axes {
+		if ax < 0 || ax >= ndim || seen[ax] {
+			panic("reduce: invalid axes")
+		}
+		seen[ax] = true
 		newDims[ax] = 1
 	}
 	u := newUOp(op, t.uop.DType, []*UOp{t.uop}, cloneShape(axes))

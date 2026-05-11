@@ -440,3 +440,10 @@ Hardened tensor shape helpers:
 - Tensor constructors reject malformed shapes before allocation.
 - `NewShape`, `Permute`, and `Expand` now validate malformed dimensions/orders before indexing.
 - Added regression coverage for negative, overflowing, duplicate, short, and out-of-range shape operations.
+
+## Session 37: Tensor reduce-axis validation audit
+
+Hardened tensor reduction helpers:
+
+- `reduceOp` now validates nil receivers, out-of-range axes, negative axes, and duplicate axes before indexing shape dimensions.
+- Added regression coverage for malformed reduction axes.
