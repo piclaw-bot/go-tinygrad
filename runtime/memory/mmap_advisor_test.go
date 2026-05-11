@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"math"
 	"syscall"
 	"testing"
 )
@@ -161,6 +162,23 @@ func TestMmapAdvisorInvalidRangesAreIgnored(t *testing.T) {
 	}
 	if n, hot, peak := a.Stats(); n != 0 || hot != 0 || peak != 0 {
 		t.Fatalf("invalid ranges changed stats: ranges=%d hot=%d peak=%d", n, hot, peak)
+	}
+}
+
+func TestMmapAdvisorHugeRangeIsClamped(t *testing.T) {
+	pageSize := syscall.Getpagesize()
+	data, err := syscall.Mmap(-1, 0, pageSize*2, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+	if err != nil {
+		t.Fatalf("mmap: %v", err)
+	}
+	defer syscall.Munmap(data)
+
+	a := NewMmapAdvisor(data)
+	if err := a.Prefetch(1, math.MaxInt64); err != nil {
+		t.Fatalf("Prefetch huge: %v", err)
+	}
+	if _, hot, _ := a.Stats(); hot != int64(len(data)) {
+		t.Fatalf("hot bytes=%d want %d", hot, len(data))
 	}
 }
 

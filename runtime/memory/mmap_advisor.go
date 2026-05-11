@@ -68,15 +68,21 @@ func (a *MmapAdvisor) align(offset, bytes int64) (int64, int64) {
 }
 
 func (a *MmapAdvisor) boundedRange(offset, bytes int64) (int64, int64, bool) {
-	if len(a.base) == 0 || bytes <= 0 || offset < 0 || offset >= int64(len(a.base)) {
+	baseLen := int64(len(a.base))
+	if baseLen == 0 || bytes <= 0 || offset < 0 || offset >= baseLen {
 		return 0, 0, false
+	}
+	// Clamp the requested byte count before page alignment so huge caller
+	// values cannot overflow align's leading+bytes arithmetic.
+	if bytes > baseLen-offset {
+		bytes = baseLen - offset
 	}
 	off, sz := a.align(offset, bytes)
-	if off < 0 || off >= int64(len(a.base)) {
+	if off < 0 || off >= baseLen {
 		return 0, 0, false
 	}
-	if off+sz > int64(len(a.base)) {
-		sz = int64(len(a.base)) - off
+	if sz > baseLen-off {
+		sz = baseLen - off
 	}
 	return off, sz, sz > 0
 }

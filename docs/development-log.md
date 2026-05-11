@@ -371,3 +371,10 @@ Hardened in-memory MLX quant helper use:
 - `DequantMLX` now returns nil for malformed weights instead of panicking.
 - `GemvMLQ` now no-ops on malformed weights or undersized input/output slices.
 - Added regression coverage for malformed and valid in-memory MLX weights.
+
+## Session 29: MmapAdvisor overflow audit
+
+Hardened mmap residency range bounding:
+
+- `MmapAdvisor.boundedRange` now clamps oversized byte counts before page alignment so huge caller ranges cannot overflow alignment arithmetic.
+- Added regression coverage for huge range prefetch clamping to the mapped file size.
