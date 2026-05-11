@@ -78,3 +78,26 @@ func assertCloseFloat32Slice(t *testing.T, name string, got, want []float32, tol
 		}
 	}
 }
+
+func TestAttentionMalformedInputsDoNotPanic(t *testing.T) {
+	if got := gqaAttention(nil, nil, nil, 1, 1, 0, 0); got != nil {
+		t.Fatalf("gqaAttention malformed=%v, want nil", got)
+	}
+	out := []float32{99, 100}
+	scores := []float32{1}
+	gqaAttentionScaleInto(out, scores, nil, nil, nil, 1, 2, 0, 1, 1)
+	if out[0] != 99 || out[1] != 100 {
+		t.Fatalf("malformed attention modified out: %v", out)
+	}
+	got := gqaAttentionScale(nil, nil, nil, 0, 2, 1, 2, 1)
+	if len(got) != 4 {
+		t.Fatalf("zero-seq attention len=%d want 4", len(got))
+	}
+}
+
+func TestRoPEPartialMalformedInputsDoNotPanic(t *testing.T) {
+	x := []float32{1, 2}
+	applyRoPEPartial(x, nil, 0, 1, 2, 1)
+	applyRoPEPartial(x, []float32{1, 0}, -1, 1, 2, 1)
+	applyRoPEPartial(x, []float32{1, 0}, 0, 4, 2, 99)
+}

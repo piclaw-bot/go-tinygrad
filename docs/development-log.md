@@ -398,3 +398,12 @@ Hardened tokenizer edge cases:
 - `Encode`/`Decode` are nil-safe.
 - `Decode` now preserves unknown non-byte-level Unicode runes as UTF-8 instead of truncating them to a single byte.
 - Added focused tokenizer regression tests.
+
+## Session 32: Attention/RoPE helper bounds audit
+
+Hardened CPU attention/RoPE helpers:
+
+- `applyRoPEPartial` now validates/caps position, head counts, head dimensions, and rotation width before indexing.
+- `gqaAttention`/`gqaAttentionScale` now handle invalid dimensions and zero sequence length without divide-by-zero or negative-length allocation hazards.
+- `gqaAttentionScaleInto` validates output/scratch/cache lengths and GQA divisibility before slicing.
+- Added malformed-input regression coverage for attention and RoPE helpers.

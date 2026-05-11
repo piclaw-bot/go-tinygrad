@@ -1464,6 +1464,16 @@ func applyRoPE(x, freqs []float32, pos, numHeads, headDim int) {
 // applyRoPEPartial applies RoPE with partial rotation.
 // Only the first rotHalf pairs are rotated; remaining dims are untouched.
 func applyRoPEPartial(x, freqs []float32, pos, numHeads, headDim, rotHalf int) {
+	if pos < 0 || numHeads <= 0 || headDim <= 0 || rotHalf <= 0 || len(x) == 0 || len(freqs) == 0 {
+		return
+	}
+	if rotHalf > headDim/2 {
+		rotHalf = headDim / 2
+	}
+	maxHeads := len(x) / headDim
+	if numHeads > maxHeads {
+		numHeads = maxHeads
+	}
 	for h := 0; h < numHeads; h++ {
 		for i := 0; i < rotHalf; i++ {
 			freqOff := (pos*rotHalf + i) * 2
@@ -1483,25 +1493,37 @@ func applyRoPEPartial(x, freqs []float32, pos, numHeads, headDim, rotHalf int) {
 }
 
 func gqaAttention(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int) []float32 {
+	if headDim <= 0 {
+		return nil
+	}
 	return gqaAttentionScale(q, kCache, vCache, seqLen, numHeads, numKVHeads, headDim, float32(1.0/math.Sqrt(float64(headDim))))
 }
 
 func gqaAttentionScale(q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int, scale float32) []float32 {
+	if numHeads <= 0 || headDim <= 0 {
+		return nil
+	}
 	out := make([]float32, numHeads*headDim)
+	if seqLen <= 0 {
+		return out
+	}
 	scores := make([]float32, seqLen)
 	gqaAttentionScaleInto(out, scores, q, kCache, vCache, seqLen, numHeads, numKVHeads, headDim, scale)
 	return out
 }
 
 func gqaAttentionScaleInto(out, scores, q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int, scale float32) {
+	if seqLen <= 0 || numHeads <= 0 || numKVHeads <= 0 || headDim <= 0 || numHeads%numKVHeads != 0 {
+		return
+	}
 	h := numHeads * headDim
 	kvDim := numKVHeads * headDim
+	if len(out) < h || len(scores) < seqLen || len(q) < h || len(kCache) < seqLen*kvDim || len(vCache) < seqLen*kvDim {
+		return
+	}
 	headsPerKV := numHeads / numKVHeads
 	out = out[:h]
 	clear(out)
-	if seqLen == 0 {
-		return
-	}
 	scores = scores[:seqLen]
 
 	for head := 0; head < numHeads; head++ {
