@@ -244,3 +244,10 @@ Started the CUDA backend split with a low-risk asset-only move:
 - Moved pure PTX source definitions from `gpu/attn_ptx.go` and `gpu/kernels_ptx.go` into `backends/cuda/ptx`.
 - Updated the CUDA mega-module loader to import those backend-owned PTX assets while keeping runtime dispatch, `DevBuf`, GPU quantized weights, and expert resources in the transitional `gpu` package.
 - Left mixed dispatch/source files such as MLX and BF16 PTX in `gpu` for now because they still define CUDA function handles and runtime helpers.
+
+## Session 13: LM head PTX asset extraction
+
+Continued the CUDA PTX asset split:
+
+- Moved the `LMHeadPTX` source string from the GPU dispatch file to `backends/cuda/ptx`.
+- Left `gpu.DevLMHead` and its CUDA function handle in `gpu`, preserving runtime behavior while shrinking mixed source/dispatch files.

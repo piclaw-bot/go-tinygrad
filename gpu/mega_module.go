@@ -76,7 +76,7 @@ func loadMegaModule() {
 			{"fused_silu_mul", ptx.FusedSiLUMulPTX},
 			{"prefetch_l2", PrefetchPTX},
 			{"gemm_q4sym", GemmQ4PTX},
-			{"lm_head_gemv", LMHeadPTX},
+			{"lm_head_gemv", ptx.LMHeadPTX},
 			{"mlx_gemv", MLXGemvPTX},
 			{"mlx_gemm", MLXGemmPTX},
 			{"mlx_correct", MLXCorrectPTX},
