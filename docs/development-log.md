@@ -101,7 +101,7 @@ Implemented HuggingFace safetensors format reader:
 
 ### Step 9 — BERT encoder + GTE-small inference
 
-Built complete BERT model (`model/bert.go`):
+Built complete BERT model (now owned by `models/bert/` after the Phase 6.5 refactor):
 - `LoadGTESmall`: load all weights from safetensors
 - `Forward`: word + position + type embeddings → 12 transformer layers
 - `multiHeadAttention`: per-head Q·K^T with softmax
@@ -131,7 +131,7 @@ residual+layernorm, tensor object overhead.
 | `tensor/` — unit tests | 22 | all ops, lazy eval, fusion |
 | `tensor/` — numpy reference | 20 | bit-level reproducibility |
 | `loader/safetensors/` | 3 | load, list, F16 conversion |
-| `model/` | 2 | load weights, end-to-end embed |
+| `models/bert/` | 2 | load weights, end-to-end embed |
 | **Total** | **47** | |
 
 
@@ -148,3 +148,16 @@ Implemented the first native safetensors-based Gemma4 MTP building blocks:
 - Added LiteRT-style MTP acceptance accounting from verifier token IDs or verifier logits.
 
 Current status: MTP is not yet exposed as a generation mode. The remaining work is the batched main-model verifier forward path and the q-only drafter forward loop that consumes external/main-model KV state and projected activations.
+
+## Session 3: Phase 6.5 source-tree refactor start
+
+Started the blocking source-tree refactor before adding more MTP/backend functionality:
+
+- Added `docs/refactor-plan.md` with package ownership rules, target folder layout, migration sequence, and validation gate.
+- Moved tokenizer code from `model` to `loader/tokenizer`; callers import the new owner directly.
+- Moved root `safetensors` package to `loader/safetensors`.
+- Added `loader/config` for config JSON helpers and `loader/weights` for shared sharded/single-file safetensors opening.
+- Moved root `simd` package to `backends/simd` while keeping package name `simd`.
+- Moved the GTE/BERT encoder path from `model` to `models/bert`.
+
+Compatibility wrappers are intentionally avoided; package/API breaks are part of this internal refactor while CLI behavior remains stable.

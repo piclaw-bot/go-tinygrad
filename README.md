@@ -149,10 +149,18 @@ only; GPU KV compression is a future step.
 
 ## Architecture Details
 
+Current package ownership is being refactored around explicit loader/model/backend boundaries:
+
+- **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
+- **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
+- **`models/bert/`** — GTE/BERT encoder path
+- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
+- **`gpu/`** — transitional CUDA/Vulkan package pending the backend split
+
 - **Lazy tensor DAG** with elementwise fusion
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules)
-- **Safetensors loader** — mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized
-- **Tokenizer** — BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
+- **Safetensors loader** — `loader/safetensors`, mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized
+- **Tokenizer** — `loader/tokenizer`, BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
 - **LLaMA decoder** — RoPE (global + local + partial), GQA, KV cache, SiLU/GELU MLP
 - **Mixture of Experts** — router top-k, parallel expert MLP, ExpertPool with LRU GPU caching
 - **QK-Norm** — per-head RMSNorm (Qwen3, Gemma3/4)
@@ -181,6 +189,7 @@ only; GPU KV compression is a future step.
 - **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)
 - **[docs/development-log.md](docs/development-log.md)** — build process
+- **[docs/refactor-plan.md](docs/refactor-plan.md)** — Phase 6.5 source-tree refactor plan
 
 ## License
 

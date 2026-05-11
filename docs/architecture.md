@@ -31,13 +31,27 @@ go-pherence is a multi-backend inference engine that runs MLX, GPTQ, and BF16 mo
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Source Layout
+
+Phase 6.5 is moving the repository toward explicit ownership boundaries:
+
+| Area | Current package | Notes |
+|---|---|---|
+| CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver` | Flags and user/server I/O only |
+| Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources |
+| SIMD backend | `backends/simd` | Package name remains `simd`; import path is now backend-owned |
+| BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
+| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, KV/TurboQuant; still being split |
+| GPU transition package | `gpu` | CUDA + Vulkan + placement/expert cache until the backend split lands |
+| Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd` |
+
 ## Weight Format Pipeline
 
 ```
 HuggingFace (mlx-community, GPTQ, BF16)
     │
     ▼
-safetensors loader (GetFloat32, GetBF16, GetInt32, GetRaw)
+loader/safetensors + loader/weights (GetFloat32, GetBF16, GetInt32, GetRaw)
     │
     ├─── MLX 4-bit: loadMLXWeight → [outDim, inDim/8] uint32 + scales + biases
     │    └─── GPU: transpose → GPTQ kernel + bias correction
@@ -82,11 +96,11 @@ Remaining architecture work is the batched verifier forward path and q-only draf
 ## BF16 Pipeline
 
 ```
-safetensors BF16 → GetBF16() → []uint16 (zero conversion)
+loader/safetensors BF16 → GetBF16() → []uint16 (zero conversion)
     │
-    ├─── CPU: simd.BF16DotAsm (AVX2 445ns / NEON 8-wide)
-    │         simd.BF16RMSNormAsm (AVX2 1.4µs)
-    │         simd.BF16VecAddAsm (AVX2/NEON 8-wide)
+    ├─── CPU: `backends/simd` package: BF16DotAsm (AVX2 445ns / NEON 8-wide)
+    │         BF16RMSNormAsm (AVX2 1.4µs)
+    │         BF16VecAddAsm (AVX2/NEON 8-wide)
     │
     ├─── GPU CUDA: ld.global.b16 + cvt.f32.bf16 (native Ampere+)
     │              ld.global.u16 + shl (emulated sm_80)

@@ -2,6 +2,7 @@
 
 This is the baseline for Phase 4b: making CPU inference hit AVX2/FMA or NEON
 wrappers for every hot decode/prefill primitive, with scalar Go as fallback.
+The SIMD implementation now lives at import path `github.com/rcarmo/go-pherence/backends/simd` (package name `simd`).
 
 ## Current coverage map
 
@@ -48,7 +49,7 @@ go test ./model -run '^$' -bench 'BenchmarkCPUHot' -benchmem
 
 ## Dispatch cleanup status
 
-- `simd.RuntimeCapabilities()` centralizes architecture/runtime feature reporting.
+- `RuntimeCapabilities()` in the `backends/simd` package centralizes architecture/runtime feature reporting.
 - `simd.HasSgemmAsm`, `simd.HasDotAsm`, and `simd.HasVecAsm` expose runtime-safe capability gates.
 - `Sdot`/`Saxpy` now dispatch through small Go wrappers and fall back to scalar code if AVX2/FMA or NEON is unavailable, or if callers pass mismatched lengths.
 - SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels.

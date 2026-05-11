@@ -32,7 +32,7 @@ Local asset: `models/gemma4-e2b-mtp-drafter`.
 - Per-layer tensors include only `q_proj`, `q_norm`, `o_proj`, MLP weights, norms, and `layer_scalar`.
 - **No `k_proj`, `v_proj`, `k_norm`, or `v_norm` tensors exist in the drafter**; those must come from shared/base-model KV state.
 
-Current implementation status:
+Current implementation status (paused while Phase 6.5 source-tree refactor is blocking new functionality):
 - `LoadGemma4MTPDrafter` loads the local assistant asset into a dedicated q-only drafter structure, including exact-shape/config validation for `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
 - Helper methods cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
 - Main-model helper primitives expose raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax outside `Generate`; `Generate` now uses these shared helpers.
