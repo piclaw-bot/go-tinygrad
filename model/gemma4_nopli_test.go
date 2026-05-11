@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
 func TestGemma4NoPLIGenerate(t *testing.T) {
@@ -19,7 +21,7 @@ func TestGemma4NoPLIGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("tok: %v", err)
 	}
@@ -54,7 +56,7 @@ func TestGemma4NoScalarGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("tok: %v", err)
 	}

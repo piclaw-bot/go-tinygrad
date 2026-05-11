@@ -27,14 +27,14 @@ import (
 
 // MLXQuantWeight holds MLX affine quantized weight data.
 type MLXQuantWeight struct {
-	Weight []uint32  // [outDim, inDim/8] packed 4-bit
-	Scales []float32 // [outDim, numGroups]
-	Biases []float32 // [outDim, numGroups]
-	OutDim int
-	InDim  int
-	Groups int // numGroups = inDim / groupSize
+	Weight    []uint32  // [outDim, inDim/8] packed 4-bit
+	Scales    []float32 // [outDim, numGroups]
+	Biases    []float32 // [outDim, numGroups]
+	OutDim    int
+	InDim     int
+	Groups    int // numGroups = inDim / groupSize
 	GroupSize int
-	Bits   int
+	Bits      int
 }
 
 // DequantMLX dequantizes an MLX affine quantized weight to F32.

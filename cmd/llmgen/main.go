@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/model"
 )
 
@@ -45,7 +47,7 @@ func main() {
 	fmt.Printf("Loaded in %.2fs (%d layers, h=%d)\n", time.Since(t0).Seconds(),
 		m.Config.NumLayers, m.Config.HiddenSize)
 
-	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(*dir + "/tokenizer.json")
 	if err == nil {
 		m.Tok = tok
 	}

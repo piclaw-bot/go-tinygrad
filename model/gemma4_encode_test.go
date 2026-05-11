@@ -3,6 +3,8 @@ package model
 import (
 	"os"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
 func TestGemma4EncodeHello(t *testing.T) {
@@ -13,7 +15,7 @@ func TestGemma4EncodeHello(t *testing.T) {
 	if _, err := os.Stat(dir + "/config.json"); err != nil {
 		t.Skipf("model not found: %s", dir)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("tok: %v", err)
 	}

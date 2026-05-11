@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"math"
 	"os"
 	"runtime"
@@ -68,7 +70,7 @@ type LlamaConfig struct {
 // LlamaModel holds loaded weights for a LLaMA-style decoder.
 type LlamaModel struct {
 	Config LlamaConfig
-	Tok    *Tokenizer // optional, for chat templates
+	Tok    *tokenizer.Tokenizer // optional, for chat templates
 
 	EmbedTokens *tensor.Tensor // [vocab, hidden]
 

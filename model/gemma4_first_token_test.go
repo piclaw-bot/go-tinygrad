@@ -3,6 +3,8 @@ package model
 import (
 	"os"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
 func TestGemma4FirstTokenDequantized(t *testing.T) {
@@ -17,7 +19,7 @@ func TestGemma4FirstTokenDequantized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("tok: %v", err)
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 	"github.com/rcarmo/go-pherence/model"
 )
@@ -44,7 +46,7 @@ func main() {
 		log.Fatal(err)
 	}
 	m.EnableTurboQuant = *turboQuant
-	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(*dir + "/tokenizer.json")
 	if err != nil {
 		log.Fatal(err)
 	}

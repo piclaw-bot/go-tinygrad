@@ -1,4 +1,4 @@
-package model
+package tokenizer
 
 import (
 	"encoding/json"
@@ -15,8 +15,8 @@ type Tokenizer struct {
 	Merges   [][2]string    // BPE merge pairs in priority order
 }
 
-// LoadTokenizer loads a HuggingFace tokenizer.json.
-func LoadTokenizer(path string) (*Tokenizer, error) {
+// Load loads a HuggingFace tokenizer.json.
+func Load(path string) (*Tokenizer, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

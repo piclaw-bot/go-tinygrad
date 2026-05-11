@@ -3,10 +3,10 @@ package model
 // Workspace holds pre-allocated buffers for zero-alloc inference.
 // Sized once at model load, reused across all layers.
 type Workspace struct {
-	seqLen int
-	hidden int
-	inter  int
-	heads  int
+	seqLen  int
+	hidden  int
+	inter   int
+	heads   int
 	headDim int
 
 	// Ping-pong hidden state buffers
@@ -14,12 +14,12 @@ type Workspace struct {
 	buf1 []float32 // [seqLen, hidden]
 
 	// Intermediate buffers
-	qkvBuf    []float32 // [seqLen, hidden*3]
-	attnOut   []float32 // [seqLen, hidden]
-	ffnBuf    []float32 // [seqLen, intermediate]
-	scores    []float32 // [heads, seqLen, seqLen]
+	qkvBuf     []float32 // [seqLen, hidden*3]
+	attnOut    []float32 // [seqLen, hidden]
+	ffnBuf     []float32 // [seqLen, intermediate]
+	scores     []float32 // [heads, seqLen, seqLen]
 	tempHidden []float32 // [seqLen, hidden]
-	outEmb    []float32 // [hidden] for output embedding
+	outEmb     []float32 // [hidden] for output embedding
 }
 
 func newWorkspace(seqLen int, cfg BertConfig) *Workspace {

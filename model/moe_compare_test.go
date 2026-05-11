@@ -1,9 +1,10 @@
 package model
 
 import (
-	"github.com/rcarmo/go-pherence/gpu"
 	"os"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/gpu"
 )
 
 func TestMoECPUvsGPUExpert(t *testing.T) {

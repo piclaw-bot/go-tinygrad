@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
@@ -53,7 +55,7 @@ func TestTokenizer(t *testing.T) {
 		t.Skipf("tokenizer not found: %s", dir)
 	}
 
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}
@@ -85,7 +87,7 @@ func TestSmolLMGenerate(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestGemma4ChatTemplate(t *testing.T) {
 		t.Skipf("not gemma4_text: %s", m.Config.ModelType)
 	}
 
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}

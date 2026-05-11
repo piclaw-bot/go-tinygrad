@@ -3,6 +3,8 @@ package model
 import (
 	"os"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
 )
 
 func TestGemma4QuantizedLayer0MLPSensitivity(t *testing.T) {
@@ -22,7 +24,7 @@ func TestGemma4QuantizedLayer0MLPSensitivity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load gemma4 quantized cpu model: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}

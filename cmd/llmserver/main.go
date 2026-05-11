@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 	"github.com/rcarmo/go-pherence/model"
 )
@@ -89,7 +91,7 @@ type ModelListResponse struct {
 type Server struct {
 	cpuModel *model.LlamaModel
 	gpuModel *model.GPUModel
-	tok      *model.Tokenizer
+	tok      *tokenizer.Tokenizer
 	mu       sync.Mutex
 	modelID  string
 	maxCtx   int
@@ -294,7 +296,7 @@ func main() {
 		log.Fatalf("Load failed: %v", err)
 	}
 	m.EnableTurboQuant = *turboQuant
-	tok, err := model.LoadTokenizer(*dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(*dir + "/tokenizer.json")
 	if err != nil {
 		log.Fatalf("Tokenizer failed: %v", err)
 	}

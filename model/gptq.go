@@ -20,12 +20,13 @@ import (
 // DequantGPTQ dequantizes a GPTQ INT4 weight tensor to float32.
 //
 // Parameters:
-//   qweight: [inFeatures/8, outFeatures] packed int32 (8 x 4-bit per int32)
-//   scales:  [numGroups, outFeatures] float32 (already converted from F16)
-//   qzeros:  [numGroups, outFeatures/8] packed int32
-//   gIdx:    [inFeatures] int32 group index per input
-//   inFeatures, outFeatures: weight dimensions
-//   sym: true if symmetric quantization (zero point = 8 for 4-bit)
+//
+//	qweight: [inFeatures/8, outFeatures] packed int32 (8 x 4-bit per int32)
+//	scales:  [numGroups, outFeatures] float32 (already converted from F16)
+//	qzeros:  [numGroups, outFeatures/8] packed int32
+//	gIdx:    [inFeatures] int32 group index per input
+//	inFeatures, outFeatures: weight dimensions
+//	sym: true if symmetric quantization (zero point = 8 for 4-bit)
 //
 // Returns: [outFeatures, inFeatures] float32 weight matrix (row-major, row=output)
 func DequantGPTQ(qweight, qzeros, gIdx []int32, scales []float32,
@@ -40,8 +41,8 @@ func DequantGPTQ(qweight, qzeros, gIdx []int32, scales []float32,
 		// qzeros is [numGroups, outFeatures/8] with 8 x 4-bit per int32
 		for j := 0; j < outFeatures; j++ {
 			// Extract 4-bit quantized weight
-			packIdx := i / 8           // which int32 in qweight
-			bitIdx := uint(i%8) * 4    // bit offset within int32
+			packIdx := i / 8        // which int32 in qweight
+			bitIdx := uint(i%8) * 4 // bit offset within int32
 			qw := (qweight[packIdx*outFeatures+j] >> bitIdx) & 0xF
 
 			// Extract 4-bit zero point

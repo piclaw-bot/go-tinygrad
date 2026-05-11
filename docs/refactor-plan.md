@@ -2,7 +2,7 @@
 
 Status: planned, blocking new MTP/backend functionality until the validation gate is complete.
 
-This document captures the Phase 6.5 assessment and target package design. The refactor should be mostly mechanical at first: move code into ownership boundaries, keep public behavior stable, and defer semantic rewrites until imports are clean.
+This document captures the Phase 6.5 assessment and target package design. The refactor should be mostly mechanical at first: move code into ownership boundaries, keep CLI behavior stable where practical, but allow intentional package/API breaking changes instead of preserving old wrappers.
 
 ## Why this is now blocking
 
@@ -107,16 +107,14 @@ scripts/
 docs/
 ```
 
-### Compatibility during migration
+### Breaking-change migration policy
 
-To avoid breaking every call site in one commit, keep thin wrappers for one transition phase:
+This refactor is allowed to break package-level APIs. Prefer updating call sites to the new package owner over adding compatibility wrappers.
 
-- `model.LoadLlama` delegates to the new loader/model constructor.
-- `model.LoadTokenizer` delegates to `loader/tokenizer`.
-- `model.GPUModel` can temporarily alias the new backend/runtime type.
-- Existing `gpu` and `safetensors` packages can stay as compatibility packages until imports are moved.
-
-Remove compatibility wrappers only after CLI, tests, docs, and examples no longer need them.
+- Do not keep `model.LoadTokenizer`; callers should import `loader/tokenizer` directly.
+- Do not add new feature code to transitional old packages.
+- CLI behavior and flags should remain stable unless explicitly changed, but Go import paths and internal APIs may change.
+- If a temporary bridge is unavoidable for a large move, document it with a removal commit/phase before adding further functionality.
 
 ## Import rules
 
@@ -136,7 +134,7 @@ More precise rules:
 6. `backends/cuda` and `backends/vulkan` must not import each other.
 7. `runtime/kv`, `runtime/quant`, and `runtime/memory` should hold shared runtime state that is not architecture-specific.
 8. `shared/` folders are local escape hatches only. Do not create a global dumping ground.
-9. New feature code should not be added to compatibility wrappers.
+9. New feature code should not be added to transitional old packages or temporary bridges.
 
 ## Proposed ownership moves
 
@@ -147,7 +145,7 @@ Move or wrap:
 - `model/tokenizer.go` -> `loader/tokenizer`
 - config parsing from `model/llama.go`, `model/bert.go`, `model/mtp_drafter.go` -> `loader/config`
 - tensor source interface currently local to `LoadLlama` -> `loader/weights`
-- `safetensors/` -> either `loader/safetensors` or `formats/safetensors`; keep old `safetensors` import path as a wrapper if needed
+- `safetensors/` -> either `loader/safetensors` or `formats/safetensors`; update call sites directly rather than keeping an old import-path wrapper unless the move is too large for one commit
 
 ### Runtime KV/quant/memory
 
@@ -165,7 +163,7 @@ Move or wrap:
 
 - CUDA driver/PTX: `gpu/cuda_purego.go`, `gpu/devbuf.go`, `gpu/*_ptx.go`, `gpu/mega_module.go`, `gpu/streams.go`, `gpu/q4_gpu.go`, `gpu/sgemm.go` -> `backends/cuda`
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan`
-- SIMD: `simd/` -> `backends/simd` eventually; keep root `simd` wrapper until tensor/model imports are migrated
+- SIMD: `simd/` -> `backends/simd` eventually; migrate tensor/model imports directly in a dedicated commit
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly
 
 ### Models
@@ -194,13 +192,13 @@ Do not let the mechanical move phase accidentally ungate heavy diagnostics.
 Each step should be one small commit with validation after it.
 
 1. **Add docs and package stubs only.** Land this plan and any README notes. No behavior changes.
-2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first. Keep compatibility wrappers under `model`.
-3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages. Keep `model` wrappers until all call sites move.
-4. **Backend split.** Separate CUDA and Vulkan into `backends/cuda` and `backends/vulkan`; keep `gpu` compatibility wrapper if required.
+2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
+3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit.
+4. **Backend split.** Separate CUDA and Vulkan into `backends/cuda` and `backends/vulkan`, updating model/runtime imports directly.
 5. **Model split.** Move BERT/GTE, LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Move or tag diagnostic tests; keep focused unit tests close to packages.
-8. **Remove wrappers.** Only after CLI/docs/tests use the new import paths.
+8. **Remove temporary bridges.** Only if any were unavoidable during earlier large moves.
 
 ## Validation gate
 
@@ -240,7 +238,7 @@ GEMMA4_TRACE_TEST=1 go test ./model -run 'TestGemma4GPUGenerate|TestGemma4KVShar
 - `docs/refactor-plan.md` exists and is current.
 - Package ownership and import rules are enforced by review, and ideally by a small script later.
 - Major files are moved out of `model/` catch-all into loader/runtime/backend/model packages.
-- Compatibility wrappers are either removed or documented as temporary.
+- No compatibility wrappers remain unless explicitly documented as short-lived temporary bridges.
 - Diagnostic tests are separated or clearly gated.
 - CLI behavior and flags are unchanged.
 - Validation gate passes and the refactor is committed/pushed before more MTP or backend functionality lands.

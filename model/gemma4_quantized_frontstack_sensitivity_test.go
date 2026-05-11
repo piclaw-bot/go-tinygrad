@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
@@ -12,7 +14,7 @@ type frontStepOpKey struct {
 	op   string
 }
 
-func captureCPUQuantizedFrontStack(t *testing.T, dir string, tok *Tokenizer, prompt string, targets map[int]bool, overrideLayer int, override map[int][]float32, pliOverride map[int][]float32, mlpOverrideLayer int, mlpOverride map[int][]float32) (sensitivityTrace, map[frontStepOpKey][]float32, map[int][]float32) {
+func captureCPUQuantizedFrontStack(t *testing.T, dir string, tok *tokenizer.Tokenizer, prompt string, targets map[int]bool, overrideLayer int, override map[int][]float32, pliOverride map[int][]float32, mlpOverrideLayer int, mlpOverride map[int][]float32) (sensitivityTrace, map[frontStepOpKey][]float32, map[int][]float32) {
 	t.Helper()
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -91,7 +93,7 @@ func captureCPUQuantizedFrontStack(t *testing.T, dir string, tok *Tokenizer, pro
 	return tr, opSteps, layer0OutByStep
 }
 
-func captureGPUQuantizedFrontStack(t *testing.T, dir string, tok *Tokenizer, prompt string, targets map[int]bool) (sensitivityTrace, map[frontStepOpKey][]float32, map[int][]float32) {
+func captureGPUQuantizedFrontStack(t *testing.T, dir string, tok *tokenizer.Tokenizer, prompt string, targets map[int]bool) (sensitivityTrace, map[frontStepOpKey][]float32, map[int][]float32) {
 	t.Helper()
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -191,7 +193,7 @@ func TestGemma4QuantizedFrontStackSensitivity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load quantized model: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}

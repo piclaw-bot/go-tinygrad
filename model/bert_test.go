@@ -125,8 +125,12 @@ func TestForwardFastCorrectness(t *testing.T) {
 	maxDiff := float32(0)
 	for i := range slow {
 		d := slow[i] - fast[i]
-		if d < 0 { d = -d }
-		if d > maxDiff { maxDiff = d }
+		if d < 0 {
+			d = -d
+		}
+		if d > maxDiff {
+			maxDiff = d
+		}
 	}
 	if maxDiff > 0.001 {
 		t.Fatalf("fast vs slow maxDiff=%v (too large)", maxDiff)

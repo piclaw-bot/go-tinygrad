@@ -6,6 +6,8 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
@@ -45,7 +47,7 @@ func TestGemma4CPUvsGPUProjectionTrace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load gemma4: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}

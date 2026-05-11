@@ -49,7 +49,9 @@ func (m *BertModel) ForwardFast(tokenIDs []int, ws *Workspace) []float32 {
 		// Fused QKV: [seqLen, h] @ [3h, h]^T → [seqLen, 3h]
 		// Uses NT matmul so output has contiguous Q,K,V per row
 		qkv := ws.qkvBuf[:seqLen*h*3]
-		for i := range qkv { qkv[i] = 0 }
+		for i := range qkv {
+			qkv[i] = 0
+		}
 		qkvW := layer.QKVW.Data()
 		qkvB := layer.QKVB.Data()
 		if simd.HasSgemmAsm {
@@ -120,7 +122,9 @@ func (m *BertModel) EmbedFast(tokenIDs []int, attnMask []bool) []float32 {
 	seqLen := len(tokenIDs)
 
 	out := ws.outEmb[:h]
-	for i := range out { out[i] = 0 }
+	for i := range out {
+		out[i] = 0
+	}
 	count := 0
 	for s := 0; s < seqLen; s++ {
 		if attnMask[s] {

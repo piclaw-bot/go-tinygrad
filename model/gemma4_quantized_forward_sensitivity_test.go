@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
+
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
@@ -18,7 +20,7 @@ type sensitivityTrace struct {
 	logits []float32
 }
 
-func captureCPUQuantizedTrace(t *testing.T, dir string, tok *Tokenizer, prompt string, targets map[int]bool, overrideLayer int, override map[int][]float32) sensitivityTrace {
+func captureCPUQuantizedTrace(t *testing.T, dir string, tok *tokenizer.Tokenizer, prompt string, targets map[int]bool, overrideLayer int, override map[int][]float32) sensitivityTrace {
 	t.Helper()
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -61,7 +63,7 @@ func captureCPUQuantizedTrace(t *testing.T, dir string, tok *Tokenizer, prompt s
 	return tr
 }
 
-func captureGPUQuantizedTraceWithSteps(t *testing.T, dir string, tok *Tokenizer, prompt string, targets map[int]bool, captureStepLayers map[int]bool) (sensitivityTrace, map[stepLayerKey][]float32) {
+func captureGPUQuantizedTraceWithSteps(t *testing.T, dir string, tok *tokenizer.Tokenizer, prompt string, targets map[int]bool, captureStepLayers map[int]bool) (sensitivityTrace, map[stepLayerKey][]float32) {
 	t.Helper()
 	m, err := LoadLlama(dir)
 	if err != nil {
@@ -106,7 +108,7 @@ func captureGPUQuantizedTraceWithSteps(t *testing.T, dir string, tok *Tokenizer,
 	return tr, stepLayers
 }
 
-func logTraceDiff(t *testing.T, label string, want, got sensitivityTrace, tok *Tokenizer) {
+func logTraceDiff(t *testing.T, label string, want, got sensitivityTrace, tok *tokenizer.Tokenizer) {
 	t.Helper()
 	for _, l := range []int{14, 15, 34} {
 		w, ok1 := want.layers[l]
@@ -149,7 +151,7 @@ func TestGemma4QuantizedForwardSensitivityFromLayer0And1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load quantized model: %v", err)
 	}
-	tok, err := LoadTokenizer(dir + "/tokenizer.json")
+	tok, err := tokenizer.Load(dir + "/tokenizer.json")
 	if err != nil {
 		t.Fatalf("load tokenizer: %v", err)
 	}
