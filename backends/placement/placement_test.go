@@ -94,3 +94,42 @@ func TestEstimateLayerWeightBytes(t *testing.T) {
 	resBytes := EstimateResidentBytes(info)
 	t.Logf("Gemma4 resident: %.1f MB", float64(resBytes)/(1024*1024))
 }
+
+func TestPlacementHandlesInvalidAndHugeInputs(t *testing.T) {
+	bad := ModelSizeInfo{
+		NumLayers:    -5,
+		HiddenSize:   -1024,
+		Intermediate: -4096,
+		NumHeads:     -8,
+		NumKVHeads:   -4,
+		HeadDim:      -128,
+		VocabSize:    -32000,
+		QuantBits:    4,
+	}
+	if got := EstimateLayerWeightBytes(bad, 0); got != 0 {
+		t.Fatalf("negative layer estimate=%d, want 0", got)
+	}
+	if got := EstimateResidentBytes(bad); got != 0 {
+		t.Fatalf("negative resident estimate=%d, want 0", got)
+	}
+	plan := PlanLayerPlacement(bad, -1, ^uint64(0))
+	if len(plan.Layers) != 0 || plan.GPULayers != 0 || plan.MmapLayers != 0 || plan.AvailGPUMB <= 0 {
+		t.Fatalf("unexpected plan for invalid/huge inputs: %+v", plan)
+	}
+}
+
+func TestPlanLayerPlacementManualLayerCountClampsToModel(t *testing.T) {
+	info := ModelSizeInfo{
+		NumLayers:    2,
+		HiddenSize:   64,
+		Intermediate: 128,
+		NumHeads:     4,
+		NumKVHeads:   2,
+		HeadDim:      16,
+		VocabSize:    256,
+	}
+	plan := PlanLayerPlacement(info, 999, testAvailGPUBytes)
+	if len(plan.Layers) != 2 || plan.GPULayers != 2 || plan.MmapLayers != 0 {
+		t.Fatalf("manual gpu layer count should clamp by model layers: %+v", plan)
+	}
+}

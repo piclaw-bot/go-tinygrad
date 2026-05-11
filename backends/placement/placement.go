@@ -64,17 +64,17 @@ type ModelSizeInfo struct {
 
 // EstimateLayerWeightBytes estimates GPU VRAM for one transformer layer.
 func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
-	h := int64(info.HiddenSize)
-	inter := int64(info.Intermediate)
-	numKVHeads := int64(info.NumKVHeads)
-	numHeads := int64(info.NumHeads)
+	h := nonNegativeInt64(info.HiddenSize)
+	inter := nonNegativeInt64(info.Intermediate)
+	numKVHeads := nonNegativeInt64(info.NumKVHeads)
+	numHeads := nonNegativeInt64(info.NumHeads)
 
-	headDim := int64(info.HeadDim)
+	headDim := nonNegativeInt64(info.HeadDim)
 	if info.GlobalHeadDim > 0 && info.IsGemma4 {
 		// Full attention layers have different head dim
 		// Simplified: use max for budget estimation
-		if headDim < int64(info.GlobalHeadDim) {
-			headDim = int64(info.GlobalHeadDim)
+		if headDim < nonNegativeInt64(info.GlobalHeadDim) {
+			headDim = nonNegativeInt64(info.GlobalHeadDim)
 		}
 	}
 
@@ -127,7 +127,7 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 
 	// PLI weights (Gemma4)
 	if info.HiddenPerLayer > 0 {
-		hpl := int64(info.HiddenPerLayer)
+		hpl := nonNegativeInt64(info.HiddenPerLayer)
 		bytes += h * hpl * 4 // PLIGate
 		bytes += hpl * h * 4 // PLIProj
 		bytes += h * 4       // PLIPostNorm
@@ -142,8 +142,8 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 
 // EstimateResidentBytes estimates GPU VRAM for permanent (non-layer) tensors.
 func EstimateResidentBytes(info ModelSizeInfo) int64 {
-	h := int64(info.HiddenSize)
-	vocab := int64(info.VocabSize)
+	h := nonNegativeInt64(info.HiddenSize)
+	vocab := nonNegativeInt64(info.VocabSize)
 
 	var bytes int64
 
@@ -165,15 +165,15 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 	bytes += h * 4
 
 	// RoPE tables (small)
-	bytes += 2048 * int64(info.HeadDim) * 4
+	bytes += 2048 * nonNegativeInt64(info.HeadDim) * 4
 
 	// Work buffers (hidden, residual, normed, q, k, v, attn, gate, up, down)
-	maxHeadDim := int64(info.HeadDim)
-	if int64(info.GlobalHeadDim) > maxHeadDim {
-		maxHeadDim = int64(info.GlobalHeadDim)
+	maxHeadDim := nonNegativeInt64(info.HeadDim)
+	if nonNegativeInt64(info.GlobalHeadDim) > maxHeadDim {
+		maxHeadDim = nonNegativeInt64(info.GlobalHeadDim)
 	}
-	maxQDim := int64(info.NumHeads) * maxHeadDim
-	maxInter := int64(info.Intermediate)
+	maxQDim := nonNegativeInt64(info.NumHeads) * maxHeadDim
+	maxInter := nonNegativeInt64(info.Intermediate)
 	if info.HasDoubleWideMLP {
 		maxInter *= 2
 	}
@@ -181,10 +181,10 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 
 	// Gemma4 PLI model-level projection
 	if info.HiddenPerLayer > 0 {
-		totalPLI := int64(info.NumLayers) * int64(info.HiddenPerLayer)
-		bytes += h * totalPLI * 4               // per_layer_model_projection
-		bytes += int64(info.HiddenPerLayer) * 4 // per_layer_projection_norm
-		bytes += totalPLI * 4 * 2               // perLayerProjBuf + perLayerEmbedBuf
+		totalPLI := nonNegativeInt64(info.NumLayers) * nonNegativeInt64(info.HiddenPerLayer)
+		bytes += h * totalPLI * 4                          // per_layer_model_projection
+		bytes += nonNegativeInt64(info.HiddenPerLayer) * 4 // per_layer_projection_norm
+		bytes += totalPLI * 4 * 2                          // perLayerProjBuf + perLayerEmbedBuf
 	}
 
 	return bytes
@@ -194,7 +194,7 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 // gpuLayers < 0 means auto-fit as many as possible. availGPUBytes is explicit
 // so placement policy stays independent from CUDA/Vulkan device queries.
 func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64) PlacementPlan {
-	availGPU := int64(availGPUBytes)
+	availGPU := uint64ToInt64(availGPUBytes)
 
 	residentBytes := EstimateResidentBytes(info)
 	remainingGPU := availGPU - residentBytes
@@ -202,8 +202,13 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 		remainingGPU = 0
 	}
 
+	numLayers := info.NumLayers
+	if numLayers < 0 {
+		numLayers = 0
+	}
+
 	plan := PlacementPlan{
-		Layers:     make([]LayerPlacement, info.NumLayers),
+		Layers:     make([]LayerPlacement, numLayers),
 		ResidentMB: float64(residentBytes) / (1024 * 1024),
 		AvailGPUMB: float64(availGPU) / (1024 * 1024),
 	}
@@ -212,9 +217,9 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 		// Auto-fit: place layers on GPU until budget exhausted
 		gpuLayers = 0
 		used := int64(0)
-		for i := 0; i < info.NumLayers; i++ {
+		for i := 0; i < numLayers; i++ {
 			layerBytes := EstimateLayerWeightBytes(info, i)
-			if used+layerBytes <= remainingGPU {
+			if layerBytes <= remainingGPU-used {
 				gpuLayers++
 				used += layerBytes
 			} else {
@@ -224,7 +229,7 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 	}
 
 	var totalGPU, totalCPU float64
-	for i := 0; i < info.NumLayers; i++ {
+	for i := 0; i < numLayers; i++ {
 		layerMB := float64(EstimateLayerWeightBytes(info, i)) / (1024 * 1024)
 		if i < gpuLayers {
 			plan.Layers[i] = LayerPlacement{Layer: i, Location: TierGPU, WeightMB: layerMB}
@@ -250,4 +255,11 @@ func (p PlacementPlan) PrintPlan() {
 		fmt.Printf("[placement] mmap: %d layers (%.0f MB)\n", p.MmapLayers, p.TotalCPUMB)
 	}
 	fmt.Printf("[placement] available GPU: %.0f MB\n", p.AvailGPUMB)
+}
+
+func nonNegativeInt64(v int) int64 {
+	if v <= 0 {
+		return 0
+	}
+	return int64(v)
 }
