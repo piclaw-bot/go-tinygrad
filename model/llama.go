@@ -339,6 +339,9 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 				panic(fmt.Sprintf("loadQW %s.scales: %v", name, err))
 			}
 		}
+		if err := quant.ValidateGPTQSym(qw, gIdx, scales, inDim, outDim); err != nil {
+			panic(fmt.Sprintf("loadQW %s GPTQ validation: %v", name, err))
+		}
 		return &QuantWeight{QWeight: qw, GIdx: gIdx, Scales: scales, InDim: inDim, OutDim: outDim}
 	}
 	_ = loadQW
@@ -390,11 +393,17 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 
 		var data []float32
 		if cfg.QuantSym {
+			if err := quant.ValidateGPTQSym(qw, gIdx, scales, inDim, outDim); err != nil {
+				panic(fmt.Sprintf("loadQ %s GPTQ validation: %v", name, err))
+			}
 			data = quant.DequantGPTQSym(qw, gIdx, scales, inDim, outDim)
 		} else {
 			qz, _, err := f.GetInt32(name + ".qzeros")
 			if err != nil {
 				panic(fmt.Sprintf("loadQ %s.qzeros: %v", name, err))
+			}
+			if err := quant.ValidateGPTQ(qw, qz, gIdx, scales, inDim, outDim, false); err != nil {
+				panic(fmt.Sprintf("loadQ %s GPTQ validation: %v", name, err))
 			}
 			data = quant.DequantGPTQ(qw, qz, gIdx, scales, inDim, outDim, false)
 		}

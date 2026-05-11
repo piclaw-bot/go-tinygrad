@@ -31,6 +31,9 @@ import (
 // Returns: [outFeatures, inFeatures] float32 weight matrix (row-major, row=output)
 func DequantGPTQ(qweight, qzeros, gIdx []int32, scales []float32,
 	inFeatures, outFeatures int, sym bool) []float32 {
+	if err := ValidateGPTQ(qweight, qzeros, gIdx, scales, inFeatures, outFeatures, sym); err != nil {
+		return nil
+	}
 
 	out := make([]float32, outFeatures*inFeatures)
 
@@ -67,6 +70,9 @@ func DequantGPTQ(qweight, qzeros, gIdx []int32, scales []float32,
 // DequantGPTQSym is an optimized parallel symmetric dequantization (zero point = 8).
 func DequantGPTQSym(qweight, gIdx []int32, scales []float32,
 	inFeatures, outFeatures int) []float32 {
+	if err := ValidateGPTQSym(qweight, gIdx, scales, inFeatures, outFeatures); err != nil {
+		return nil
+	}
 
 	out := make([]float32, outFeatures*inFeatures)
 	nPacks := inFeatures / 8
