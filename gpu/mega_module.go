@@ -20,7 +20,7 @@ var (
 	// Function handles extracted from the mega module
 	sgemmReady bool
 
-	// Set in sgemm.go, kernels_ptx.go, attn_ptx.go, gemv_q4_ptx.go
+	// Set in sgemm.go, runtime helper files
 )
 
 // stripPTXHeader removes .version/.target/.address_size lines from PTX

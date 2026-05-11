@@ -55,9 +55,8 @@ model/llama.go        ~1560 lines: config normalization, model structs, loader,
                        quant loading, architecture-specific Gemma/Qwen/MoE branches
 model/gpu_forward.go  ~1150 lines: GPU-resident model, upload policy, Gemma4 GPU forward,
                        hybrid/layer-split behavior
-gpu/mlx_ptx.go        ~750 lines: MLX CUDA kernel source/dispatch helpers
+gpu/mlx_cuda.go       runtime MLX CUDA upload/dispatch helpers
 gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
-gpu/attn_ptx.go       ~560 lines: attention kernels
 ```
 
 ## Main problems found
@@ -173,7 +172,7 @@ Move/update directly:
 
 Move/update directly:
 
-- CUDA driver/PTX: pure PTX source assets from `gpu/attn_ptx.go` and `gpu/kernels_ptx.go` have moved to `backends/cuda/ptx` ✅. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
+- CUDA driver/PTX: pure PTX source assets from `backends/cuda/ptx/attn.go` and `backends/cuda/ptx/kernels.go` have moved to `backends/cuda/ptx` ✅. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers.
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly

@@ -241,7 +241,7 @@ Removed dead model-local BF16 forward-path experiment scaffolding:
 
 Started the CUDA backend split with a low-risk asset-only move:
 
-- Moved pure PTX source definitions from `gpu/attn_ptx.go` and `gpu/kernels_ptx.go` into `backends/cuda/ptx`.
+- Moved pure PTX source definitions from `backends/cuda/ptx/attn.go` and `backends/cuda/ptx/kernels.go` into `backends/cuda/ptx`.
 - Updated the CUDA mega-module loader to import those backend-owned PTX assets while keeping runtime dispatch, `DevBuf`, GPU quantized weights, and expert resources in the transitional `gpu` package.
 - Left mixed dispatch/source files such as MLX and BF16 PTX in `gpu` for now because they still define CUDA function handles and runtime helpers.
 
@@ -288,3 +288,10 @@ Finished the current CUDA PTX source-asset sweep:
 
 - Moved MLX GEMV, batched MLX GEMM, and MLX correction PTX source strings into `backends/cuda/ptx`.
 - Kept `GPUMLXWeight`, upload/transposition logic, launch helpers, and function handles in `gpu`, because they still own CUDA resource lifetimes and runtime dispatch.
+
+## Session 19: CUDA helper filename cleanup
+
+Cleaned up stale file naming after the PTX asset extraction:
+
+- Renamed remaining `gpu/*_ptx.go` files to runtime-oriented names because they now contain launch helpers/function handles, not embedded PTX source strings.
+- Updated stale comments and refactor-plan references so `gpu` is described as runtime dispatch/resource ownership and `backends/cuda/ptx` as PTX source ownership.
