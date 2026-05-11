@@ -189,38 +189,48 @@ func LoadMLXWeight(f interface {
 	}, nil
 }
 
-// loadMLXFloat loads a float tensor, handling F16/BF16/F32.
+// loadMLXFloat loads a scale/bias tensor, accepting only F32/F16/BF16.
 func loadMLXFloat(f interface {
 	GetFloat32(name string) ([]float32, []int, error)
 	GetRaw(name string) ([]byte, string, []int, error)
 }, name string, expectedN int) ([]float32, error) {
-	// Try direct F32 first.
-	data, shape, err := f.GetFloat32(name)
-	if err == nil {
+	raw, dtype, shape, err := f.GetRaw(name)
+	if err != nil {
+		// Fallback for minimal test doubles that do not expose raw dtype.
+		data, shape, f32Err := f.GetFloat32(name)
+		if f32Err != nil {
+			return nil, fmt.Errorf("load %s: %w", name, err)
+		}
 		if err := validateMLXFloatLen(name, len(data), shape, expectedN); err != nil {
 			return nil, err
 		}
 		return data, nil
 	}
 
-	// Try raw with dtype conversion.
-	raw, dtype, shape, err := f.GetRaw(name)
-	if err != nil {
-		return nil, fmt.Errorf("load %s: %w", name, err)
-	}
-	if len(raw)%2 != 0 {
-		return nil, fmt.Errorf("%s raw byte length %d is not divisible by 2", name, len(raw))
-	}
-
 	var out []float32
 	switch dtype {
+	case "F32":
+		if len(raw)%4 != 0 {
+			return nil, fmt.Errorf("%s F32 raw byte length %d is not divisible by 4", name, len(raw))
+		}
+		n := len(raw) / 4
+		out = make([]float32, n)
+		for i := 0; i < n; i++ {
+			out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+		}
 	case "F16":
+		if len(raw)%2 != 0 {
+			return nil, fmt.Errorf("%s F16 raw byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out = make([]float32, n)
 		for i := 0; i < n; i++ {
 			out[i] = Float16ToFloat32(binary.LittleEndian.Uint16(raw[i*2:]))
 		}
 	case "BF16":
+		if len(raw)%2 != 0 {
+			return nil, fmt.Errorf("%s BF16 raw byte length %d is not divisible by 2", name, len(raw))
+		}
 		n := len(raw) / 2
 		out = make([]float32, n)
 		for i := 0; i < n; i++ {

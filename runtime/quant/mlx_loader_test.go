@@ -3,6 +3,7 @@ package quant
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -40,11 +41,19 @@ func packedU32(vals ...uint32) []byte {
 	return out
 }
 
+func packedF32(vals ...float32) []byte {
+	out := make([]byte, len(vals)*4)
+	for i, v := range vals {
+		binary.LittleEndian.PutUint32(out[i*4:], math.Float32bits(v))
+	}
+	return out
+}
+
 func validMLXSource() fakeMLXSource {
 	return fakeMLXSource{
 		"proj.weight": {raw: packedU32(0x76543210, 0xfedcba98), dtype: "U32", shape: []int{2, 1}},
-		"proj.scales": {f32: []float32{0.1, 0.2}, shape: []int{2, 1}},
-		"proj.biases": {f32: []float32{-0.1, -0.2}, shape: []int{2, 1}},
+		"proj.scales": {raw: packedF32(0.1, 0.2), dtype: "F32", shape: []int{2, 1}},
+		"proj.biases": {raw: packedF32(-0.1, -0.2), dtype: "F32", shape: []int{2, 1}},
 	}
 }
 
@@ -95,7 +104,7 @@ func TestLoadMLXWeightRejectsBadInDimWithoutShape(t *testing.T) {
 
 func TestLoadMLXWeightRejectsBadScaleLength(t *testing.T) {
 	src := validMLXSource()
-	src["proj.scales"] = fakeMLXTensor{f32: []float32{0.1}, shape: []int{1, 1}}
+	src["proj.scales"] = fakeMLXTensor{raw: packedF32(0.1), dtype: "F32", shape: []int{1, 1}}
 	_, err := LoadMLXWeight(src, "proj", 2, 8, 8, 4)
 	if err == nil || !strings.Contains(err.Error(), "length mismatch") {
 		t.Fatalf("err=%v, want length mismatch", err)
@@ -104,9 +113,18 @@ func TestLoadMLXWeightRejectsBadScaleLength(t *testing.T) {
 
 func TestLoadMLXWeightRejectsBadFloatShape(t *testing.T) {
 	src := validMLXSource()
-	src["proj.biases"] = fakeMLXTensor{f32: []float32{-0.1, -0.2}, shape: []int{3, 1}}
+	src["proj.biases"] = fakeMLXTensor{raw: packedF32(-0.1, -0.2), dtype: "F32", shape: []int{3, 1}}
 	_, err := LoadMLXWeight(src, "proj", 2, 8, 8, 4)
 	if err == nil || !strings.Contains(err.Error(), "shape") {
 		t.Fatalf("err=%v, want shape error", err)
+	}
+}
+
+func TestLoadMLXWeightRejectsIntegerScales(t *testing.T) {
+	src := validMLXSource()
+	src["proj.scales"] = fakeMLXTensor{raw: packedU32(1, 2), dtype: "I32", shape: []int{2, 1}}
+	_, err := LoadMLXWeight(src, "proj", 2, 8, 8, 4)
+	if err == nil || !strings.Contains(err.Error(), "unsupported dtype I32") {
+		t.Fatalf("err=%v, want unsupported I32 dtype", err)
 	}
 }
