@@ -79,10 +79,30 @@ func Full(shape []int, val float32) *Tensor {
 
 // --- Properties ---
 
-func (t *Tensor) Shape() []int { return t.shape.Dims }
-func (t *Tensor) DType() DType { return t.uop.DType }
-func (t *Tensor) Ndim() int    { return t.shape.Ndim() }
-func (t *Tensor) Numel() int   { return t.shape.Numel() }
+func (t *Tensor) Shape() []int {
+	if t == nil {
+		return nil
+	}
+	return t.shape.Dims
+}
+func (t *Tensor) DType() DType {
+	if t == nil || t.uop == nil {
+		return DType{}
+	}
+	return t.uop.DType
+}
+func (t *Tensor) Ndim() int {
+	if t == nil {
+		return 0
+	}
+	return t.shape.Ndim()
+}
+func (t *Tensor) Numel() int {
+	if t == nil {
+		return 0
+	}
+	return t.shape.Numel()
+}
 
 // --- Lazy binary ops ---
 

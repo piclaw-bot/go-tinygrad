@@ -12,6 +12,9 @@ type LinearModule struct {
 }
 
 func NewLinear(inDim, outDim int) *LinearModule {
+	if inDim <= 0 || outDim < 0 {
+		panic("linear: invalid dimensions")
+	}
 	// Xavier initialization
 	scale := float32(1.0) / float32(inDim)
 	w := Rand([]int{outDim, inDim})
@@ -24,6 +27,9 @@ func NewLinear(inDim, outDim int) *LinearModule {
 }
 
 func (l *LinearModule) Forward(x *Tensor) *Tensor {
+	if l == nil {
+		panic("linear: nil module")
+	}
 	return x.Linear(l.Weight, l.Bias)
 }
 
@@ -35,6 +41,9 @@ type LayerNormModule struct {
 }
 
 func NewLayerNorm(dim int) *LayerNormModule {
+	if dim < 0 {
+		panic("layernorm: invalid dimension")
+	}
 	return &LayerNormModule{
 		Weight: Ones([]int{dim}),
 		Bias:   Zeros([]int{dim}),
@@ -43,6 +52,9 @@ func NewLayerNorm(dim int) *LayerNormModule {
 }
 
 func (ln *LayerNormModule) Forward(x *Tensor) *Tensor {
+	if ln == nil {
+		panic("layernorm: nil module")
+	}
 	return x.LayerNorm(ln.Weight, ln.Bias, ln.Eps)
 }
 
@@ -52,9 +64,15 @@ type EmbeddingModule struct {
 }
 
 func NewEmbedding(vocabSize, dim int) *EmbeddingModule {
+	if vocabSize < 0 || dim < 0 {
+		panic("embedding: invalid dimensions")
+	}
 	return &EmbeddingModule{Weight: Rand([]int{vocabSize, dim})}
 }
 
 func (e *EmbeddingModule) Forward(ids []int) *Tensor {
+	if e == nil {
+		panic("embedding: nil module")
+	}
 	return Embedding(e.Weight, ids)
 }

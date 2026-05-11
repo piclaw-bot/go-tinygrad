@@ -518,3 +518,21 @@ func TestNNHelperValidation(t *testing.T) {
 		t.Fatalf("zero-width layernorm numel=%d", got.Numel())
 	}
 }
+
+func TestModuleConstructorValidation(t *testing.T) {
+	assertPanics(t, func() { _ = NewLinear(0, 1) })
+	assertPanics(t, func() { _ = NewLinear(1, -1) })
+	assertPanics(t, func() { _ = NewLayerNorm(-1) })
+	assertPanics(t, func() { _ = NewEmbedding(-1, 1) })
+	assertPanics(t, func() { _ = NewEmbedding(1, -1) })
+	assertPanics(t, func() { _ = (*LinearModule)(nil).Forward(Ones([]int{1, 1})) })
+	assertPanics(t, func() { _ = (*LayerNormModule)(nil).Forward(Ones([]int{1, 1})) })
+	assertPanics(t, func() { _ = (*EmbeddingModule)(nil).Forward([]int{0}) })
+}
+
+func TestTensorPropertiesNilSafe(t *testing.T) {
+	var x *Tensor
+	if x.Shape() != nil || x.Ndim() != 0 || x.Numel() != 0 || x.DType().Name != "" {
+		t.Fatalf("nil tensor properties not zero-valued")
+	}
+}

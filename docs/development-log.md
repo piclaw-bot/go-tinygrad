@@ -503,3 +503,11 @@ Hardened tensor neural-network utility ops:
 - `Softmax`, `LayerNorm`, and `GELU` now reject nil receivers explicitly.
 - `Softmax` and `LayerNorm` avoid division/indexing on zero-width last axes.
 - `LayerNorm` validates gamma/beta shape compatibility and requires them to be supplied together.
+
+## Session 45: Tensor module constructor audit
+
+Hardened tensor module wrappers:
+
+- `NewLinear`, `NewLayerNorm`, and `NewEmbedding` now reject invalid dimensions before initialization.
+- Module `Forward` methods now reject nil module receivers explicitly.
+- Tensor property accessors are nil-safe, returning zero values for nil tensors.
