@@ -38,7 +38,7 @@ Current implementation status:
 - Main-model helper primitives expose raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax outside `Generate`; `Generate` now uses these shared helpers.
 - Staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
 - `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` encode LiteRT-style accepted-prefix plus bonus-token semantics. `VerifiedCount` deliberately excludes the bonus token to match LiteRT-LM accounting.
-- `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches.
+- `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches; `LayerKVDims` derives the correct per-layer widths for Gemma4 variable/shared KV layouts.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the batched main-model verifier forward and the q-only drafter forward loop. There is no public speculative-decoding CLI flag yet.
 
