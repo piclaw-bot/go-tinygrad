@@ -16,8 +16,22 @@ type MTPAcceptance struct {
 	FirstRejectedIndex int // -1 when all drafts were accepted
 }
 
+// KVKeepTokens returns how many staged verifier positions must be retained in
+// KV cache: accepted draft prefix plus the verifier bonus token.
+func (a MTPAcceptance) KVKeepTokens() int {
+	return a.AcceptedPrefixLen + 1
+}
+
 // AcceptMTPDraftFromLogits greedily samples verifier logits and applies
 // AcceptMTPDraft. The verifier must provide G+1 logit rows for G drafted IDs.
+func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp FloatKVCheckpoint, kvDims []int, acceptance MTPAcceptance) error {
+	return cp.KeepAppended(kvCacheK, kvCacheV, kvDims, acceptance.KVKeepTokens())
+}
+
+func CommitAcceptedCompressedKV(caches []*CompressedKVCache, cp []CompressedKVCheckpoint, acceptance MTPAcceptance) error {
+	return KeepCompressedKVAppended(caches, cp, acceptance.KVKeepTokens())
+}
+
 func AcceptMTPDraftFromLogits(drafted []int, verifierLogits [][]float32) (MTPAcceptance, error) {
 	verifier := make([]int, len(verifierLogits))
 	for i, logits := range verifierLogits {

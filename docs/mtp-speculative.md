@@ -38,6 +38,7 @@ Loader status:
 - Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
 - Verifier-side helper methods now expose raw/scaled main token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax for reuse outside `Generate`.
 - Staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
+- `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches.
 - `AcceptMTPDraft` now encodes LiteRT-style accepted-prefix plus bonus-token semantics with verified-token accounting that excludes the bonus token.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
