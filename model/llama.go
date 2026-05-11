@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
 
 	"math"
@@ -149,12 +150,9 @@ var ForceOnTheFly bool
 
 func LoadLlama(dir string) (*LlamaModel, error) {
 	// Load config
-	cfgData, err := os.ReadFile(dir + "/config.json")
-	if err != nil {
-		return nil, err
-	}
 	var cfg LlamaConfig
-	if err := json.Unmarshal(cfgData, &cfg); err != nil {
+	cfgData, err := loaderconfig.ReadModelConfig(dir, &cfg)
+	if err != nil {
 		return nil, err
 	}
 	// Gemma4: text config is nested under text_config
@@ -238,19 +236,17 @@ func LoadLlama(dir string) (*LlamaModel, error) {
 	}
 
 	// Try loading quantization config (GPTQ)
-	if qcData, err := os.ReadFile(dir + "/quantize_config.json"); err == nil {
-		var qc struct {
-			Bits      int  `json:"bits"`
-			GroupSize int  `json:"group_size"`
-			Sym       bool `json:"sym"`
-		}
-		if err := json.Unmarshal(qcData, &qc); err == nil && qc.Bits > 0 {
-			cfg.QuantBits = qc.Bits
-			cfg.QuantGroup = qc.GroupSize
-			cfg.QuantSym = qc.Sym
-			cfg.QuantFormat = "gptq"
-			fmt.Printf("  GPTQ: %d-bit, group=%d, sym=%v\n", qc.Bits, qc.GroupSize, qc.Sym)
-		}
+	var qc struct {
+		Bits      int  `json:"bits"`
+		GroupSize int  `json:"group_size"`
+		Sym       bool `json:"sym"`
+	}
+	if ok, err := loaderconfig.ReadQuantizeConfig(dir, &qc); err == nil && ok && qc.Bits > 0 {
+		cfg.QuantBits = qc.Bits
+		cfg.QuantGroup = qc.GroupSize
+		cfg.QuantSym = qc.Sym
+		cfg.QuantFormat = "gptq"
+		fmt.Printf("  GPTQ: %d-bit, group=%d, sym=%v\n", qc.Bits, qc.GroupSize, qc.Sym)
 	}
 
 	// Try MLX quantization from config.json

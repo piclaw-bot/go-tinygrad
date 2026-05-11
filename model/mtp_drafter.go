@@ -2,13 +2,13 @@ package model
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/simd"
 	"github.com/rcarmo/go-pherence/tensor"
@@ -76,12 +76,8 @@ type drafterSafetensors interface {
 
 // LoadGemma4MTPDrafter loads a local Gemma4 assistant drafter asset.
 func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
-	cfgData, err := os.ReadFile(filepath.Join(dir, "config.json"))
-	if err != nil {
-		return nil, err
-	}
 	var acfg gemma4AssistantConfig
-	if err := json.Unmarshal(cfgData, &acfg); err != nil {
+	if _, err := loaderconfig.ReadModelConfig(dir, &acfg); err != nil {
 		return nil, err
 	}
 	if acfg.ModelType != "gemma4_assistant" {
