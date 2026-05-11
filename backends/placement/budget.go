@@ -2,6 +2,7 @@ package placement
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 )
@@ -45,10 +46,10 @@ type BudgetManager struct {
 // Pass 0 for any budget to leave it unlimited.
 func NewBudgetManager(residentMB, layerMB, streamMB, expertMB int64) *BudgetManager {
 	return &BudgetManager{
-		ResidentBudget: residentMB * 1024 * 1024,
-		LayerBudget:    layerMB * 1024 * 1024,
-		StreamBudget:   streamMB * 1024 * 1024,
-		ExpertBudget:   expertMB * 1024 * 1024,
+		ResidentBudget: mbToBytes(residentMB),
+		LayerBudget:    mbToBytes(layerMB),
+		StreamBudget:   mbToBytes(streamMB),
+		ExpertBudget:   mbToBytes(expertMB),
 	}
 }
 
@@ -60,17 +61,17 @@ func NewAutoBudgetManager(freeBytes, totalBytes uint64, residentMB, streamMB, ex
 	if totalBytes == 0 {
 		// No accelerator — all budgets are for CPU/mmap only.
 		return &BudgetManager{
-			StreamBudget: streamMB * 1024 * 1024,
+			StreamBudget: mbToBytes(streamMB),
 		}
 	}
 
-	residentBytes := residentMB * 1024 * 1024
-	streamBytes := streamMB * 1024 * 1024
-	expertBytes := expertMB * 1024 * 1024
+	residentBytes := mbToBytes(residentMB)
+	streamBytes := mbToBytes(streamMB)
+	expertBytes := mbToBytes(expertMB)
 
 	// Reserve 256MB headroom for work buffers, KV cache growth, etc.
 	headroom := int64(256 * 1024 * 1024)
-	available := int64(freeBytes) - headroom
+	available := uint64ToInt64(freeBytes) - headroom
 	if available < 0 {
 		available = 0
 	}
@@ -101,11 +102,15 @@ func NewAutoBudgetManager(freeBytes, totalBytes uint64, residentMB, streamMB, ex
 // Alloc tries to allocate bytes from the given budget category.
 // Returns true if the allocation fits, false if it would exceed the budget.
 func (b *BudgetManager) Alloc(cat BudgetCategory, bytes int64) bool {
+	if bytes <= 0 {
+		return bytes == 0
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	budget, used := b.budgetAndUsed(cat)
-	if budget > 0 && *used+bytes > budget {
+	if budget > 0 && bytes > budget-*used {
 		return false
 	}
 	*used += bytes
@@ -114,6 +119,10 @@ func (b *BudgetManager) Alloc(cat BudgetCategory, bytes int64) bool {
 
 // Free returns bytes to the given budget category.
 func (b *BudgetManager) Free(cat BudgetCategory, bytes int64) {
+	if bytes <= 0 {
+		return
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	_, used := b.budgetAndUsed(cat)
@@ -181,6 +190,23 @@ func (b *BudgetManager) Report() string {
 		b.ExpertHits.Load(), b.ExpertEvicts.Load(),
 		b.StreamHits.Load(), b.StreamEvicts.Load(),
 	)
+}
+
+func mbToBytes(mb int64) int64 {
+	if mb <= 0 {
+		return 0
+	}
+	if mb > math.MaxInt64/(1024*1024) {
+		return math.MaxInt64
+	}
+	return mb * 1024 * 1024
+}
+
+func uint64ToInt64(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(v)
 }
 
 func (b *BudgetManager) budgetAndUsed(cat BudgetCategory) (int64, *int64) {
