@@ -8,6 +8,8 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+
+	"github.com/rcarmo/go-pherence/runtime/memory"
 )
 
 // TensorInfo describes a tensor stored in a safetensors file.
@@ -22,9 +24,9 @@ type File struct {
 	Tensors    map[string]TensorInfo
 	data       []byte // tensor data region (after header)
 	headerSize int
-	mmapData   []byte       // full mmap'd region (nil if not mmap'd)
-	mmapFd     *os.File     // file handle for mmap'd file (nil if not mmap'd)
-	Advisor    *MmapAdvisor // madvise tracking (nil if not mmap'd)
+	mmapData   []byte              // full mmap'd region (nil if not mmap'd)
+	mmapFd     *os.File            // file handle for mmap'd file (nil if not mmap'd)
+	Advisor    *memory.MmapAdvisor // madvise tracking (nil if not mmap'd)
 }
 
 var eagerLoadSink byte
@@ -126,7 +128,7 @@ func Open(path string) (*File, error) {
 		headerSize: headerLen,
 		mmapData:   mapped,
 		mmapFd:     fd,
-		Advisor:    NewMmapAdvisor(mapped),
+		Advisor:    memory.NewMmapAdvisor(mapped),
 	}, nil
 }
 

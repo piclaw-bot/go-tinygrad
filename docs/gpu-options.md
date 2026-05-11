@@ -25,7 +25,7 @@ Loaded as one mega module + optional native BF16 module.
 - **DevBuf**: device-agnostic buffers with lazy CPU↔GPU transfer
 - **ExpertPool**: LRU cache for MoE expert weights with auto-sized VRAM budget
 - **BudgetManager**: 4-tier memory tracking (resident/layer/stream/expert), now owned by `backends/placement`
-- **MmapAdvisor**: page-level madvise tracking for weight streaming
+- **MmapAdvisor**: `runtime/memory` page-level madvise tracking for eager loading and future weight streaming
 - **Layer placement**: `backends/placement` auto-fit/manual policy (`--gpu-layers N`) with caller-supplied device memory availability
 
 ## Vulkan Compute (any GPU)

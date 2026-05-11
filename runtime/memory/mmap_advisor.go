@@ -1,4 +1,4 @@
-package safetensors
+package memory
 
 import (
 	"sort"
@@ -27,7 +27,7 @@ type AdvisedRange struct {
 	LastUsed int64 // unix nanos
 }
 
-// MmapAdvisor manages madvise hints on a mmap'd safetensors file.
+// MmapAdvisor manages madvise hints on an mmap'd byte region.
 // It tracks per-range residency and provides hit/evict counters
 // for budget tuning (inspired by ds4 streaming PR).
 type MmapAdvisor struct {

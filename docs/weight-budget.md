@@ -41,6 +41,7 @@ Backend-neutral budget and layer-placement policy now lives in `backends/placeme
 
 - `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters.
 - `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery.
+- `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints; `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
 - GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting.
 
 ## Budget Categories
@@ -212,14 +213,14 @@ user can adjust `--resident-mb` / `--expert-slots` based on actual usage.
 | ds4 concept | go-pherence equivalent |
 |---|---|
 | `hot_residency_plan` | `backends/placement.PlanLayerPlacement()` with resident estimates |
-| `madvise(DONTNEED/WILLNEED)` | `MmapAdvisor.Evict()/Prefetch()` |
+| `madvise(DONTNEED/WILLNEED)` | `runtime/memory.MmapAdvisor.Evict()/Prefetch()` |
 | `g_model_stream_hit/evict_count` | `backends/placement.BudgetManager` hit/evict counters |
 | `compact_expert_cache` | `ExpertPool` with LRU |
 | Metal shared memory | CUDA pinned memory + explicit DMA |
 | `split_after_layers=1` (streaming) | Layer-at-a-time GPU forward |
 | `DS4_METAL_RESIDENT_HOT_MB` | `--resident-mb` flag |
 | `hot_plan_add_tensor` | `backends/placement.BudgetManager.Alloc(...)` |
-| `hot_plan_merge` (range merging) | `MmapAdvisor` range coalescing |
+| `hot_plan_merge` (range merging) | `runtime/memory.MmapAdvisor` range coalescing |
 
 The key difference: ds4 runs on unified memory (Metal shared), so madvise
 directly controls GPU-visible residency. go-pherence runs on discrete GPU,

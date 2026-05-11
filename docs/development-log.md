@@ -184,3 +184,12 @@ Continued Phase 6.5 by separating backend-neutral placement policy from GPU devi
 - Kept `gpu/expert_pool.go` in `gpu` because `ExpertEntry` owns `GPUMLXWeight` resources that must be freed through the GPU backend.
 - Updated expert-pool accounting to depend on `backends/placement.BudgetManager`.
 - Updated Makefile and docs so the fast validation set includes `backends/placement`.
+
+## Session 6: Runtime memory extraction
+
+Moved mmap residency policy to a runtime owner:
+
+- Moved `loader/safetensors/mmap_advisor.go` to `runtime/memory` because it only needs an mmap'd byte slice and is not safetensors-specific.
+- Updated `loader/safetensors.File` to hold `*memory.MmapAdvisor` and create it via `memory.NewMmapAdvisor`.
+- Split tests so generic advisor range/merge behavior lives in `runtime/memory`, while safetensors keeps file/eager-load integration tests.
+- Updated docs to describe `runtime/memory` as the owner for mmap advice and future streaming policy.

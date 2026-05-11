@@ -30,6 +30,7 @@ model                -> LLaMA-family loader/types, CPU forward, GPU model wrappe
                         MoE, MTP scaffold, model-specific KV sizing
 models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging
+runtime/memory       -> mmap residency advice and range tracking
 runtime/quant        -> MLX/GPTQ CPU quant formats, dequantization, Q4 GEMV helpers
 tensor               -> tensor graph/runtime; transitional direct import of backends/simd
 ```
@@ -40,6 +41,7 @@ Current import direction:
 cmd -> loader/tokenizer, model, gpu
 model -> backends/simd, gpu, loader/{config,tokenizer,weights}, runtime/{kv,quant}, tensor
 models/bert -> backends/simd, loader/safetensors, tensor
+loader/safetensors -> runtime/memory
 loader/weights -> loader/safetensors
 tensor -> backends/simd
 gpu -> backends/placement, purego/unix only
@@ -164,7 +166,7 @@ Move/update directly:
 - `model/turboquant.go` -> `runtime/kv` ✅
 - `model/gptq.go`, `model/mlx.go`, `model/gemv_q4.go` -> `runtime/quant` ✅; `model/bf16.go` remains with BF16 model semantics for now
 - `gpu/budget.go`, `gpu/placement.go` -> `backends/placement` ✅; `gpu/expert_pool.go` stays in `gpu` because it owns `GPUMLXWeight` device resources
-- `loader/safetensors/mmap_advisor.go` -> `runtime/memory` if it becomes format-agnostic; otherwise keep under safetensors for now
+- `loader/safetensors/mmap_advisor.go` -> `runtime/memory` ✅; safetensors keeps only file/eager-load integration tests
 
 ### Backends
 
@@ -214,7 +216,7 @@ Each step should be one small commit with validation after it.
 Run after every non-trivial move. Include `runtime/kv` and `runtime/quant` in the fast package set because they now own shared KV and CPU quantization behavior:
 
 ```sh
-go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestMTP|Test.*KV|TestTokenizer|TestGQAAttention|TestMLX|TestBF16' -count=1
 go vet ./...
 git diff --check
@@ -230,7 +232,7 @@ go vet ./...
 If `go test ./...` is too memory-heavy with local fixtures, document the failure mode and run the focused package set plus explicit smoke tests:
 
 ```sh
-go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/kv ./runtime/quant ./models/bert ./tensor ./cmd/...
+go test ./gpu ./loader/... ./backends/placement ./backends/simd ./runtime/... ./models/bert ./tensor ./cmd/...
 go test ./model -run 'TestFloatKV|TestCompressedKV|TestMTP|TestLayerKVDim|TestGQAAttention|TestMLX|TestBF16|TestLoadLlama|TestGenerateSmolLM2' -count=1
 go test ./models/bert -count=1
 go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2
