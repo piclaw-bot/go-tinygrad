@@ -80,11 +80,11 @@ func loadMegaModule() {
 			{"mlx_gemv", MLXGemvPTX},
 			{"mlx_gemm", MLXGemmPTX},
 			{"mlx_correct", MLXCorrectPTX},
-			{"bf16_rms_norm", BF16RMSNormPTX},
-			{"bf16_rms_norm_no_scale", BF16RMSNormNoScalePTX},
-			{"bf16_vec_add", BF16VecAddPTX},
-			{"bf16_silu_mul", BF16SiLUMulPTX},
-			{"bf16_gelu_tanh_mul", BF16GELUTanhMulPTX},
+			{"bf16_rms_norm", ptx.BF16RMSNormPTX},
+			{"bf16_rms_norm_no_scale", ptx.BF16RMSNormNoScalePTX},
+			{"bf16_vec_add", ptx.BF16VecAddPTX},
+			{"bf16_silu_mul", ptx.BF16SiLUMulPTX},
+			{"bf16_gelu_tanh_mul", ptx.BF16GELUTanhMulPTX},
 			{"rms_norm_no_scale", ptx.RmsNormNoScalePTX},
 		}
 

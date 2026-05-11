@@ -273,3 +273,11 @@ Continued CUDA source-asset extraction:
 
 - Moved `PrefetchPTX` into `backends/cuda/ptx`.
 - Kept CUDA stream/event/graph helpers and the prefetch function handle in `gpu`, since they are runtime orchestration rather than source assets.
+
+## Session 17: BF16 PTX asset extraction
+
+Continued CUDA source-asset extraction:
+
+- Moved emulated BF16 PTX source strings into `backends/cuda/ptx`.
+- Moved native SM86 BF16 PTX source strings into `backends/cuda/ptx`.
+- Kept BF16 launch helpers, function handles, and native module loading in `gpu` because those still belong to CUDA runtime orchestration.
