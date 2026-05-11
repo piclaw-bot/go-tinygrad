@@ -388,3 +388,13 @@ Hardened safetensors loader edge cases:
 - F32/F16/BF16/I32/I64 conversion paths now reject byte lengths that are not element-aligned instead of silently truncating.
 - Sharded raw/I32 lookups now return errors for missing shard objects instead of nil-pointer panics.
 - Added small synthetic safetensors regression tests for invalid offsets, misaligned raw lengths, and missing shards.
+
+## Session 31: Tokenizer malformed-input audit
+
+Hardened tokenizer edge cases:
+
+- Loading a tokenizer with missing `model.vocab` no longer panics when added tokens are present.
+- Missing/null merge lists are accepted as empty merges.
+- `Encode`/`Decode` are nil-safe.
+- `Decode` now preserves unknown non-byte-level Unicode runes as UTF-8 instead of truncating them to a single byte.
+- Added focused tokenizer regression tests.

@@ -36,6 +36,9 @@ func Load(path string) (*Tokenizer, error) {
 		return nil, err
 	}
 
+	if raw.Model.Vocab == nil {
+		raw.Model.Vocab = map[string]int{}
+	}
 	t := &Tokenizer{
 		Vocab:    raw.Model.Vocab,
 		InvVocab: make(map[int]string, len(raw.Model.Vocab)),
@@ -49,6 +52,10 @@ func Load(path string) (*Tokenizer, error) {
 			t.Vocab[at.Content] = at.ID
 		}
 		t.InvVocab[at.ID] = at.Content
+	}
+
+	if len(raw.Model.Merges) == 0 || string(raw.Model.Merges) == "null" {
+		return t, nil
 	}
 
 	// Merges can be ["a b", ...] (strings) or [["a","b"], ...] (arrays)
@@ -75,6 +82,9 @@ func Load(path string) (*Tokenizer, error) {
 
 // Encode tokenizes a string into token IDs.
 func (t *Tokenizer) Encode(text string) []int {
+	if t == nil || t.Vocab == nil {
+		return nil
+	}
 	// Pre-tokenize: split on word boundaries, add space prefix
 	// Auto-detect: Ġ (U+0120, GPT-2/Qwen) or ▁ (U+2581, SentencePiece/Gemma)
 	spacePrefix := "\u0120" // GPT-2 default
@@ -143,6 +153,9 @@ func (t *Tokenizer) Encode(text string) []int {
 
 // Decode converts token IDs back to text.
 func (t *Tokenizer) Decode(ids []int) string {
+	if t == nil || t.InvVocab == nil {
+		return ""
+	}
 	var parts []string
 	for _, id := range ids {
 		if tok, ok := t.InvVocab[id]; ok {
@@ -159,7 +172,7 @@ func (t *Tokenizer) Decode(ids []int) string {
 		if b, ok := byteDecoder[r]; ok {
 			decoded = append(decoded, b)
 		} else {
-			decoded = append(decoded, byte(r))
+			decoded = append(decoded, string(r)...)
 		}
 	}
 	text = string(decoded)
