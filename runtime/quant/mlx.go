@@ -41,6 +41,9 @@ type MLXQuantWeight struct {
 // weight[outDim, inDim/packFactor] × scales[outDim, numGroups] + biases[outDim, numGroups]
 // Returns [outDim, inDim] float32.
 func DequantMLX(qw *MLXQuantWeight) []float32 {
+	if err := ValidateMLXQuantWeight(qw); err != nil {
+		return nil
+	}
 	out := make([]float32, qw.OutDim*qw.InDim)
 	packFactor := 32 / qw.Bits
 	mask := uint32((1 << qw.Bits) - 1)
@@ -70,6 +73,9 @@ func DequantMLX(qw *MLXQuantWeight) []float32 {
 // GemvMLQ performs matrix-vector multiply with MLX quantized weight.
 // out[outDim] = W_mlx[outDim, inDim] · x[inDim] (dequantized on-the-fly)
 func GemvMLQ(out, x []float32, qw *MLXQuantWeight) {
+	if err := ValidateMLXQuantWeight(qw); err != nil || len(out) < qw.OutDim || len(x) < qw.InDim {
+		return
+	}
 	packFactor := 32 / qw.Bits
 	mask := uint32((1 << qw.Bits) - 1)
 
@@ -98,6 +104,35 @@ func GemvMLQ(out, x []float32, qw *MLXQuantWeight) {
 		}
 		out[row] = sum
 	}
+}
+
+// ValidateMLXQuantWeight checks an in-memory MLX quantized weight before use.
+func ValidateMLXQuantWeight(qw *MLXQuantWeight) error {
+	if qw == nil {
+		return fmt.Errorf("nil MLX quant weight")
+	}
+	if qw.Bits <= 0 || qw.Bits > 32 || 32%qw.Bits != 0 {
+		return fmt.Errorf("invalid MLX bits=%d", qw.Bits)
+	}
+	if qw.OutDim <= 0 || qw.InDim <= 0 || qw.GroupSize <= 0 || qw.Groups <= 0 {
+		return fmt.Errorf("invalid MLX dims out=%d in=%d groupSize=%d groups=%d", qw.OutDim, qw.InDim, qw.GroupSize, qw.Groups)
+	}
+	packFactor := 32 / qw.Bits
+	if qw.InDim%packFactor != 0 {
+		return fmt.Errorf("MLX inDim=%d is not divisible by packFactor=%d", qw.InDim, packFactor)
+	}
+	if qw.InDim%qw.GroupSize != 0 || qw.Groups != qw.InDim/qw.GroupSize {
+		return fmt.Errorf("MLX group layout mismatch inDim=%d groupSize=%d groups=%d", qw.InDim, qw.GroupSize, qw.Groups)
+	}
+	wantWeight := qw.OutDim * (qw.InDim / packFactor)
+	wantScale := qw.OutDim * qw.Groups
+	if len(qw.Weight) < wantWeight {
+		return fmt.Errorf("MLX weight length=%d, expected at least %d", len(qw.Weight), wantWeight)
+	}
+	if len(qw.Scales) < wantScale || len(qw.Biases) < wantScale {
+		return fmt.Errorf("MLX scale/bias length=%d/%d, expected at least %d", len(qw.Scales), len(qw.Biases), wantScale)
+	}
+	return nil
 }
 
 // LoadMLXWeight loads an MLX affine quantized weight from safetensors.

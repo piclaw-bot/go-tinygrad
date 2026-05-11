@@ -362,3 +362,12 @@ Hardened TurboQuant and compressed KV cache helpers:
 - `CompressedKVCache` methods now handle nil/zero-dimension caches without division-by-zero or negative-capacity panics.
 - TurboQuant bit widths are clamped to the supported 1–8 bit range, and malformed/short packed inputs dequantize to bounded zero-filled vectors instead of indexing past the input.
 - Added regression coverage for malformed compressed-cache and TurboQuant inputs.
+
+## Session 28: Runtime MLX quant helper validation
+
+Hardened in-memory MLX quant helper use:
+
+- Added `ValidateMLXQuantWeight` for already-loaded MLX affine weights.
+- `DequantMLX` now returns nil for malformed weights instead of panicking.
+- `GemvMLQ` now no-ops on malformed weights or undersized input/output slices.
+- Added regression coverage for malformed and valid in-memory MLX weights.

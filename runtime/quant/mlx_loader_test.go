@@ -128,3 +128,34 @@ func TestLoadMLXWeightRejectsIntegerScales(t *testing.T) {
 		t.Fatalf("err=%v, want unsupported I32 dtype", err)
 	}
 }
+
+func TestValidateMLXQuantWeightAndMalformedUse(t *testing.T) {
+	if err := ValidateMLXQuantWeight(nil); err == nil {
+		t.Fatal("expected nil weight error")
+	}
+	bad := &MLXQuantWeight{Bits: 4, OutDim: 2, InDim: 8, GroupSize: 4, Groups: 2}
+	if err := ValidateMLXQuantWeight(bad); err == nil {
+		t.Fatal("expected missing tensor data error")
+	}
+	if got := DequantMLX(bad); got != nil {
+		t.Fatalf("DequantMLX malformed = %v, want nil", got)
+	}
+	out := []float32{123}
+	GemvMLQ(out, []float32{1}, bad)
+	if out[0] != 123 {
+		t.Fatalf("GemvMLQ malformed changed output to %f", out[0])
+	}
+	good := &MLXQuantWeight{
+		Weight:    []uint32{0x11111111, 0x22222222},
+		Scales:    []float32{1, 1},
+		Biases:    []float32{0, 0},
+		OutDim:    2,
+		InDim:     8,
+		Groups:    1,
+		GroupSize: 8,
+		Bits:      4,
+	}
+	if err := ValidateMLXQuantWeight(good); err != nil {
+		t.Fatalf("ValidateMLXQuantWeight good: %v", err)
+	}
+}
