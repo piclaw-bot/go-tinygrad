@@ -228,3 +228,11 @@ Reduced accidental test/compile load from the transitional `model` package:
 - Added the `diagnostic` build tag to the Gemma4 trace/sensitivity/generation diagnostic test files under `model/`.
 - Kept their existing `GEMMA4_TRACE_TEST=1` runtime guard, so heavy local fixture/GPU diagnostics now require both `-tags diagnostic` and the explicit environment opt-in.
 - Updated Makefile/refactor-plan documentation examples to include `-tags diagnostic` for Gemma4 GPU diagnostics.
+
+## Session 11: BF16 scaffolding cleanup
+
+Removed dead model-local BF16 forward-path experiment scaffolding:
+
+- Deleted the unused `model/BF16Hidden` wrapper and `UseBF16` helper, which had no non-self references and was not part of the active CPU/GPU BF16 paths.
+- Kept the active BF16 conversion/math helpers in `model/bf16.go` and backend SIMD/CUDA BF16 kernels intact.
+- Re-ran the focused model gate, fast package gate, no-test compile sweep, vet, and whitespace checks.
