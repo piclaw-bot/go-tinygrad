@@ -38,6 +38,7 @@ Current implementation status:
 - Main-model helper primitives expose raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax outside `Generate`; `Generate` now uses these shared helpers.
 - Staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
 - `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` encode LiteRT-style accepted-prefix plus bonus-token semantics. `VerifiedCount` deliberately excludes the bonus token to match LiteRT-LM accounting.
+- `MTPVerifierResult` validates verifier logits/activation outputs, derives acceptance, and can commit the accepted KV prefix for float or TurboQuant-backed caches.
 - `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches; `LayerKVDims` derives the correct per-layer widths for Gemma4 variable/shared KV layouts.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
 - Remaining gap: implement the batched main-model verifier forward and the q-only drafter forward loop. There is no public speculative-decoding CLI flag yet.
@@ -77,10 +78,11 @@ Verifier (main model batched forward):
 4. **Accept/reject semantics** ✅ — `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` keep the matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
 5. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
 6. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
-7. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
-8. **Drafter forward loop** — run q-only assistant layers for `G` steps with external/shared KV and projected activation carry.
-9. **End-to-end speculative decode** — integrate verifier, drafter, acceptance, and KV commit into generation.
-10. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
+7. **Main-model verifier result contract** ✅ — `MTPVerifierTokens`/`MTPVerifierResult` define `[input_token]+drafted`, logits rows, final activation, acceptance, and KV commit hooks.
+8. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
+9. **Drafter forward loop** — run q-only assistant layers for `G` steps with external/shared KV and projected activation carry.
+10. **End-to-end speculative decode** — integrate verifier, drafter, acceptance, and KV commit into generation.
+11. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations
 
