@@ -140,7 +140,11 @@ func cloneShape(s []int) []int {
 
 func shapeSize(shape []int) int {
 	n := 1
+	maxInt := int(^uint(0) >> 1)
 	for _, d := range shape {
+		if d < 0 || (d > 0 && n > maxInt/d) {
+			return -1
+		}
 		n *= d
 	}
 	return n
@@ -148,7 +152,7 @@ func shapeSize(shape []int) int {
 
 // BroadcastArg stores shapes for broadcast binary ops.
 type BroadcastArg struct {
-	OutDims  []int
-	LhsDims  []int
-	RhsDims  []int
+	OutDims []int
+	LhsDims []int
+	RhsDims []int
 }

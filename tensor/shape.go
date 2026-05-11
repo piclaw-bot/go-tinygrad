@@ -10,6 +10,9 @@ type Shape struct {
 
 // NewShape creates a contiguous shape.
 func NewShape(dims []int) Shape {
+	if shapeSize(dims) < 0 {
+		panic(fmt.Sprintf("invalid shape: %v", dims))
+	}
 	strides := make([]int, len(dims))
 	stride := 1
 	for i := len(dims) - 1; i >= 0; i-- {
@@ -47,9 +50,17 @@ func (s Shape) Reshape(newDims []int) (Shape, error) {
 
 // Permute returns a new shape with transposed dimensions.
 func (s Shape) Permute(order []int) Shape {
+	if len(order) != len(s.Dims) || len(s.Strides) != len(s.Dims) {
+		panic(fmt.Sprintf("permute: invalid order %v for shape %v", order, s.Dims))
+	}
+	seen := make([]bool, len(s.Dims))
 	dims := make([]int, len(order))
 	strides := make([]int, len(order))
 	for i, o := range order {
+		if o < 0 || o >= len(s.Dims) || seen[o] {
+			panic(fmt.Sprintf("permute: invalid order %v for shape %v", order, s.Dims))
+		}
+		seen[o] = true
 		dims[i] = s.Dims[o]
 		strides[i] = s.Strides[o]
 	}
@@ -58,6 +69,9 @@ func (s Shape) Permute(order []int) Shape {
 
 // Expand returns a new shape with broadcast dimensions.
 func (s Shape) Expand(newDims []int) Shape {
+	if len(newDims) != len(s.Dims) || len(s.Strides) != len(s.Dims) || shapeSize(newDims) < 0 {
+		panic(fmt.Sprintf("expand: invalid target %v for shape %v", newDims, s.Dims))
+	}
 	strides := make([]int, len(newDims))
 	for i := range newDims {
 		if s.Dims[i] == newDims[i] {

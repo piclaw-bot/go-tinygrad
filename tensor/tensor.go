@@ -16,7 +16,8 @@ type Tensor struct {
 
 // FromFloat32 creates a tensor from a float32 slice.
 func FromFloat32(data []float32, shape []int) *Tensor {
-	if shapeSize(shape) != len(data) {
+	n := shapeSize(shape)
+	if n < 0 || n != len(data) {
 		panic("shape mismatch")
 	}
 	u := BufferOp(Float32, shape)
@@ -31,12 +32,18 @@ func FromFloat32(data []float32, shape []int) *Tensor {
 // Zeros creates a zero-filled tensor.
 func Zeros(shape []int) *Tensor {
 	n := shapeSize(shape)
+	if n < 0 {
+		panic("invalid shape")
+	}
 	return FromFloat32(make([]float32, n), shape)
 }
 
 // Ones creates a ones-filled tensor.
 func Ones(shape []int) *Tensor {
 	n := shapeSize(shape)
+	if n < 0 {
+		panic("invalid shape")
+	}
 	data := make([]float32, n)
 	for i := range data {
 		data[i] = 1
@@ -47,6 +54,9 @@ func Ones(shape []int) *Tensor {
 // Rand creates a tensor with uniform random values in [0, 1).
 func Rand(shape []int) *Tensor {
 	n := shapeSize(shape)
+	if n < 0 {
+		panic("invalid shape")
+	}
 	data := make([]float32, n)
 	for i := range data {
 		data[i] = rand.Float32()
@@ -57,6 +67,9 @@ func Rand(shape []int) *Tensor {
 // Full creates a tensor filled with a constant value.
 func Full(shape []int, val float32) *Tensor {
 	n := shapeSize(shape)
+	if n < 0 {
+		panic("invalid shape")
+	}
 	data := make([]float32, n)
 	for i := range data {
 		data[i] = val
@@ -66,10 +79,10 @@ func Full(shape []int, val float32) *Tensor {
 
 // --- Properties ---
 
-func (t *Tensor) Shape() []int  { return t.shape.Dims }
-func (t *Tensor) DType() DType  { return t.uop.DType }
-func (t *Tensor) Ndim() int     { return t.shape.Ndim() }
-func (t *Tensor) Numel() int    { return t.shape.Numel() }
+func (t *Tensor) Shape() []int { return t.shape.Dims }
+func (t *Tensor) DType() DType { return t.uop.DType }
+func (t *Tensor) Ndim() int    { return t.shape.Ndim() }
+func (t *Tensor) Numel() int   { return t.shape.Numel() }
 
 // --- Lazy binary ops ---
 
@@ -95,11 +108,11 @@ func (t *Tensor) Max(other *Tensor) *Tensor {
 
 // --- Lazy unary ops ---
 
-func (t *Tensor) Neg() *Tensor    { return t.unaryOp(OpNeg) }
-func (t *Tensor) Sqrt() *Tensor   { return t.unaryOp(OpSqrt) }
-func (t *Tensor) Exp2() *Tensor   { return t.unaryOp(OpExp2) }
-func (t *Tensor) Log2() *Tensor   { return t.unaryOp(OpLog2) }
-func (t *Tensor) Recip() *Tensor  { return t.unaryOp(OpReciprocal) }
+func (t *Tensor) Neg() *Tensor   { return t.unaryOp(OpNeg) }
+func (t *Tensor) Sqrt() *Tensor  { return t.unaryOp(OpSqrt) }
+func (t *Tensor) Exp2() *Tensor  { return t.unaryOp(OpExp2) }
+func (t *Tensor) Log2() *Tensor  { return t.unaryOp(OpLog2) }
+func (t *Tensor) Recip() *Tensor { return t.unaryOp(OpReciprocal) }
 
 // --- Lazy reduce ops ---
 

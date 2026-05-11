@@ -431,3 +431,12 @@ Hardened MTP drafter helper methods:
 - `AssistantTokenEmbeddingInto` now verifies the embedding tensor backing data is large enough for the requested row before slicing.
 - `PreProjectInto` and `PostProjectInto` now reject invalid dimensions and short projection buffers before indexing.
 - Added regression coverage for short embedding/projection backing data.
+
+## Session 36: Tensor shape validation audit
+
+Hardened tensor shape helpers:
+
+- `shapeSize` now rejects negative dimensions and integer overflow with a negative sentinel.
+- Tensor constructors reject malformed shapes before allocation.
+- `NewShape`, `Permute`, and `Expand` now validate malformed dimensions/orders before indexing.
+- Added regression coverage for negative, overflowing, duplicate, short, and out-of-range shape operations.

@@ -393,3 +393,25 @@ func TestFusionCorrectness(t *testing.T) {
 		}
 	}
 }
+
+func TestShapeValidationRejectsMalformedInputs(t *testing.T) {
+	assertPanics(t, func() { _ = NewShape([]int{-1, 2}) })
+	assertPanics(t, func() { _ = Zeros([]int{-1}) })
+	assertPanics(t, func() { _ = Ones([]int{int(^uint(0) >> 1), 2}) })
+	s := NewShape([]int{2, 3})
+	assertPanics(t, func() { _ = s.Permute([]int{0}) })
+	assertPanics(t, func() { _ = s.Permute([]int{0, 0}) })
+	assertPanics(t, func() { _ = s.Permute([]int{0, 2}) })
+	assertPanics(t, func() { _ = s.Expand([]int{2}) })
+	assertPanics(t, func() { _ = s.Expand([]int{2, -3}) })
+}
+
+func assertPanics(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+	fn()
+}
