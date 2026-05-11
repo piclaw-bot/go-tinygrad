@@ -451,3 +451,14 @@ func TestUnsafeSliceHelpersEmptyInputs(t *testing.T) {
 		t.Fatalf("zero-size tensor Data=%v, want nil", got)
 	}
 }
+
+func TestRealizeValidationRejectsMalformedUOps(t *testing.T) {
+	assertPanics(t, func() { _ = realize(nil, NewShape([]int{1})) })
+	assertPanics(t, func() { _ = realize(&UOp{Op: OpNeg, DType: Float32, Src: []*UOp{nil}}, NewShape([]int{1})) })
+	assertPanics(t, func() { _ = unaryEval(nil, 1, func(v float32) float32 { return v }) })
+	assertPanics(t, func() { _ = binaryEval(nil, nil, 1, func(a, b float32) float32 { return a + b }) })
+	assertPanics(t, func() {
+		_ = reduceEval(nil, NewShape([]int{1}), []int{0}, func(a, b float32) float32 { return a + b }, 0)
+	})
+	assertPanics(t, func() { _ = guessInputShape(&UOp{}) })
+}

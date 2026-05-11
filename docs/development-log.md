@@ -464,3 +464,11 @@ Hardened tensor byte/float reinterpret helpers:
 - `byteSliceToFloat32` and `float32ToByteSlice` now return nil for empty inputs instead of indexing element zero.
 - `Buffer.Float32Data` is nil-safe for nil buffers.
 - Added regression coverage for empty/zero-size tensor data paths.
+
+## Session 40: Tensor realization validation audit
+
+Hardened tensor realization internals:
+
+- `realize` now rejects nil UOps, nil sources, and invalid shapes before dispatch.
+- `allocBuffer`, unary/binary eval, broadcast eval, reduce eval, and input-shape guessing now validate malformed internal inputs before indexing.
+- Added regression coverage for malformed UOp/eval helpers.
