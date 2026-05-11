@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -41,11 +42,11 @@ type MmapAdvisor struct {
 	// Global counters
 	TotalPrefetches atomic.Uint64
 	TotalEvictions  atomic.Uint64
-	TotalBytes      atomic.Int64 // currently "hot" bytes
+	TotalBytes      atomic.Int64 // currently non-cold bytes
 	PeakBytes       int64
 }
 
-// NewMmapAdvisor creates an advisor for a mmap'd file region.
+// NewMmapAdvisor creates an advisor for a mmap'd byte region.
 func NewMmapAdvisor(mmapData []byte) *MmapAdvisor {
 	ps := int64(syscall.Getpagesize())
 	if ps <= 0 {
@@ -66,86 +67,94 @@ func (a *MmapAdvisor) align(offset, bytes int64) (int64, int64) {
 	return alignedOff, alignedBytes
 }
 
-// Prefetch issues madvise(MADV_WILLNEED) for a range, pre-faulting pages.
-func (a *MmapAdvisor) Prefetch(offset, bytes int64) {
-	if len(a.base) == 0 || bytes <= 0 {
-		return
+func (a *MmapAdvisor) boundedRange(offset, bytes int64) (int64, int64, bool) {
+	if len(a.base) == 0 || bytes <= 0 || offset < 0 || offset >= int64(len(a.base)) {
+		return 0, 0, false
 	}
 	off, sz := a.align(offset, bytes)
+	if off < 0 || off >= int64(len(a.base)) {
+		return 0, 0, false
+	}
 	if off+sz > int64(len(a.base)) {
 		sz = int64(len(a.base)) - off
 	}
-	if sz <= 0 {
-		return
+	return off, sz, sz > 0
+}
+
+// Prefetch issues madvise(MADV_WILLNEED) for a range, pre-faulting pages.
+func (a *MmapAdvisor) Prefetch(offset, bytes int64) error {
+	off, sz, ok := a.boundedRange(offset, bytes)
+	if !ok {
+		return nil
 	}
 
-	syscall.Madvise(a.base[off:off+sz], syscall.MADV_WILLNEED)
+	if err := syscall.Madvise(a.base[off:off+sz], syscall.MADV_WILLNEED); err != nil {
+		return fmt.Errorf("madvise WILLNEED [%d:%d]: %w", off, off+sz, err)
+	}
 
 	a.mu.Lock()
 	r, ok := a.ranges[off]
 	if !ok {
-		r = &AdvisedRange{Offset: off, Bytes: sz}
+		r = &AdvisedRange{Offset: off}
 		a.ranges[off] = r
 	}
+	r.Bytes = sz
 	r.State = RangePrefetching
 	r.Hits++
 	r.LastUsed = time.Now().UnixNano()
+	a.recomputeTotalsLocked()
 	a.mu.Unlock()
 
 	a.TotalPrefetches.Add(1)
-	newTotal := a.TotalBytes.Add(sz)
-	a.mu.Lock()
-	if newTotal > a.PeakBytes {
-		a.PeakBytes = newTotal
-	}
-	a.mu.Unlock()
+	return nil
 }
 
 // Touch marks a range as actively used (hot).
 func (a *MmapAdvisor) Touch(offset, bytes int64) {
-	off, sz := a.align(offset, bytes)
+	off, sz, ok := a.boundedRange(offset, bytes)
+	if !ok {
+		return
+	}
 
 	a.mu.Lock()
 	r, ok := a.ranges[off]
 	if !ok {
-		r = &AdvisedRange{Offset: off, Bytes: sz}
+		r = &AdvisedRange{Offset: off}
 		a.ranges[off] = r
 	}
+	r.Bytes = sz
 	r.State = RangeHot
 	r.Hits++
 	r.LastUsed = time.Now().UnixNano()
+	a.recomputeTotalsLocked()
 	a.mu.Unlock()
 }
 
 // Evict issues madvise(MADV_DONTNEED) for a range, releasing pages.
-func (a *MmapAdvisor) Evict(offset, bytes int64) {
-	if len(a.base) == 0 || bytes <= 0 {
-		return
-	}
-	off, sz := a.align(offset, bytes)
-	if off+sz > int64(len(a.base)) {
-		sz = int64(len(a.base)) - off
-	}
-	if sz <= 0 {
-		return
+func (a *MmapAdvisor) Evict(offset, bytes int64) error {
+	off, sz, ok := a.boundedRange(offset, bytes)
+	if !ok {
+		return nil
 	}
 
-	syscall.Madvise(a.base[off:off+sz], syscall.MADV_DONTNEED)
+	if err := syscall.Madvise(a.base[off:off+sz], syscall.MADV_DONTNEED); err != nil {
+		return fmt.Errorf("madvise DONTNEED [%d:%d]: %w", off, off+sz, err)
+	}
 
 	a.mu.Lock()
-	r, ok := a.ranges[off]
-	if ok {
+	if r, ok := a.ranges[off]; ok {
 		r.State = RangeCold
 		r.Evicts++
 	}
+	a.recomputeTotalsLocked()
 	a.mu.Unlock()
 
 	a.TotalEvictions.Add(1)
-	a.TotalBytes.Add(-sz)
+	return nil
 }
 
 // EvictCold evicts all ranges that haven't been touched since cutoff (unix nanos).
-func (a *MmapAdvisor) EvictCold(cutoffNanos int64) int {
+func (a *MmapAdvisor) EvictCold(cutoffNanos int64) (int, error) {
 	a.mu.Lock()
 	var toEvict []AdvisedRange
 	for _, r := range a.ranges {
@@ -155,10 +164,12 @@ func (a *MmapAdvisor) EvictCold(cutoffNanos int64) int {
 	}
 	a.mu.Unlock()
 
-	for _, r := range toEvict {
-		a.Evict(r.Offset, r.Bytes)
+	for i, r := range toEvict {
+		if err := a.Evict(r.Offset, r.Bytes); err != nil {
+			return i, err
+		}
 	}
-	return len(toEvict)
+	return len(toEvict), nil
 }
 
 // MergeRanges coalesces overlapping/adjacent tracked ranges.
@@ -186,8 +197,8 @@ func (a *MmapAdvisor) MergeRanges() {
 	for i := 1; i < len(sorted); i++ {
 		r := sorted[i]
 		curEnd := cur.Offset + cur.Bytes
-		if r.Offset <= curEnd {
-			// Overlapping or adjacent — extend
+		if r.Offset <= curEnd && mergeCompatible(cur.State, r.State) {
+			// Overlapping or adjacent with equivalent residency — extend
 			rEnd := r.Offset + r.Bytes
 			if rEnd > curEnd {
 				cur.Bytes = rEnd - cur.Offset
@@ -196,6 +207,9 @@ func (a *MmapAdvisor) MergeRanges() {
 			cur.Evicts += r.Evicts
 			if r.LastUsed > cur.LastUsed {
 				cur.LastUsed = r.LastUsed
+			}
+			if r.State > cur.State {
+				cur.State = r.State
 			}
 		} else {
 			// Gap — emit current, start new
@@ -207,6 +221,24 @@ func (a *MmapAdvisor) MergeRanges() {
 	c := cur
 	merged[c.Offset] = &c
 	a.ranges = merged
+	a.recomputeTotalsLocked()
+}
+
+func mergeCompatible(a, b RangeState) bool {
+	return (a == RangeCold) == (b == RangeCold)
+}
+
+func (a *MmapAdvisor) recomputeTotalsLocked() {
+	var total int64
+	for _, r := range a.ranges {
+		if r.State != RangeCold {
+			total += r.Bytes
+		}
+	}
+	a.TotalBytes.Store(total)
+	if total > a.PeakBytes {
+		a.PeakBytes = total
+	}
 }
 
 // Stats returns (numRanges, totalHotBytes, peakBytes).

@@ -141,9 +141,9 @@ type AdvisedRange struct {
     LastUsed int64       // timestamp
 }
 
-func (a *MmapAdvisor) Prefetch(offset, bytes int64)  // MADV_WILLNEED
-func (a *MmapAdvisor) Evict(offset, bytes int64)      // MADV_DONTNEED
-func (a *MmapAdvisor) Touch(offset, bytes int64)       // update tracking
+func (a *MmapAdvisor) Prefetch(offset, bytes int64) error // MADV_WILLNEED
+func (a *MmapAdvisor) Evict(offset, bytes int64) error     // MADV_DONTNEED
+func (a *MmapAdvisor) Touch(offset, bytes int64)            // update tracking
 ```
 
 ### Phase 3: Layer Placement Policy

@@ -39,7 +39,9 @@ func (f *File) EagerLoad() (int64, error) {
 		return 0, nil
 	}
 	if f.Advisor != nil {
-		f.Advisor.Prefetch(0, int64(len(f.mmapData)))
+		if err := f.Advisor.Prefetch(0, int64(len(f.mmapData))); err != nil {
+			return 0, fmt.Errorf("safetensors: eager-load prefetch: %w", err)
+		}
 	}
 	pageSize := syscall.Getpagesize()
 	if pageSize <= 0 {

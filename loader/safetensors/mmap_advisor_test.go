@@ -23,7 +23,9 @@ func TestMmapAdvisorWithFile(t *testing.T) {
 	for name, info := range f.Tensors {
 		off := int64(info.DataOffsets[0]) + int64(8+f.headerSize) // absolute offset in mmap
 		sz := int64(info.DataOffsets[1] - info.DataOffsets[0])
-		a.Prefetch(off, sz)
+		if err := a.Prefetch(off, sz); err != nil {
+			t.Fatalf("Prefetch %s: %v", name, err)
+		}
 		_ = name
 	}
 

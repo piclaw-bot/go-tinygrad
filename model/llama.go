@@ -654,10 +654,11 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 			if cfg.QuantFormat == "mlx" && cfg.QuantBits > 0 {
 				if qw, err := quant.LoadMLXWeight(f, prefix+p+".per_layer_input_gate", hpl, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
 					layer.PLIGate = quant.DequantMLX(qw)
-					qw2, _ := quant.LoadMLXWeight(f, prefix+p+".per_layer_projection", h, hpl, cfg.QuantGroup, cfg.QuantBits)
-					if qw2 != nil {
-						layer.PLIProj = quant.DequantMLX(qw2)
+					qw2, err := quant.LoadMLXWeight(f, prefix+p+".per_layer_projection", h, hpl, cfg.QuantGroup, cfg.QuantBits)
+					if err != nil {
+						panic(fmt.Sprintf("load MLX %s.per_layer_projection: %v", p, err))
 					}
+					layer.PLIProj = quant.DequantMLX(qw2)
 					if tryLoad(p + ".post_per_layer_input_norm.weight") {
 						layer.PLIPostNorm = load(p+".post_per_layer_input_norm.weight", []int{h}).Data()
 					}
