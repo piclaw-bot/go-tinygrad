@@ -83,6 +83,18 @@ func TestValidateShapeRejectsTransposedShape(t *testing.T) {
 	}
 }
 
+func TestValidateShapeRejectsInvalidDims(t *testing.T) {
+	if err := validateShape("bad", []int{-1, 2}, nil, 2); err == nil {
+		t.Fatal("validateShape accepted negative expected dim")
+	}
+	if err := validateShape("bad", []int{2}, []int{-2}, 2); err == nil {
+		t.Fatal("validateShape accepted negative actual dim")
+	}
+	if got := shapeProduct([]int{int(^uint(0) >> 1), 2}); got >= 0 {
+		t.Fatalf("shapeProduct overflow=%d, want negative sentinel", got)
+	}
+}
+
 func TestLoadGemma4MTPDrafterRejectsMalformedConfigBeforeWeights(t *testing.T) {
 	dir := t.TempDir()
 	cfg := `{

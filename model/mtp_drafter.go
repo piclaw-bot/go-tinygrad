@@ -307,17 +307,25 @@ func simdDot(a, b []float32) float32 {
 }
 
 func validateShape(name string, expected, actual []int, n int) error {
+	expectedN := shapeProduct(expected)
+	if expectedN < 0 {
+		return fmt.Errorf("load %s: invalid expected shape %v", name, expected)
+	}
 	if len(actual) == 0 {
-		if shapeProduct(expected) != n {
-			return fmt.Errorf("load %s: shape unavailable, expected %v (%d elems), got %d elems", name, expected, shapeProduct(expected), n)
+		if expectedN != n {
+			return fmt.Errorf("load %s: shape unavailable, expected %v (%d elems), got %d elems", name, expected, expectedN, n)
 		}
 		return nil
+	}
+	actualN := shapeProduct(actual)
+	if actualN < 0 {
+		return fmt.Errorf("load %s: invalid actual shape %v", name, actual)
 	}
 	if !sameShape(actual, expected) {
 		return fmt.Errorf("load %s: shape mismatch: expected %v, actual %v", name, expected, actual)
 	}
-	if shapeProduct(actual) != n {
-		return fmt.Errorf("load %s: shape %v has %d elems, data has %d", name, actual, shapeProduct(actual), n)
+	if actualN != n {
+		return fmt.Errorf("load %s: shape %v has %d elems, data has %d", name, actual, actualN, n)
 	}
 	return nil
 }
@@ -336,7 +344,11 @@ func sameShape(a, b []int) bool {
 
 func shapeProduct(shape []int) int {
 	prod := 1
+	maxInt := int(^uint(0) >> 1)
 	for _, dim := range shape {
+		if dim < 0 || (dim > 0 && prod > maxInt/dim) {
+			return -1
+		}
 		prod *= dim
 	}
 	return prod
@@ -347,7 +359,10 @@ func loadIntTensor(f weights.Source, name string, expectedLen int) ([]int, error
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", name, err)
 	}
-	if err := validateShape(name, []int{expectedLen}, shape, shapeProduct(shape)); err != nil {
+	if expectedLen < 0 {
+		return nil, fmt.Errorf("load %s: invalid expected length %d", name, expectedLen)
+	}
+	if err := validateShape(name, []int{expectedLen}, shape, expectedLen); err != nil {
 		return nil, err
 	}
 	out := make([]int, expectedLen)

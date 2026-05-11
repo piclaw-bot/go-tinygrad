@@ -415,3 +415,11 @@ Hardened low-level CPU GEMV helpers:
 - `gemv`, `gemvNT`, and `gemvNTParallel` now validate dimensions and slice lengths before indexing or taking unsafe pointers.
 - Malformed calls zero the destination and return instead of panicking or reading short buffers.
 - Added regression coverage for malformed and valid GEMV helper calls.
+
+## Session 34: MTP drafter shape validation audit
+
+Hardened Gemma4 MTP drafter loader helpers:
+
+- `validateShape` now rejects negative dimensions and detects shape-product overflow via `shapeProduct`.
+- `loadIntTensor` validates caller-provided expected lengths directly instead of trusting the raw shape product as the data length.
+- Added regression coverage for negative and overflowing shape dimensions.
