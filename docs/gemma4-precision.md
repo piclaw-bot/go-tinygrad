@@ -107,5 +107,5 @@ state to a CPU or fresh-GPU recomputation:
 - `model/gpu_forward.go` — GPU forward path with all fixes
 - `model/llama.go` — CPU forward path with SWA masking + correct norms
 - `model/debug_hooks.go` — diagnostic override hooks
-- `model/gemma4_*_test.go` — ~60 env-gated diagnostic tests
+- `model/gemma4_*_test.go` — diagnostic tests behind `//go:build diagnostic` plus `GEMMA4_TRACE_TEST=1`
 - `gpu/devbuf.go` — DevBuf with `DevToBF16`, `DevScale`

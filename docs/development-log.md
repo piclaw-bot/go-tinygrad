@@ -220,3 +220,11 @@ Audited the newly split runtime/backend packages for concrete edge cases and sta
 - Hardened `gpu.ExpertPool` for disabled zero-slot pools, nil entries, replacement behavior, and replacement budget accounting.
 - Hardened `runtime/quant` validation: MLX scale/bias tensors must be F32/F16/BF16, GPTQ qweight/g_idx/scales/qzeros are validated before use, and public Q4 GEMV calls validate their slices/dimensions instead of panicking.
 - Updated focused regression tests for each fix and kept the fast validation gate green.
+
+## Session 10: Diagnostic test quarantine
+
+Reduced accidental test/compile load from the transitional `model` package:
+
+- Added the `diagnostic` build tag to the Gemma4 trace/sensitivity/generation diagnostic test files under `model/`.
+- Kept their existing `GEMMA4_TRACE_TEST=1` runtime guard, so heavy local fixture/GPU diagnostics now require both `-tags diagnostic` and the explicit environment opt-in.
+- Updated Makefile/refactor-plan documentation examples to include `-tags diagnostic` for Gemma4 GPU diagnostics.

@@ -28,7 +28,7 @@ clean:
 
 # GPU-heavy tests (require GEMMA4_TRACE_TEST=1 and GPU)
 test-gpu:
-	GEMMA4_TRACE_TEST=1 go test -count=1 -run TestGemma4GPUBench ./model -v
+	GEMMA4_TRACE_TEST=1 go test -tags diagnostic -count=1 -run TestGemma4GPUBench ./model -v
 
 # Quick smoke test
 smoke:

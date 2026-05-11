@@ -67,7 +67,7 @@ gpu/attn_ptx.go       ~560 lines: attention kernels
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
-6. **Tests mix durable validation with diagnostics.** Many Gemma4 trace/sensitivity tests are correctly gated with `GEMMA4_TRACE_TEST=1`, but they live beside normal unit tests and make the package look larger and riskier than it is.
+6. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
 7. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
 ## Target layout
@@ -195,7 +195,7 @@ Classify tests before moving them:
 
 - **Durable unit tests**: pure helpers, tensor math, safetensors parsing, SIMD dispatch, KV staging, MTP acceptance, tokenizer, quant roundtrips.
 - **Fixture smoke tests**: SmolLM2/Gemma4/GTE paths that require local model files but are small enough to run intentionally.
-- **Heavy diagnostics**: Gemma4 GPU layerwalk/optrace/sensitivity/generation tests gated by `GEMMA4_TRACE_TEST=1`; move to package-specific diagnostic files or add clearer build tags later.
+- **Heavy diagnostics**: Gemma4 GPU layerwalk/optrace/sensitivity/generation tests tagged with `//go:build diagnostic` and gated by `GEMMA4_TRACE_TEST=1`; move to package-specific diagnostic folders/files during the later model split.
 
 Do not let the mechanical move phase accidentally ungate heavy diagnostics.
 
@@ -209,7 +209,7 @@ Each step should be one small commit with validation after it.
 4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. CUDA/PTX remains in `gpu` until the CUDA split can preserve model upload/DevBuf semantics cleanly.
 5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
-7. **Test quarantine.** Move or tag diagnostic tests; keep focused unit tests close to packages.
+7. **Test quarantine.** Gemma4 diagnostic tests are build-tagged ✅; later model-package split should move them next to their architecture package.
 8. **Remove temporary bridges.** Only if any were unavoidable during earlier large moves.
 
 ## Validation gate
@@ -243,7 +243,7 @@ go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2
 GPU smoke tests should remain explicit and environment-gated:
 
 ```sh
-GEMMA4_TRACE_TEST=1 go test ./model -run 'TestGemma4GPUGenerate|TestGemma4KVSharingGPU' -count=1
+GEMMA4_TRACE_TEST=1 go test -tags diagnostic ./model -run 'TestGemma4GPUGenerate|TestGemma4KVSharingGPU' -count=1
 ```
 
 ## Definition of done for Phase 6.5
