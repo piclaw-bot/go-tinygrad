@@ -1,4 +1,4 @@
-package model
+package bert
 
 import (
 	"fmt"

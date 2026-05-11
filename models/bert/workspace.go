@@ -1,4 +1,4 @@
-package model
+package bert
 
 // Workspace holds pre-allocated buffers for zero-alloc inference.
 // Sized once at model load, reused across all layers.

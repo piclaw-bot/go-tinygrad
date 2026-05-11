@@ -176,7 +176,7 @@ Move or split:
 - Gemma4-specific tests/helpers and PLI/KV-sharing logic into `models/gemma4`
 - `model/mtp_*` into `models/gemma4/mtp`
 - `model/moe.go`, `model/moe_gpu.go` into `models/moe` plus backend hooks
-- `model/bert.go`, `model/forward_fast.go`, `model/workspace.go` into `models/bert`
+- `model/bert.go`, `model/forward_fast.go`, `model/workspace.go` -> `models/bert` ✅
 
 ## Test policy
 
@@ -196,7 +196,7 @@ Each step should be one small commit with validation after it.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
 3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit.
 4. **Backend split.** Separate CUDA and Vulkan into `backends/cuda` and `backends/vulkan`, updating model/runtime imports directly.
-5. **Model split.** Move BERT/GTE, LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
+5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Move or tag diagnostic tests; keep focused unit tests close to packages.
 8. **Remove temporary bridges.** Only if any were unavoidable during earlier large moves.
