@@ -92,46 +92,52 @@ func PrefetchWeights(weights ...*GPUQuantWeight) {
 	}
 	EnsureContext()
 
-	// Wait for compute to finish current layer before prefetching next
-	cuEventRecord(computeEvent, 0) // record on default stream
-	cuStreamWaitEvent(prefetchStream, computeEvent, 0)
+	// Wait for compute to finish current layer before prefetching next.
+	if r := cuEventRecord(computeEvent, 0); r != CUDA_SUCCESS { // record on default stream
+		return
+	}
+	if r := cuStreamWaitEvent(prefetchStream, computeEvent, 0); r != CUDA_SUCCESS {
+		return
+	}
 
-	// Launch prefetch touches on the prefetch stream
+	// Launch prefetch touches on the prefetch stream.
 	for _, w := range weights {
-		if w == nil {
+		if !validGPUQuantWeight(w) {
 			continue
 		}
-		// Touch weight memory to warm L2: read 1 float per 128B cache line
+		// Touch weight memory to warm L2: read 1 float per 128B cache line.
 		totalBytes := uint64(w.InDim/8) * uint64(w.OutDim) * 4
 		n := uint32(totalBytes / 128) // touch every 128 bytes
 		if n < 1 {
 			n = 1
 		}
-		LaunchKernelOnStream(fnPrefetch, (n+255)/256, 1, 1, 256, 1, 1, 0, prefetchStream,
+		_ = LaunchKernelOnStream(fnPrefetch, (n+255)/256, 1, 1, 256, 1, 1, 0, prefetchStream,
 			unsafe.Pointer(&w.QWeight.Ptr), unsafe.Pointer(&n))
 	}
 }
 
 // MarkComputeDone records an event on the default (compute) stream.
 func MarkComputeDone() {
-	if streamsReady {
-		cuEventRecord(computeEvent, 0)
+	if streamsReady && computeEvent != 0 && cuEventRecord != nil {
+		_ = cuEventRecord(computeEvent, 0)
 	}
 }
 
 // WaitPrefetch makes the default stream wait for prefetch to complete.
 func WaitPrefetch() {
-	if streamsReady && prefetchStream != 0 {
-		cuEventRecord(prefetchEvent, prefetchStream)
-		cuStreamWaitEvent(0, prefetchEvent, 0) // default stream waits
+	if streamsReady && prefetchStream != 0 && prefetchEvent != 0 {
+		if r := cuEventRecord(prefetchEvent, prefetchStream); r != CUDA_SUCCESS {
+			return
+		}
+		_ = cuStreamWaitEvent(0, prefetchEvent, 0) // default stream waits
 	}
 }
 
 // SyncAll synchronizes both streams.
 func SyncAll() {
 	EnsureContext()
-	if streamsReady && prefetchStream != 0 {
-		cuStreamSynchronize(prefetchStream)
+	if streamsReady && prefetchStream != 0 && cuStreamSynchronize != nil {
+		_ = cuStreamSynchronize(prefetchStream)
 	}
 	cuCtxSynchronize()
 }
@@ -197,10 +203,20 @@ func (cg *CapturedGraph) Destroy() {
 
 // LaunchKernelOnStream is like LaunchKernel but on a specific stream.
 func LaunchKernelOnStream(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMem uint32, stream CUstream, args ...unsafe.Pointer) error {
+	if fn == 0 {
+		return fmt.Errorf("nil CUDA function")
+	}
+	if gridX == 0 || gridY == 0 || gridZ == 0 || blockX == 0 || blockY == 0 || blockZ == 0 {
+		return fmt.Errorf("invalid CUDA launch dimensions grid=(%d,%d,%d) block=(%d,%d,%d)", gridX, gridY, gridZ, blockX, blockY, blockZ)
+	}
 	EnsureContext()
-	ptrs := make([]unsafe.Pointer, len(args))
-	copy(ptrs, args)
-	r := cuLaunchKernel(fn, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMem, uintptr(stream), unsafe.Pointer(&ptrs[0]), nil)
+	var argPtr unsafe.Pointer
+	if len(args) > 0 {
+		ptrs := make([]unsafe.Pointer, len(args))
+		copy(ptrs, args)
+		argPtr = unsafe.Pointer(&ptrs[0])
+	}
+	r := cuLaunchKernel(fn, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMem, uintptr(stream), argPtr, nil)
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuLaunchKernel(stream): error %d", r)
 	}

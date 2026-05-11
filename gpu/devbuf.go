@@ -592,10 +592,16 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 }
 
 // CopyDtoD wraps cuMemcpyDtoD for direct GPU→GPU copy.
-func CopyDtoD(dst, src CUdeviceptr, bytes uint64) {
+func CopyDtoD(dst, src CUdeviceptr, bytes uint64) error {
+	if dst == 0 || src == 0 || bytes == 0 {
+		return nil
+	}
 	EnsureContext()
 	Sync() // ensure pending ops complete before copy
-	cuMemcpyDtoD(dst, src, bytes)
+	if r := cuMemcpyDtoD(dst, src, bytes); r != CUDA_SUCCESS {
+		return fmt.Errorf("cuMemcpyDtoD: error %d", r)
+	}
+	return nil
 }
 
 // Fused SiLU*Mul

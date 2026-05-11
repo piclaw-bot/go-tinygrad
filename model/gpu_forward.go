@@ -871,8 +871,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					g.k.ToGPU()
 					g.v.ToGPU()
 					kOff := gpu.CUdeviceptr(uint64(pos) * uint64(layerKVDim) * 4)
-					gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(layerKVDim*4))
-					gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(layerKVDim*4))
+					_ = gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(layerKVDim*4))
+					_ = gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(layerKVDim*4))
 					if forceCPUAttn {
 						kd = g.k.Data()
 						vd = g.v.Data()

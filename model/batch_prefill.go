@@ -121,8 +121,8 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 			// KV cache append
 			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
 				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
-				gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, kSlice.GPUPtr().Ptr, uint64(kvDim*4))
-				gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, vSlice.GPUPtr().Ptr, uint64(kvDim*4))
+				_ = gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, kSlice.GPUPtr().Ptr, uint64(kvDim*4))
+				_ = gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, vSlice.GPUPtr().Ptr, uint64(kvDim*4))
 			}
 
 			// Attention

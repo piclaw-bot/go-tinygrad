@@ -329,3 +329,12 @@ Hardened remaining dense CUDA dispatch helpers:
 - `DevGemv`, `DevGemvNN`, and `DevLMHead` now validate nil inputs, dimensions, and backing-buffer lengths before GPU launch or CPU fallback.
 - Dense GEMV and LM-head GPU paths now use the same `tryGPU` preflight as vector and norm helpers, avoiding ignored upload/allocation errors.
 - Added malformed-call regression coverage for GEMV, pre-transposed GEMV, and LM-head dispatch.
+
+## Session 24: CUDA stream/memcpy guard audit
+
+Hardened stream and device-copy wrappers:
+
+- `PrefetchWeights` now validates quantized weights before touching prefetch kernel arguments and stops if CUDA event setup fails.
+- `LaunchKernelOnStream` now rejects nil functions and zero launch dimensions before calling CUDA, and handles zero-argument launches without indexing an empty slice.
+- `CopyDtoD` now returns an error, treats zero pointers/zero bytes as no-op, and reports CUDA copy failures instead of silently ignoring them.
+- Updated GPU forward call sites to explicitly ignore `CopyDtoD` errors where the existing generation path cannot yet surface them.
