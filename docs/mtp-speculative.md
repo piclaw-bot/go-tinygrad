@@ -32,16 +32,15 @@ Local asset: `models/gemma4-e2b-mtp-drafter`.
 - Per-layer tensors include only `q_proj`, `q_norm`, `o_proj`, MLP weights, norms, and `layer_scalar`.
 - **No `k_proj`, `v_proj`, `k_norm`, or `v_norm` tensors exist in the drafter**; those must come from shared/base-model KV state.
 
-Loader status:
-- `LoadLlama(models/gemma4-e2b-mtp-drafter)` fails at `model.layers.0.self_attn.k_proj.weight` because the generic Gemma4 loader assumes owner K/V projections.
-- `LoadGemma4MTPDrafter` now loads the local assistant asset into a dedicated q-only drafter structure, including `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
-- Helper methods now cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
-- Verifier-side helper methods now expose raw/scaled main token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax for reuse outside `Generate`.
+Current implementation status:
+- `LoadGemma4MTPDrafter` loads the local assistant asset into a dedicated q-only drafter structure, including exact-shape/config validation for `pre_projection`, `post_projection`, masked embedding tensors, and all four q-only layers.
+- Helper methods cover assistant token row copies, masked embedding ordering lookups, `PreProjectInto`, and `PostProjectInto`.
+- Main-model helper primitives expose raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax outside `Generate`; `Generate` now uses these shared helpers.
 - Staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
+- `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` encode LiteRT-style accepted-prefix plus bonus-token semantics. `VerifiedCount` deliberately excludes the bonus token to match LiteRT-LM accounting.
 - `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches.
-- `AcceptMTPDraft` now encodes LiteRT-style accepted-prefix plus bonus-token semantics with verified-token accounting that excludes the bonus token.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
-- Remaining gap: implement the drafter forward pass with external/shared KV and main-model verifier integration.
+- Remaining gap: implement the batched main-model verifier forward and the q-only drafter forward loop. There is no public speculative-decoding CLI flag yet.
 
 ### Data flow
 
@@ -59,9 +58,9 @@ Drafter loop (K iterations):
   → candidate_tokens[K]
 
 Verifier (main model batched forward):
-  Run main model on all K draft tokens in one prefill-style pass
-  Compare main model logits with draft tokens
-  Accept matching prefix, reject rest
+  Run main model on [input_token] + K draft tokens in one prefill-style pass
+  Return G+1 logits rows plus final activation/projected state
+  Accept matching prefix, emit verifier bonus token, discard rejected suffix
 ```
 
 ### Performance gain
@@ -74,13 +73,13 @@ Verifier (main model batched forward):
 
 1. **Drafter loader** ✅ — parse `gemma4_assistant` top-level config, nested `text_config`, q-only attention blocks, `pre_projection`, `post_projection`, and masked embedding tensors.
 2. **Main-model verifier helper primitives** ✅ — raw/scaled token embeddings, Gemma4 per-layer inputs, LM-head logits, and argmax are now reusable outside `Generate`.
-3. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
-4. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
-5. **Draft loop** — run drafter for `G` steps, greedily collect candidate tokens, and carry `projected_activations` between draft steps.
-6. **Verify** — compare verifier greedy tokens with drafted tokens in one batched pass.
-7. **Accept/reject semantics** ✅ — `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` keep the matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
-8. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
-9. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
+3. **pre/post projection** ✅ — helper methods for `pre_projection(embedding(prev_token) || activation)` and `post_projection(hidden_draft)`.
+4. **Accept/reject semantics** ✅ — `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` keep the matching prefix and emit the verifier bonus token on mismatch/all-accepted completion.
+5. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
+6. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
+7. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
+8. **Drafter forward loop** — run q-only assistant layers for `G` steps with external/shared KV and projected activation carry.
+9. **End-to-end speculative decode** — integrate verifier, drafter, acceptance, and KV commit into generation.
 10. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations
@@ -125,8 +124,8 @@ Performance notes from public HF cards:
 Implementation implications for go-pherence:
 1. Add a main-model `Verify(tokens []int)` path that runs a short batched forward, returns logits for each position, updates candidate KV, and exposes final hidden/projected activations.
 2. Preserve or compute Gemma4 per-layer embeddings for all verifier tokens; LiteRT-LM explicitly feeds `per_layer_embeddings` to verifier. `Gemma4PerLayerInputs` now provides the single-token primitive used by `Generate` and future verifier code.
-3. Model the drafter input as `embedding(prev_token) || activation`, not just token IDs.
-4. Add acceptance accounting with accepted-prefix length plus bonus token, mirroring LiteRT-LM.
+3. Model the drafter input as `embedding(prev_token) || activation`, not just token IDs. `PreProjectInto` and `PostProjectInto` implement the projection handoff pieces.
+4. Apply acceptance accounting with accepted-prefix length plus bonus token, mirroring LiteRT-LM. `AcceptMTPDraftFromLogits` and `CommitAccepted*KV` are the tested bridge from verifier logits to KV-cache state.
 5. Consider a `.litertlm` inspector later: section metadata can reveal whether an artifact includes `tf_lite_mtp_drafter`, but implementing the format is not required for native safetensors MTP.
 
 ### llama.cpp PR #22673 — MTP for Qwen3.6

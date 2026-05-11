@@ -28,6 +28,9 @@ provided, the CLI prints a warning; GPU KV-cache compression is not wired yet.
   `headDim`.
 - Attention reads call `GetK()`/`GetV()`, which decompress into reusable scratch
   buffers to avoid per-token full-cache allocation churn.
+- Staged checkpoint/restore/keep-prefix helpers support speculative verifier
+  rollback and accepted-prefix commit even when candidate appends cross the
+  residual window and trigger compression.
 
 ## Validation snapshot
 
@@ -51,3 +54,5 @@ Unit tests cover:
   optimized path should read compressed blocks directly or cache per-window
   dequantized pages.
 - GPU-side compression/decompression and compressed KV attention are future work.
+- MTP/speculative decoding can use the TurboQuant staging helpers, but the full
+  verifier/drafter loop is not wired into public generation yet.

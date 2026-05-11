@@ -133,3 +133,18 @@ residual+layernorm, tensor object overhead.
 | `safetensors/` | 3 | load, list, F16 conversion |
 | `model/` | 2 | load weights, end-to-end embed |
 | **Total** | **47** | |
+
+
+## Session 2: Gemma4 MTP speculative decoding scaffolding
+
+Implemented the first native safetensors-based Gemma4 MTP building blocks:
+
+- Documented LiteRT-LM's Gemma4 MTP flow and the local `gemma4-e2b-mtp-drafter` asset.
+- Added `LoadGemma4MTPDrafter` for `gemma4_assistant` q-only drafter assets.
+- Hardened drafter loading with exact tensor shape validation, malformed-config checks, and explicit `KVSourceLayer=-1` external-KV markers.
+- Added assistant helper methods for token embedding row copy, masked ordering lookup, `PreProjectInto`, and `PostProjectInto`.
+- Extracted main-model helper primitives for raw/scaled token embeddings, Gemma4 per-layer inputs, LM-head logits, and greedy argmax; `Generate` now uses the shared helpers.
+- Added KV staging checkpoints for uncompressed and TurboQuant-backed caches, including accepted-prefix plus verifier bonus-token commit.
+- Added LiteRT-style MTP acceptance accounting from verifier token IDs or verifier logits.
+
+Current status: MTP is not yet exposed as a generation mode. The remaining work is the batched main-model verifier forward path and the q-only drafter forward loop that consumes external/main-model KV state and projected activations.

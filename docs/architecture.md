@@ -65,6 +65,19 @@ safetensors loader (GetFloat32, GetBF16, GetInt32, GetRaw)
 | Tensor prefix | — | — | — | — | ✅ language_model. |
 | Q/K/V bias | — | ✅ | — | — | — |
 | head_dim ≠ h/heads | — | — | ✅ | ✅ | ✅ |
+| MTP drafter assets | — | — | research | — | scaffold |
+
+## Speculative Decoding / MTP
+
+Gemma4 MTP support is currently scaffolded but not wired into public generation paths. Implemented pieces:
+
+- `LoadGemma4MTPDrafter` for `gemma4_assistant` safetensors assets with q-only attention blocks.
+- Assistant projection helpers: token embedding row copy, masked ordering lookup, `PreProjectInto`, and `PostProjectInto`.
+- Main-model verifier primitives: raw/scaled token embeddings, Gemma4 per-layer input preparation, LM-head logits, and greedy argmax.
+- Acceptance helpers: `AcceptMTPDraft`, `AcceptMTPDraftFromLogits`, and LiteRT-style bonus-token accounting.
+- KV staging helpers for candidate rollback/commit in both uncompressed and TurboQuant-backed caches.
+
+Remaining architecture work is the batched verifier forward path and q-only drafter forward loop with external/main-model KV state.
 
 ## BF16 Pipeline
 

@@ -160,6 +160,7 @@ only; GPU KV compression is a future step.
 - **Sliding window attention** — alternating local/global with window masking (Gemma3/4)
 - **Per-layer input gating** — PLI with GELU gate, projection, norm (Gemma4)
 - **KV sharing** — shared layers reuse source-layer KV cache (Gemma4)
+- **MTP speculative decoding scaffolding** — Gemma4 assistant drafter loader, projection helpers, verifier primitives, acceptance accounting, and staged KV commit/rollback (end-to-end generation wiring pending)
 - **TurboQuant KV compression** — optional CPU KV cache compression via `--turbo-quant`
 - **Layer scalar** — per-layer output scaling (Gemma4)
 - **Embedding scaling** — `× √hidden_size` (Gemma3/4)
@@ -176,7 +177,7 @@ only; GPU KV compression is a future step.
 - **[docs/architecture.md](docs/architecture.md)** — UOp graph, fusion, SIMD dispatch
 - **[docs/gemma4-precision.md](docs/gemma4-precision.md)** — Gemma4 GPU correctness & precision
 - **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager (ds4-inspired)
-- **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — MTP speculative decoding for Gemma4/Qwen3.6
+- **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — Gemma4/Qwen3.6 MTP research plus current implementation scaffolding
 - **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)
 - **[docs/development-log.md](docs/development-log.md)** — build process
