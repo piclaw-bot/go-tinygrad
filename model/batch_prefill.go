@@ -106,7 +106,11 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 			vSlice := bV.Slice(b*kvDim, kvDim)
 
 			// RoPE
-			if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
+			ropePtr := (*gpu.Buffer)(nil)
+			if g.ropeCosSin != nil {
+				ropePtr = g.ropeCosSin.GPUPtr()
+			}
+			if ropePtr != nil {
 				gpu.DevRoPE(qSlice, g.ropeCosSin, pos, numHeads, headDim)
 				gpu.DevRoPE(kSlice, g.ropeCosSin, pos, numKVHeads, headDim)
 			} else {
@@ -119,10 +123,19 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 			}
 
 			// KV cache append
-			if g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
+			var kvKPtr, kvVPtr, kPtr, vPtr *gpu.Buffer
+			if g.kvGPU_K[l] != nil {
+				kvKPtr = g.kvGPU_K[l].GPUPtr()
+			}
+			if g.kvGPU_V[l] != nil {
+				kvVPtr = g.kvGPU_V[l].GPUPtr()
+			}
+			kPtr = kSlice.GPUPtr()
+			vPtr = vSlice.GPUPtr()
+			if kvKPtr != nil && kvVPtr != nil && kPtr != nil && vPtr != nil {
 				kOff := gpu.CUdeviceptr(uint64(pos) * uint64(kvDim) * 4)
-				_ = gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, kSlice.GPUPtr().Ptr, uint64(kvDim*4))
-				_ = gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, vSlice.GPUPtr().Ptr, uint64(kvDim*4))
+				_ = gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, uint64(kvDim*4))
+				_ = gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, uint64(kvDim*4))
 			}
 
 			// Attention

@@ -599,7 +599,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 			// Gemma4: per-layer input gating (GPU path with CPU fallback)
 			var perLayerInputs [][]float32
-			usePLIGPU := cfg.ModelType == "gemma4_text" && g.perLayerModelProj != nil && g.perLayerProjNorm != nil && g.perLayerProjBuf != nil && g.perLayerProjBuf.GPUPtr() != nil
+			perLayerProjPtr := (*gpu.Buffer)(nil)
+			if g.perLayerProjBuf != nil {
+				perLayerProjPtr = g.perLayerProjBuf.GPUPtr()
+			}
+			usePLIGPU := cfg.ModelType == "gemma4_text" && g.perLayerModelProj != nil && g.perLayerProjNorm != nil && g.perLayerProjBuf != nil && perLayerProjPtr != nil
 			if cfg.ModelType == "gemma4_text" && m.PerLayerModelProj != nil && cfg.HiddenPerLayer > 0 {
 				hpl := cfg.HiddenPerLayer
 				nl := cfg.NumLayers
@@ -867,12 +871,21 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 				seqLen := pos + 1
 
-				if cpuLayer.HasKV && g.kvGPU_K[l] != nil && g.kvGPU_K[l].GPUPtr() != nil {
-					g.k.ToGPU()
-					g.v.ToGPU()
+				var kvKPtr, kvVPtr *gpu.Buffer
+				if cpuLayer.HasKV && g.kvGPU_K[l] != nil {
+					kvKPtr = g.kvGPU_K[l].GPUPtr()
+				}
+				if cpuLayer.HasKV && g.kvGPU_V[l] != nil {
+					kvVPtr = g.kvGPU_V[l].GPUPtr()
+				}
+				if cpuLayer.HasKV && kvKPtr != nil && kvVPtr != nil && g.k.ToGPU() == nil && g.v.ToGPU() == nil {
+					kPtr := g.k.GPUPtr()
+					vPtr := g.v.GPUPtr()
 					kOff := gpu.CUdeviceptr(uint64(pos) * uint64(layerKVDim) * 4)
-					_ = gpu.CopyDtoD(g.kvGPU_K[l].GPUPtr().Ptr+kOff, g.k.GPUPtr().Ptr, uint64(layerKVDim*4))
-					_ = gpu.CopyDtoD(g.kvGPU_V[l].GPUPtr().Ptr+kOff, g.v.GPUPtr().Ptr, uint64(layerKVDim*4))
+					if kPtr != nil && vPtr != nil {
+						_ = gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, uint64(layerKVDim*4))
+						_ = gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, uint64(layerKVDim*4))
+					}
 					if forceCPUAttn {
 						kd = g.k.Data()
 						vd = g.v.Data()
@@ -892,7 +905,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					attnScale = 1.0
 				}
 
-				if !forceCPUAttn && g.kvGPU_K[kvLayer] != nil && g.kvGPU_K[kvLayer].GPUPtr() != nil {
+				var attnKVPtr *gpu.Buffer
+				if !forceCPUAttn && g.kvGPU_K[kvLayer] != nil {
+					attnKVPtr = g.kvGPU_K[kvLayer].GPUPtr()
+				}
+				if !forceCPUAttn && attnKVPtr != nil && g.kvGPU_V[kvLayer] != nil && g.kvGPU_V[kvLayer].GPUPtr() != nil {
 					gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
 				} else {
 					qd := g.q.Data()

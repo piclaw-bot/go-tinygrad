@@ -338,3 +338,11 @@ Hardened stream and device-copy wrappers:
 - `LaunchKernelOnStream` now rejects nil functions and zero launch dimensions before calling CUDA, and handles zero-argument launches without indexing an empty slice.
 - `CopyDtoD` now returns an error, treats zero pointers/zero bytes as no-op, and reports CUDA copy failures instead of silently ignoring them.
 - Updated GPU forward call sites to explicitly ignore `CopyDtoD` errors where the existing generation path cannot yet surface them.
+
+## Session 25: GPU pointer call-site audit
+
+Reduced hidden upload/retry hazards around `DevBuf.GPUPtr()` call sites:
+
+- Cached GPU pointers in batched prefill RoPE/KV-copy paths instead of repeatedly calling `GPUPtr()` inside one operation.
+- Cached Gemma4 PLI and KV cache GPU pointers in the main GPU forward path before dispatch/copy decisions.
+- KV copy paths now require source and destination GPU pointers to be non-nil before calling `CopyDtoD`, avoiding nil-pointer dereferences when lazy upload fails.
