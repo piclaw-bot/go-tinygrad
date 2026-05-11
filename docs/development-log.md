@@ -259,3 +259,10 @@ Continued separating CUDA source assets from runtime dispatch:
 - Moved the optimized Q4 GEMV PTX source to `backends/cuda/ptx`.
 - Moved the batched Q4 GEMM PTX source to `backends/cuda/ptx`.
 - Kept `gpu.GemmQ4`, `gpu.BatchGEMMReady`, and CUDA function handles in `gpu` because they still own runtime launch semantics.
+
+## Session 15: SGEMM PTX asset extraction
+
+Continued the asset-only CUDA backend split:
+
+- Moved the standalone `SgemmPTX` source string into `backends/cuda/ptx`.
+- Kept SGEMM launch/runtime state in `gpu`, matching the current `DevBuf` and mega-module ownership boundaries.

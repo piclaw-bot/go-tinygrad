@@ -59,7 +59,7 @@ func loadMegaModule() {
 			name string
 			ptx  string
 		}{
-			{"sgemm_nn", SgemmPTX},
+			{"sgemm_nn", ptx.SgemmPTX},
 			{"vec_add", ptx.VecAddPTX},
 			{"vec_mul", ptx.VecMulPTX},
 			{"vec_scale", ptx.VecScalePTX},
