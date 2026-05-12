@@ -184,6 +184,9 @@ func EndCapture() (*CapturedGraph, error) {
 
 // Launch replays the captured graph on the default stream.
 func (cg *CapturedGraph) Launch() error {
+	if cg == nil || cg.exec == 0 {
+		return fmt.Errorf("nil CUDA graph executable")
+	}
 	EnsureContext()
 	if r := cuGraphLaunch(cg.exec, 0); r != CUDA_SUCCESS {
 		return fmt.Errorf("graph launch: error %d", r)
@@ -193,6 +196,9 @@ func (cg *CapturedGraph) Launch() error {
 
 // Destroy frees graph resources.
 func (cg *CapturedGraph) Destroy() {
+	if cg == nil {
+		return
+	}
 	if cg.exec != 0 {
 		cuGraphExecDestroy(cg.exec)
 	}
@@ -208,6 +214,11 @@ func LaunchKernelOnStream(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, bl
 	}
 	if gridX == 0 || gridY == 0 || gridZ == 0 || blockX == 0 || blockY == 0 || blockZ == 0 {
 		return fmt.Errorf("invalid CUDA launch dimensions grid=(%d,%d,%d) block=(%d,%d,%d)", gridX, gridY, gridZ, blockX, blockY, blockZ)
+	}
+	for i, arg := range args {
+		if arg == nil {
+			return fmt.Errorf("nil CUDA kernel argument %d", i)
+		}
 	}
 	EnsureContext()
 	var argPtr unsafe.Pointer

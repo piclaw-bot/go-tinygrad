@@ -670,3 +670,11 @@ Hardened GPU `DevBuf` and CUDA allocation helpers:
 - `ToGPU` now propagates upload failures, frees newly allocated GPU memory on upload failure, and no longer marks GPU authoritative after a failed re-upload.
 - `GPUPtr` returns nil if lazy upload fails.
 - `Malloc` rejects `n*4` size overflow before entering CUDA driver code.
+
+## Session 66: CUDA stream/graph helper audit
+
+Hardened CUDA stream/graph helpers:
+
+- `CapturedGraph.Launch` now rejects nil or empty graph executables before entering CUDA driver calls.
+- `CapturedGraph.Destroy` is nil-safe.
+- `LaunchKernelOnStream` now rejects nil kernel argument pointers before constructing the CUDA argument array.
