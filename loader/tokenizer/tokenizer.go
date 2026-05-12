@@ -62,17 +62,24 @@ func Load(path string) (*Tokenizer, error) {
 	// Merges can be ["a b", ...] (strings) or [["a","b"], ...] (arrays)
 	var mergeStrings []string
 	if err := json.Unmarshal(raw.Model.Merges, &mergeStrings); err == nil {
-		t.Merges = make([][2]string, len(mergeStrings))
+		t.Merges = make([][2]string, 0, len(mergeStrings))
 		for i, m := range mergeStrings {
 			parts := strings.SplitN(m, " ", 2)
-			if len(parts) == 2 {
-				t.Merges[i] = [2]string{parts[0], parts[1]}
+			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				return nil, fmt.Errorf("malformed merge at index %d", i)
 			}
+			t.Merges = append(t.Merges, [2]string{parts[0], parts[1]})
 		}
 	} else {
 		var mergeArrays [][2]string
 		if err := json.Unmarshal(raw.Model.Merges, &mergeArrays); err == nil {
-			t.Merges = mergeArrays
+			t.Merges = make([][2]string, 0, len(mergeArrays))
+			for i, m := range mergeArrays {
+				if m[0] == "" || m[1] == "" {
+					return nil, fmt.Errorf("malformed merge at index %d", i)
+				}
+				t.Merges = append(t.Merges, m)
+			}
 		} else {
 			return nil, fmt.Errorf("unsupported merges format")
 		}

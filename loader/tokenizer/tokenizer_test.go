@@ -21,6 +21,25 @@ func TestLoadTokenizerMissingVocabDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestLoadTokenizerRejectsMalformedMerges(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]string{
+		"string": `{"model":{"vocab":{"a":1,"b":2},"merges":["a b","broken"]}}`,
+		"array":  `{"model":{"vocab":{"a":1,"b":2},"merges":[["a","b"],["", "c"]]}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(dir, name+".json")
+			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+				t.Fatalf("write tokenizer: %v", err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load accepted malformed merges")
+			}
+		})
+	}
+}
+
 func TestTokenizerNilSafe(t *testing.T) {
 	var tok *Tokenizer
 	if got := tok.Encode("hello"); got != nil {

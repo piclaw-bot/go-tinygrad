@@ -1090,3 +1090,10 @@ Refreshed documentation after the logging and placement/budget audit batches:
 - README, architecture notes, GPU options, weight-budget notes, and refactor plan now document quiet-by-default library diagnostics and the `GO_PHERENCE_*_DEBUG` gates.
 - Placement docs now record guarded budget accounting, invalid-category rejection, nil-safe budget manager methods, saturating estimator math, and odd INT4 packed-size rounding.
 - Refactor notes call out that these guard/logging semantics should be preserved during the later CUDA/model package splits.
+
+## Session 122: Tokenizer merge validation audit
+
+Hardened tokenizer loading:
+
+- BPE merge strings and array pairs now reject malformed empty/incomplete pairs instead of leaving zero-value merge rules in the rank table.
+- Added malformed merge regression coverage for both tokenizer JSON merge encodings.
