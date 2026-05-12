@@ -202,4 +202,15 @@ func TestQuantDispatchMalformedDoesNotPanic(t *testing.T) {
 	GemvQ4(out, x, nil)
 	GemmQ4(out, x, nil, 2)
 	GemvQ4OrGemm(out, x, nil, 2)
+	maxInt := int(^uint(0) >> 1)
+	w := &GPUQuantWeight{
+		InDim:   maxInt/2 + 1,
+		OutDim:  8,
+		Groups:  1,
+		QWeight: &Buffer{Ptr: 1, Size: maxInt},
+		Scales:  &Buffer{Ptr: 1, Size: maxInt},
+		GIdx:    &Buffer{Ptr: 1, Size: maxInt},
+	}
+	GemmQ4(NewDevBuf(16), NewDevBuf(16), w, 3)
+	GemvQ4OrGemm(NewDevBuf(16), NewDevBuf(16), w, 3)
 }

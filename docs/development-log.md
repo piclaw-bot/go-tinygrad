@@ -767,3 +767,10 @@ Reviewed and refreshed documentation after the latest GPU/backend audit batch:
 - README and architecture docs now record hardened MLX, expert pool, experimental NV helpers, dense SGEMM/LM-head, JIT, and BF16 dispatch validation.
 - GPU options docs now list the expanded DevBuf/dispatch guard baseline that must move with the future `backends/cuda` split.
 - Refactor plan now reflects the broader transitional GPU guard coverage in Phase 6.5.
+
+## Session 78: Batched Q4 dispatch audit
+
+Hardened batched Q4 dispatch:
+
+- `GemmQ4` now validates the quantized weight before reading dimensions, computes batched input/output size products with overflow checks, and rejects malformed buffers before CUDA dispatch.
+- `GemvQ4OrGemm` no longer prints a misleading sequential fallback message for a fallback path that cannot safely slice batched buffers yet; it delegates to the guarded batched dispatch for `B>1`.

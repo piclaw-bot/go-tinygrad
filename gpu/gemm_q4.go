@@ -12,18 +12,20 @@ package gpu
 // The kernel dequantizes INT4 weights on-the-fly (same as gemv_q4sym)
 // but accumulates B dot products per weight column.
 
-import (
-	"fmt"
-	"unsafe"
-)
+import "unsafe"
 
 // GemmQ4 performs batched matrix multiply: out[B×outDim] = input[B×inDim] × W_q4[inDim×outDim]
 // where W is INT4 quantized with group scales.
 func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
-	if !q4Ready || fnGemmQ4 == 0 || !validGPUQuantWeight(w) || input == nil || out == nil || B <= 0 {
+	if !validGPUQuantWeight(w) || input == nil || out == nil || B <= 0 {
 		return
 	}
-	if input.n < B*w.InDim || out.n < B*w.OutDim || !tryGPU(input, out) {
+	inLen, okIn := checkedMulInt(B, w.InDim)
+	outLen, okOut := checkedMulInt(B, w.OutDim)
+	if !q4Ready || fnGemmQ4 == 0 || !okIn || !okOut {
+		return
+	}
+	if input.n < inLen || out.n < outLen || !tryGPU(input, out) {
 		return
 	}
 	EnsureContext()
@@ -67,16 +69,7 @@ func BatchGEMMReady() bool {
 func GemvQ4OrGemm(out, input *DevBuf, w *GPUQuantWeight, B int) {
 	if B <= 1 {
 		GemvQ4(out, input, w)
-	} else {
-		if fnGemmQ4 != 0 {
-			GemmQ4(out, input, w, B)
-		} else {
-			// Fallback: sequential GEMV
-			for b := 0; b < B; b++ {
-				// This would need sub-buffer support
-				fmt.Printf("[gpu] batch GEMM not available, falling back to sequential\n")
-				return
-			}
-		}
+		return
 	}
+	GemmQ4(out, input, w, B)
 }
