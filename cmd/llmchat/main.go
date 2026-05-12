@@ -108,6 +108,9 @@ func main() {
 		// Print tokens, stop on EOS-like
 		count := 0
 		for _, id := range generated {
+			if id < 0 || id >= len(tok.InvVocab) {
+				break
+			}
 			text := tok.InvVocab[id]
 			if text == "<eos>" || text == "</s>" || text == "<|endoftext|>" || id == 0 {
 				break

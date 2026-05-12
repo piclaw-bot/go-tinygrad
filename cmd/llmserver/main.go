@@ -168,6 +168,9 @@ func (s *Server) generate(ids []int, maxTokens int, emit func(token int, text st
 	var out strings.Builder
 	count := 0
 	for _, tok := range generated {
+		if tok < 0 || tok >= len(s.tok.InvVocab) {
+			break
+		}
 		text := s.tok.InvVocab[tok]
 		// Stop on EOS-like tokens
 		if text == "<eos>" || text == "</s>" || tok == 0 {
@@ -260,7 +263,10 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 }
 
 func writeSSE(w io.Writer, flusher http.Flusher, chunk StreamChunk) {
-	data, _ := json.Marshal(chunk)
+	data, err := json.Marshal(chunk)
+	if err != nil {
+		return
+	}
 	fmt.Fprintf(w, "data: %s\n\n", data)
 	flusher.Flush()
 }

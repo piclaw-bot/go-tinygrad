@@ -811,3 +811,11 @@ Hardened `LoadGPUModel` upload error handling:
 Hardened batched GPU prefill scratch lifetime management:
 
 - Temporary batch `DevBuf` scratch buffers are now freed on all return paths to avoid leaking GPU-side allocations during prefill fallback/error exits.
+
+## Session 84: CLI/server token-output bounds audit
+
+Hardened token-output boundary handling in front-ends:
+
+- `llmchat` now stops cleanly if generation returns an out-of-vocabulary token ID instead of indexing `InvVocab` blindly.
+- `llmserver` applies the same generated-token bounds check in OpenAI-compatible responses.
+- SSE chunk writing now handles JSON marshal errors instead of ignoring them.
