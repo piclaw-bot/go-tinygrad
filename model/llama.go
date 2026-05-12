@@ -1413,10 +1413,11 @@ func gemv(out, x []float32, w []float32, inDim, outDim int) {
 	for i := range out {
 		out[i] = 0
 	}
-	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+	weightLen, ok := checkedProduct(inDim, outDim)
+	if inDim <= 0 || outDim <= 0 || !ok || len(out) < outDim || len(x) < inDim || len(w) < weightLen {
 		return
 	}
-	if len(w) >= inDim*outDim {
+	if len(w) >= weightLen {
 		// Detect layout: if w is [inDim, outDim] (pre-transposed), use NN
 		// If w is [outDim, inDim] (original), use NT (dot per output)
 		// Heuristic: try NN first (pre-transposed path)
@@ -1441,7 +1442,8 @@ func gemvNT(out, x []float32, w []float32, inDim, outDim int) {
 	for i := range out {
 		out[i] = 0
 	}
-	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+	weightLen, ok := checkedProduct(inDim, outDim)
+	if inDim <= 0 || outDim <= 0 || !ok || len(out) < outDim || len(x) < inDim || len(w) < weightLen {
 		return
 	}
 	for j := 0; j < outDim; j++ {
@@ -1456,6 +1458,17 @@ func gemvNT(out, x []float32, w []float32, inDim, outDim int) {
 		}
 		out[j] = sum
 	}
+}
+
+func checkedProduct(a, b int) (int, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if b != 0 && a > maxInt/b {
+		return 0, false
+	}
+	return a * b, true
 }
 
 func geluTanh(x float32) float32 {
@@ -1524,9 +1537,10 @@ func gqaAttentionScaleInto(out, scores, q, kCache, vCache []float32, seqLen, num
 	if seqLen <= 0 || numHeads <= 0 || numKVHeads <= 0 || headDim <= 0 || numHeads%numKVHeads != 0 {
 		return
 	}
-	h := numHeads * headDim
-	kvDim := numKVHeads * headDim
-	if len(out) < h || len(scores) < seqLen || len(q) < h || len(kCache) < seqLen*kvDim || len(vCache) < seqLen*kvDim {
+	h, okH := checkedProduct(numHeads, headDim)
+	kvDim, okKV := checkedProduct(numKVHeads, headDim)
+	kvTotal, okTotal := checkedProduct(seqLen, kvDim)
+	if !okH || !okKV || !okTotal || len(out) < h || len(scores) < seqLen || len(q) < h || len(kCache) < kvTotal || len(vCache) < kvTotal {
 		return
 	}
 	headsPerKV := numHeads / numKVHeads
@@ -1577,7 +1591,8 @@ func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
 	for i := range out {
 		out[i] = 0
 	}
-	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+	weightLen, ok := checkedProduct(inDim, outDim)
+	if inDim <= 0 || outDim <= 0 || !ok || len(out) < outDim || len(x) < inDim || len(w) < weightLen {
 		return
 	}
 	nCPU := runtime.NumCPU()

@@ -644,3 +644,11 @@ Hardened the transitional model-local `simdDot` helper:
 
 - Scalar short-vector fallback now bounds mismatched input slices instead of trusting the first slice length.
 - Added regression coverage for short, nil, and long mismatched dot inputs.
+
+## Session 63: Low-level model helper overflow audit
+
+Hardened model-local low-level math helpers:
+
+- `gemv`, `gemvNT`, and `gemvNTParallel` now check `inDim*outDim` for integer overflow before backing-slice length checks.
+- `gqaAttentionScaleInto` now checks `heads*headDim`, `kvHeads*headDim`, and `seqLen*kvDim` products before cache-length validation.
+- Added regression coverage for overflow-prone GEMV and attention helper inputs.
