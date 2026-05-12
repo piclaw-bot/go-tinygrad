@@ -12,12 +12,12 @@ import (
 
 // UVM ioctl command numbers (UVM_IOCTL_BASE(i) = i on Linux, except INITIALIZE)
 const (
-	UVM_REGISTER_GPU              = 37
-	UVM_REGISTER_GPU_VASPACE      = 25
-	UVM_CREATE_EXTERNAL_RANGE     = 73
-	UVM_MAP_EXTERNAL_ALLOCATION   = 33
-	UVM_FREE_CMD                  = 34
-	UVM_ALLOC_SEMAPHORE_POOL      = 69
+	UVM_REGISTER_GPU            = 37
+	UVM_REGISTER_GPU_VASPACE    = 25
+	UVM_CREATE_EXTERNAL_RANGE   = 73
+	UVM_MAP_EXTERNAL_ALLOCATION = 33
+	UVM_FREE_CMD                = 34
+	UVM_ALLOC_SEMAPHORE_POOL    = 69
 )
 
 // UVM_REGISTER_GPU_PARAMS
@@ -47,38 +47,44 @@ type nvos02WithFD struct {
 	Status        uint32 // 40
 	_pad2         uint32 // 44
 	// fd at offset 48
-	FD            int32  // 48
-	_pad3         uint32 // 52
+	FD    int32  // 48
+	_pad3 uint32 // 52
 }
 
 // nv_ioctl_nvos33_parameters_with_fd — map GPU memory to CPU
 // nvos33WithFD matches nv_ioctl_nvos33_parameters_with_fd
 type nvos33WithFD struct {
-	FD      int32
-	_pad    uint32
-	HClient uint32
-	HDevice uint32
-	HMemory uint32
-	_pad2   uint32
-	Offset  uint64
-	Length  uint64
+	FD       int32
+	_pad     uint32
+	HClient  uint32
+	HDevice  uint32
+	HMemory  uint32
+	_pad2    uint32
+	Offset   uint64
+	Length   uint64
 	PLinAddr uint64
-	Status  uint32
-	Flags   uint32
+	Status   uint32
+	Flags    uint32
 }
 
 // NVBuffer represents GPU-accessible memory.
 type NVBuffer struct {
-	dev      *NVDevice
-	va       uint64 // virtual address (GPU-accessible)
-	size     uint64
-	cpuAddr  uintptr
-	cpuMem   []byte  // keep mmap alive // mmap'd CPU address (if mapped)
-	hMemory  uint32  // RM memory handle
+	dev     *NVDevice
+	va      uint64 // virtual address (GPU-accessible)
+	size    uint64
+	cpuAddr uintptr
+	cpuMem  []byte // keep mmap alive // mmap'd CPU address (if mapped)
+	hMemory uint32 // RM memory handle
 }
 
 // AllocGPUMem allocates GPU memory and optionally maps it to CPU.
 func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil NVDevice")
+	}
+	if size == 0 || size > uint64(int(^uint(0)>>1))-0xFFF {
+		return nil, fmt.Errorf("invalid host memory size %d", size)
+	}
 	// Align to page
 	size = (size + 0xFFF) &^ 0xFFF
 
@@ -96,18 +102,20 @@ func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
 		HObjectParent: d.device,
 		HObjectNew:    handle,
 		HClass:        NV01_MEMORY_SYSTEM, // 0x003E
-		Flags: (0x1 << 4) |  // PHYSICALITY_NONCONTIGUOUS
-			(0x1 << 12) |    // COHERENCY_CACHED
-			(0x1 << 30),     // MAPPING_NO_MAP
+		Flags: (0x1 << 4) | // PHYSICALITY_NONCONTIGUOUS
+			(0x1 << 12) | // COHERENCY_CACHED
+			(0x1 << 30), // MAPPING_NO_MAP
 		PMemory: uint64(hostAddr),
 		Limit:   size - 1,
 		FD:      int32(d.fdDev),
 	}
 
 	if err := d.nvIoctl(d.fdDev, NV_ESC_RM_ALLOC_MEMORY, unsafe.Pointer(&params), unsafe.Sizeof(params)); err != nil {
+		_ = unix.Munmap(mem)
 		return nil, fmt.Errorf("register host memory: %w", err)
 	}
 	if params.Status != 0 {
+		_ = unix.Munmap(mem)
 		return nil, fmt.Errorf("register host memory status: 0x%X", params.Status)
 	}
 
@@ -115,6 +123,7 @@ func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
 		dev:     d,
 		size:    size,
 		cpuAddr: hostAddr,
+		cpuMem:  mem,
 		hMemory: handle,
 	}
 	return buf, nil
@@ -122,6 +131,9 @@ func (d *NVDevice) AllocHostMem(size uint64) (*NVBuffer, error) {
 
 // mapToCPU maps GPU memory to CPU virtual address space.
 func (d *NVDevice) mapToCPU(buf *NVBuffer) error {
+	if d == nil || buf == nil || buf.size == 0 {
+		return fmt.Errorf("invalid NV map target")
+	}
 	// Open a new GPU fd for the mapping
 	devPath := fmt.Sprintf("/dev/nvidia%d", 0)
 	fd, err := unix.Open(devPath, unix.O_RDWR|unix.O_CLOEXEC, 0)
@@ -162,22 +174,26 @@ func (d *NVDevice) mapToCPU(buf *NVBuffer) error {
 	}
 
 	buf.cpuAddr = uintptr(unsafe.Pointer(&addr[0]))
+	buf.cpuMem = addr
 	return nil
 }
 
 // Upload copies host data to GPU buffer.
 func (buf *NVBuffer) Upload(data []float32) error {
-	if buf.cpuAddr == 0 {
+	if buf == nil {
+		return fmt.Errorf("nil NVBuffer")
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	if buf.cpuAddr == 0 || buf.cpuMem == nil {
 		return fmt.Errorf("buffer not CPU-mapped")
 	}
-	bytes := len(data) * 4
-	if uint64(bytes) > buf.size {
+	bytes, ok := checkedMulInt(len(data), 4)
+	if !ok || uint64(bytes) > buf.size || bytes > len(buf.cpuMem) {
 		return fmt.Errorf("data too large: %d > %d", bytes, buf.size)
 	}
 	// Use the cpuMem slice directly (backed by mmap)
-	if buf.cpuMem == nil {
-		return fmt.Errorf("buffer not CPU-mapped")
-	}
 	srcBytes := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), bytes)
 	copy(buf.cpuMem[:bytes], srcBytes)
 	return nil
@@ -185,10 +201,19 @@ func (buf *NVBuffer) Upload(data []float32) error {
 
 // Download copies GPU buffer to host.
 func (buf *NVBuffer) Download(data []float32) error {
+	if buf == nil {
+		return fmt.Errorf("nil NVBuffer")
+	}
+	if len(data) == 0 {
+		return nil
+	}
 	if buf.cpuMem == nil {
 		return fmt.Errorf("buffer not CPU-mapped")
 	}
-	bytes := len(data) * 4
+	bytes, ok := checkedMulInt(len(data), 4)
+	if !ok || uint64(bytes) > buf.size || bytes > len(buf.cpuMem) {
+		return fmt.Errorf("destination too large: %d > %d", bytes, buf.size)
+	}
 	dstBytes := unsafe.Slice((*byte)(unsafe.Pointer(&data[0])), bytes)
 	copy(dstBytes, buf.cpuMem[:bytes])
 	return nil
@@ -196,7 +221,10 @@ func (buf *NVBuffer) Download(data []float32) error {
 
 // Free releases GPU memory.
 func (buf *NVBuffer) Free() {
-	if buf.hMemory != 0 {
+	if buf == nil {
+		return
+	}
+	if buf.hMemory != 0 && buf.dev != nil {
 		params := nvos00Params{
 			HRoot:         buf.dev.root,
 			HObjectParent: buf.dev.device,
@@ -204,6 +232,11 @@ func (buf *NVBuffer) Free() {
 		}
 		buf.dev.nvIoctl(buf.dev.fdCtl, NV_ESC_RM_FREE, unsafe.Pointer(&params), unsafe.Sizeof(params))
 		buf.hMemory = 0
+	}
+	if buf.cpuMem != nil {
+		_ = unix.Munmap(buf.cpuMem)
+		buf.cpuMem = nil
+		buf.cpuAddr = 0
 	}
 }
 
@@ -233,7 +266,7 @@ func (d *NVDevice) SetupVASpace() error {
 
 	// Register GPU with UVM
 	regGPU := uvmRegGPUParams{
-		GpuUUID: d.gpuUUID,
+		GpuUUID:  d.gpuUUID,
 		RmCtrlFd: int32(d.fdCtl),
 		HClient:  d.root,
 	}

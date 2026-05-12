@@ -711,3 +711,11 @@ Hardened GPU expert-pool helpers:
 - Expert-pool public methods are now nil-safe.
 - Negative expert IDs are rejected and returned to callers for resource release instead of being cached or looked up.
 - Added regression coverage for nil pool and invalid expert ID behavior.
+
+## Session 71: Experimental NV memory helper audit
+
+Hardened experimental direct-NVIDIA memory helpers:
+
+- `AllocHostMem` validates nil devices and invalid/overflowing sizes, stores the mmap slice, and unmaps host memory on registration failure.
+- `mapToCPU` validates inputs and stores the mmap slice in `cpuMem` so upload/download paths can use it.
+- `NVBuffer` upload/download/free methods are nil-safe, handle empty slices as no-ops, and validate byte-size arithmetic/bounds before unsafe slice conversion.
