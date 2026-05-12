@@ -790,3 +790,10 @@ Hardened the raw CUDA launch wrapper:
 
 - `LaunchKernel` now returns explicit errors when the CUDA launch symbol is unavailable, the function handle is nil, or grid/block dimensions are zero.
 - Added regression coverage so malformed launches fail safely before purego calls.
+
+## Session 81: Model/GPU boundary ignored-error audit
+
+Hardened model-side GPU boundary error handling:
+
+- Batched prefill now propagates GPU-to-GPU KV copy failures instead of ignoring `CopyDtoD` errors during cache append.
+- MoE GPU fallback setup now checks all scratch-buffer `ToGPU` uploads and cleanly falls back to CPU experts if scratch allocation/upload fails.

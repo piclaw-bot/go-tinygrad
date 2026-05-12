@@ -103,14 +103,27 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		gateBuf = gpu.NewDevBuf(moeInter)
 		upBuf = gpu.NewDevBuf(moeInter)
 		downBuf = gpu.NewDevBuf(h)
-		xBuf.ToGPU()
-		gateBuf.ToGPU()
-		upBuf.ToGPU()
-		downBuf.ToGPU()
-		defer xBuf.Free()
-		defer gateBuf.Free()
-		defer upBuf.Free()
-		defer downBuf.Free()
+		if err := xBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
+		} else if err := gateBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
+		} else if err := upBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
+		} else if err := downBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
+		}
+		if !hasGPUExperts {
+			xBuf.Free()
+			gateBuf.Free()
+			upBuf.Free()
+			downBuf.Free()
+			xBuf, gateBuf, upBuf, downBuf = nil, nil, nil, nil
+		} else {
+			defer xBuf.Free()
+			defer gateBuf.Free()
+			defer upBuf.Free()
+			defer downBuf.Free()
+		}
 	}
 
 	// Run CPU experts in parallel, GPU experts sequentially (shared buffers)
