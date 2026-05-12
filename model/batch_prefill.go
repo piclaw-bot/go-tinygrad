@@ -17,19 +17,32 @@ import (
 // prefillGPU processes all prompt tokens through the model in one batched pass.
 // Returns the hidden state for the last token, with KV cache filled for all positions.
 func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
+	if g == nil || g.CPU == nil || g.CPU.EmbedTokens == nil {
+		return nil
+	}
 	cfg := g.CPU.Config
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
-	headDim := h / numHeads
-	defaultScale := float32(1.0 / math.Sqrt(float64(headDim)))
-	kvDim := headDim * numKVHeads
 	B := len(tokenIDs)
 	m := g.CPU
 
-	if B <= 1 || !gpu.BatchGEMMReady() {
+	if B <= 1 || h <= 0 || numHeads <= 0 || numKVHeads <= 0 || h%numHeads != 0 || cfg.Intermediate <= 0 || !gpu.BatchGEMMReady() {
 		return nil // fall back to sequential
 	}
+	headDim := h / numHeads
+	if headDim <= 0 {
+		return nil
+	}
+	maxInt := int(^uint(0) >> 1)
+	if numKVHeads > maxInt/headDim || B > maxInt/h || B > maxInt/cfg.Intermediate {
+		return nil
+	}
+	kvDim := headDim * numKVHeads
+	if B > maxInt/kvDim {
+		return nil
+	}
+	defaultScale := float32(1.0 / math.Sqrt(float64(headDim)))
 
 	fmt.Printf("[prefill] batch=%d tokens, %d layers\n", B, len(g.Layers))
 
@@ -48,12 +61,20 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 
 	// Embed all tokens into batch hidden: [B × h]
 	embData := m.EmbedTokens.Data()
+	if cfg.VocabSize <= 0 || len(embData) < cfg.VocabSize*h {
+		return nil
+	}
 	hd := bHidden.Data()
 	for i, tokID := range tokenIDs {
+		if tokID < 0 || tokID >= cfg.VocabSize {
+			return nil
+		}
 		copy(hd[i*h:(i+1)*h], embData[tokID*h:(tokID+1)*h])
 	}
 	bHidden.MarkDirty()
-	bHidden.ToGPU()
+	if err := bHidden.ToGPU(); err != nil {
+		return nil
+	}
 
 	// Process each layer with batched ops
 	for l := 0; l < len(g.Layers); l++ {

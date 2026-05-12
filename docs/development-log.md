@@ -630,3 +630,10 @@ Hardened model-specific KV staging helpers:
 
 - `LayerKVDim` now checks `num_key_value_heads * head_dim` for integer overflow before returning per-token KV widths used by staged verifier commits.
 - Added regression coverage for overflowing model-level and layer-local KV dimensions.
+
+## Session 61: GPU prefill guard audit
+
+Hardened the batched GPU prefill fallback entrypoint:
+
+- Rejects nil GPU/CPU model state, invalid head/KV/intermediate dimensions, non-divisible head dims, overflow-prone batch products, malformed embedding tables, and invalid token IDs before GPU allocation/embedding slicing.
+- Checks the initial batch-hidden upload before continuing into the batched prefill path.
