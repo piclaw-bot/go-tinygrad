@@ -119,8 +119,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer r.Body.Close()
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields()
 	var req ChatCompletionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("bad request: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -132,6 +135,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	if maxTokens == 0 {
 		maxTokens = 2048
+	}
+
+	if len(req.Messages) == 0 {
+		http.Error(w, "messages must not be empty", http.StatusBadRequest)
+		return
 	}
 
 	// Build prompt from messages

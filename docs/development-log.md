@@ -1223,3 +1223,10 @@ Hardened command front-end token-count boundaries:
 - `llmgen` no longer slices output by prompt length unless the output is long enough, preserving GPU/CPU normalization safety.
 - `llmchat` avoids divide-by-zero throughput reporting on sub-tick generations.
 - `llmserver` now rejects negative `max_tokens` with HTTP 400 while keeping zero as the default behavior.
+
+## Session 139: CLI/server input-boundary audit
+
+Hardened remaining command I/O boundaries:
+
+- `llmchat` now reports scanner/input errors instead of silently exiting on non-EOF scanner failures.
+- `llmserver` now closes request bodies, limits JSON request decoding to 1 MiB, rejects unknown JSON fields, and rejects empty chat message lists before generation.

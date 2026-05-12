@@ -81,6 +81,9 @@ func main() {
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				fmt.Fprintf(os.Stderr, "input error: %v\n", err)
+			}
 			break
 		}
 		input := strings.TrimSpace(scanner.Text())
