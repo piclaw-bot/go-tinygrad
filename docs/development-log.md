@@ -566,3 +566,11 @@ Hardened `runtime/kv` staging helpers:
 - Float KV `KeepAppended` now checks `base + keepTokens*kvDim` for integer overflow before truncating slices.
 - Compressed KV `KeepAppended` validates checkpoint/keep arithmetic, negative compressed-entry checkpoint lengths, and positive `kvDim` when retaining staged tokens.
 - Added regression coverage for overflow and malformed checkpoint cases.
+
+## Session 53: TurboQuant size-overflow audit
+
+Hardened TurboQuant sizing math:
+
+- `NewTurboQuantState` and `randomOrthogonal` now reject overflowing `headDim*headDim` sizes before allocation.
+- `QuantizeVector` and `DequantizeVector` validate rotation-size arithmetic before indexing rotation matrices.
+- `packIndices` now validates packed byte-length arithmetic before allocation.

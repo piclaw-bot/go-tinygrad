@@ -36,7 +36,7 @@ type TurboQuantState struct {
 
 // NewTurboQuantState initializes TurboQuant for a model.
 func NewTurboQuantState(headDim, numLayers int, cfg TurboQuantConfig) *TurboQuantState {
-	if headDim < 0 {
+	if headDim < 0 || squareSize(headDim) < 0 {
 		headDim = 0
 	}
 	if numLayers < 0 {
@@ -83,8 +83,13 @@ func (tq *TurboQuantState) IsProtectedLayer(layerIdx int) bool {
 func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, codebook []float32, bits int) ([]byte, float32, float32) {
 	dim := len(vec)
 	bits = clampBits(bits)
-	if tq == nil || dim == 0 || len(rotation) < dim*dim {
-		return make([]byte, (dim*bits+7)/8), 0, 0
+	needRot := squareSize(dim)
+	packedLen := packedByteLen(dim, bits)
+	if tq == nil || dim == 0 || needRot < 0 || packedLen < 0 || len(rotation) < needRot {
+		if packedLen < 0 {
+			packedLen = 0
+		}
+		return make([]byte, packedLen), 0, 0
 	}
 
 	// Step 1: rotate
@@ -109,7 +114,7 @@ func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, cod
 	}
 	scale := vMax - vMin
 	if scale < 1e-10 {
-		return make([]byte, (dim*bits+7)/8), vMin, 0
+		return make([]byte, packedLen), vMin, 0
 	}
 
 	// Step 3: quantize each coordinate to [0, 2^bits - 1]. The codebook
@@ -139,7 +144,8 @@ func (tq *TurboQuantState) QuantizeVector(vec []float32, rotation []float32, cod
 // DequantizeVector restores a float32 vector from compressed form.
 func (tq *TurboQuantState) DequantizeVector(packed []byte, vMin, scale float32, rotation []float32, bits int, dim int) []float32 {
 	bits = clampBits(bits)
-	if tq == nil || dim <= 0 || len(rotation) < dim*dim {
+	needRot := squareSize(dim)
+	if tq == nil || dim <= 0 || needRot < 0 || len(rotation) < needRot {
 		return make([]float32, maxInt(dim, 0))
 	}
 	// Unpack indices
@@ -169,11 +175,12 @@ func (tq *TurboQuantState) DequantizeVector(packed []byte, vMin, scale float32, 
 // modified Gram-Schmidt. Columns are orthonormal (Q^T Q = I); callers apply Q
 // for rotation and Q^T for inverse rotation.
 func randomOrthogonal(dim int, rng *rand.Rand) []float32 {
-	if dim <= 0 {
+	need := squareSize(dim)
+	if dim <= 0 || need < 0 || rng == nil {
 		return nil
 	}
 	// Generate random Gaussian matrix
-	mat := make([]float32, dim*dim)
+	mat := make([]float32, need)
 	for i := range mat {
 		mat[i] = float32(rng.NormFloat64())
 	}
@@ -244,8 +251,11 @@ func betaOptimalCodebook(bits int) []float32 {
 // packIndices packs byte indices into a bit-packed byte array.
 func packIndices(indices []byte, bits int) []byte {
 	bits = clampBits(bits)
-	totalBits := len(indices) * bits
-	packed := make([]byte, (totalBits+7)/8)
+	packedLen := packedByteLen(len(indices), bits)
+	if packedLen < 0 {
+		return nil
+	}
+	packed := make([]byte, packedLen)
 	bitPos := 0
 	for _, idx := range indices {
 		for b := 0; b < bits; b++ {
@@ -295,4 +305,26 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func squareSize(dim int) int {
+	if dim < 0 {
+		return -1
+	}
+	max := int(^uint(0) >> 1)
+	if dim != 0 && dim > max/dim {
+		return -1
+	}
+	return dim * dim
+}
+
+func packedByteLen(n, bits int) int {
+	if n < 0 || bits < 0 {
+		return -1
+	}
+	max := int(^uint(0) >> 1)
+	if bits != 0 && n > (max-7)/bits {
+		return -1
+	}
+	return (n*bits + 7) / 8
 }

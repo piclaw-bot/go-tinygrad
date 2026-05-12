@@ -148,3 +148,25 @@ func TestCompressedKVCacheMalformedLayoutGuards(t *testing.T) {
 		t.Fatalf("malformed compressed V should fall back to FullV, len=%d", len(got))
 	}
 }
+
+func TestTurboQuantOverflowGuards(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	tooLarge := maxInt/2 + 1
+	if got := squareSize(tooLarge); got != -1 {
+		t.Fatalf("squareSize overflow=%d, want -1", got)
+	}
+	if got := packedByteLen(maxInt, 8); got != -1 {
+		t.Fatalf("packedByteLen overflow=%d, want -1", got)
+	}
+	if got := randomOrthogonal(tooLarge, nil); got != nil {
+		t.Fatalf("randomOrthogonal malformed returned len=%d", len(got))
+	}
+	state := NewTurboQuantState(tooLarge, 1, DefaultTurboQuantConfig())
+	if state.HeadDim != 0 || len(state.RotationK) != 0 || len(state.RotationV) != 0 {
+		t.Fatalf("overflowing headDim not sanitized: headDim=%d rk=%d rv=%d", state.HeadDim, len(state.RotationK), len(state.RotationV))
+	}
+	packed := packIndices(make([]byte, 4), 4)
+	if len(packed) != 2 {
+		t.Fatalf("packIndices valid len=%d want 2", len(packed))
+	}
+}
