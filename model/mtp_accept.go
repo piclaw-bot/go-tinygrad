@@ -24,6 +24,13 @@ type MTPAcceptance struct {
 // KV cache: accepted draft prefix plus the verifier bonus token. For zero-draft
 // verifier passes this still returns 1, the ordinary verifier token.
 func (a MTPAcceptance) KVKeepTokens() int {
+	if a.AcceptedPrefixLen < 0 {
+		return 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	if a.AcceptedPrefixLen >= maxInt {
+		return 0
+	}
 	return a.AcceptedPrefixLen + 1
 }
 
@@ -31,7 +38,11 @@ func (a MTPAcceptance) KVKeepTokens() int {
 // The checkpoint must have been taken immediately before the staged verifier
 // pass whose logits produced acceptance.
 func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp kv.FloatKVCheckpoint, kvDims []int, acceptance MTPAcceptance) error {
-	return cp.KeepAppended(kvCacheK, kvCacheV, kvDims, acceptance.KVKeepTokens())
+	keep := acceptance.KVKeepTokens()
+	if keep <= 0 {
+		return fmt.Errorf("invalid MTP KV keep token count from accepted prefix %d", acceptance.AcceptedPrefixLen)
+	}
+	return cp.KeepAppended(kvCacheK, kvCacheV, kvDims, keep)
 }
 
 // CommitAcceptedCompressedKV keeps the accepted verifier KV prefix plus bonus
@@ -39,7 +50,11 @@ func CommitAcceptedFloatKV(kvCacheK, kvCacheV [][]float32, cp kv.FloatKVCheckpoi
 // taken immediately before the staged verifier pass whose logits produced
 // acceptance.
 func CommitAcceptedCompressedKV(caches []*kv.CompressedKVCache, cp []kv.CompressedKVCheckpoint, acceptance MTPAcceptance) error {
-	return kv.KeepCompressedKVAppended(caches, cp, acceptance.KVKeepTokens())
+	keep := acceptance.KVKeepTokens()
+	if keep <= 0 {
+		return fmt.Errorf("invalid MTP KV keep token count from accepted prefix %d", acceptance.AcceptedPrefixLen)
+	}
+	return kv.KeepCompressedKVAppended(caches, cp, keep)
 }
 
 // AcceptMTPDraftFromLogits greedily samples verifier logits and applies
@@ -64,6 +79,16 @@ func AcceptMTPDraftFromLogits(drafted []int, verifierLogits [][]float32) (MTPAcc
 // rejected draft suffix is discarded. With zero drafts, AllDraftsAccepted is
 // vacuously true and OutputTokens contains the single verifier token.
 func AcceptMTPDraft(drafted, verifier []int) (MTPAcceptance, error) {
+	for i, tok := range drafted {
+		if tok < 0 {
+			return MTPAcceptance{}, fmt.Errorf("drafted token %d at index %d out of range", tok, i)
+		}
+	}
+	for i, tok := range verifier {
+		if tok < 0 {
+			return MTPAcceptance{}, fmt.Errorf("verifier token %d at index %d out of range", tok, i)
+		}
+	}
 	g := len(drafted)
 	if len(verifier) != g+1 {
 		return MTPAcceptance{}, fmt.Errorf("verifier token count=%d, want drafted+1=%d", len(verifier), g+1)

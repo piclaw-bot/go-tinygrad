@@ -11,6 +11,9 @@ func (m *LlamaModel) TokenEmbeddingInto(dst []float32, tokenID int) error {
 		return fmt.Errorf("model embeddings are not loaded")
 	}
 	h := m.Config.HiddenSize
+	if h <= 0 || m.Config.VocabSize <= 0 {
+		return fmt.Errorf("invalid embedding config hidden=%d vocab=%d", h, m.Config.VocabSize)
+	}
 	if len(dst) != h {
 		return fmt.Errorf("token embedding dst len=%d, want %d", len(dst), h)
 	}
@@ -18,7 +21,11 @@ func (m *LlamaModel) TokenEmbeddingInto(dst []float32, tokenID int) error {
 		return fmt.Errorf("token id %d out of range [0,%d)", tokenID, m.Config.VocabSize)
 	}
 	emb := m.EmbedTokens.Data()
-	copy(dst, emb[tokenID*h:(tokenID+1)*h])
+	need := (tokenID + 1) * h
+	if tokenID > 0 && need/tokenID < h || len(emb) < need {
+		return fmt.Errorf("embedding data len=%d, want at least %d", len(emb), need)
+	}
+	copy(dst, emb[tokenID*h:need])
 	return nil
 }
 
@@ -51,6 +58,13 @@ func (m *LlamaModel) Gemma4PerLayerInputs(hidden []float32, tokenID int) ([][]fl
 	h := cfg.HiddenSize
 	hpl := cfg.HiddenPerLayer
 	nl := cfg.NumLayers
+	if h <= 0 || hpl <= 0 || nl < 0 {
+		return nil, fmt.Errorf("invalid per-layer input config hidden=%d hiddenPerLayer=%d layers=%d", h, hpl, nl)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if nl != 0 && hpl > maxInt/nl {
+		return nil, fmt.Errorf("per-layer input dimension overflow")
+	}
 	totalDim := nl * hpl
 	if len(hidden) != h {
 		return nil, fmt.Errorf("per-layer input hidden len=%d, want %d", len(hidden), h)
@@ -58,13 +72,20 @@ func (m *LlamaModel) Gemma4PerLayerInputs(hidden []float32, tokenID int) ([][]fl
 	if tokenID < 0 {
 		return nil, fmt.Errorf("token id %d out of range", tokenID)
 	}
-	if len(m.PerLayerModelProj) != totalDim*h {
-		return nil, fmt.Errorf("per-layer model projection len=%d, want %d", len(m.PerLayerModelProj), totalDim*h)
+	if h != 0 && totalDim > maxInt/h {
+		return nil, fmt.Errorf("per-layer projection dimension overflow")
+	}
+	wantProj := totalDim * h
+	if len(m.PerLayerModelProj) != wantProj {
+		return nil, fmt.Errorf("per-layer model projection len=%d, want %d", len(m.PerLayerModelProj), wantProj)
 	}
 	if len(m.PerLayerProjNorm) != hpl {
 		return nil, fmt.Errorf("per-layer projection norm len=%d, want %d", len(m.PerLayerProjNorm), hpl)
 	}
 	if m.EmbedPerLayer != nil && tokenID < cfg.VocabPerLayer {
+		if cfg.VocabPerLayer < 0 || (cfg.VocabPerLayer != 0 && totalDim > maxInt/cfg.VocabPerLayer) {
+			return nil, fmt.Errorf("per-layer embedding dimension overflow")
+		}
 		need := cfg.VocabPerLayer * totalDim
 		if len(m.EmbedPerLayer) < need {
 			return nil, fmt.Errorf("per-layer embedding len=%d, want at least %d", len(m.EmbedPerLayer), need)
@@ -101,15 +122,23 @@ func (m *LlamaModel) LMHeadLogitsInto(logits, hidden []float32) error {
 	}
 	h := m.Config.HiddenSize
 	vocab := m.Config.VocabSize
+	if h <= 0 || vocab <= 0 {
+		return fmt.Errorf("invalid LM head config hidden=%d vocab=%d", h, vocab)
+	}
 	if len(hidden) != h {
 		return fmt.Errorf("hidden len=%d, want %d", len(hidden), h)
 	}
 	if len(logits) != vocab {
 		return fmt.Errorf("logits len=%d, want %d", len(logits), vocab)
 	}
+	maxInt := int(^uint(0) >> 1)
+	if h != 0 && vocab > maxInt/h {
+		return fmt.Errorf("LM head dimension overflow")
+	}
+	want := vocab * h
 	lmData := m.LMHead.Data()
-	if len(lmData) != vocab*h {
-		return fmt.Errorf("LM head data len=%d, want %d", len(lmData), vocab*h)
+	if len(lmData) != want {
+		return fmt.Errorf("LM head data len=%d, want %d", len(lmData), want)
 	}
 	for v := 0; v < vocab; v++ {
 		row := lmData[v*h : (v+1)*h]

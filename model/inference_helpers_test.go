@@ -149,3 +149,21 @@ func closeFloat32s(a, b []float32, tol float32) bool {
 	}
 	return true
 }
+
+func TestInferenceHelpersValidateBackingData(t *testing.T) {
+	m := &LlamaModel{
+		Config:      LlamaConfig{VocabSize: 2, HiddenSize: 4},
+		EmbedTokens: tensor.FromFloat32([]float32{1, 2, 3, 4}, []int{1, 4}),
+	}
+	if err := m.TokenEmbeddingInto(make([]float32, 4), 1); err == nil {
+		t.Fatal("TokenEmbeddingInto accepted short embedding backing data")
+	}
+	badLM := &LlamaModel{Config: LlamaConfig{VocabSize: 0, HiddenSize: 2}, LMHead: tensor.FromFloat32(nil, []int{0, 2})}
+	if err := badLM.LMHeadLogitsInto(nil, []float32{1, 2}); err == nil {
+		t.Fatal("LMHeadLogitsInto accepted invalid vocab config")
+	}
+	badPLI := &LlamaModel{Config: LlamaConfig{HiddenSize: 2, NumLayers: -1, HiddenPerLayer: 2}, PerLayerModelProj: []float32{1}}
+	if _, err := badPLI.Gemma4PerLayerInputs([]float32{1, 2}, 0); err == nil {
+		t.Fatal("Gemma4PerLayerInputs accepted negative layer count")
+	}
+}

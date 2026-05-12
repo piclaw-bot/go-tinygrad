@@ -608,3 +608,11 @@ Reviewed and refreshed documentation after the latest audit batch:
 - Architecture docs now treat loader/SIMD/runtime guard policy as part of the shared package-boundary baseline.
 - Refactor plan now includes the newer backend/runtime/loader guard status in the current package map and validation gate.
 - CPU SIMD coverage now documents scalar fallback slice bounding and SGEMM/GEBP unsafe-pointer preflights.
+
+## Session 58: MTP/inference helper bounds audit
+
+Hardened transitional `model` helper paths:
+
+- MTP acceptance now rejects negative drafted/verifier token IDs and invalid KV keep counts before committing staged KV.
+- Token embedding and LM-head helpers validate positive model dimensions and backing data lengths before slicing.
+- Gemma4 per-layer input helpers validate positive/overflow-safe dimensions before projection and embedding indexing.

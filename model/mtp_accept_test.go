@@ -162,3 +162,22 @@ func sameInts(a, b []int) bool {
 	}
 	return true
 }
+
+func TestMTPAcceptanceValidationRejectsMalformedTokens(t *testing.T) {
+	if _, err := AcceptMTPDraft([]int{-1}, []int{1, 2}); err == nil {
+		t.Fatal("AcceptMTPDraft accepted negative draft token")
+	}
+	if _, err := AcceptMTPDraft([]int{1}, []int{-1, 2}); err == nil {
+		t.Fatal("AcceptMTPDraft accepted negative verifier token")
+	}
+	bad := MTPAcceptance{AcceptedPrefixLen: -1}
+	if got := bad.KVKeepTokens(); got != 0 {
+		t.Fatalf("negative prefix KVKeepTokens=%d want 0", got)
+	}
+	if err := CommitAcceptedFloatKV(nil, nil, kv.FloatKVCheckpoint{}, nil, bad); err == nil {
+		t.Fatal("CommitAcceptedFloatKV accepted negative prefix")
+	}
+	if err := CommitAcceptedCompressedKV(nil, nil, bad); err == nil {
+		t.Fatal("CommitAcceptedCompressedKV accepted negative prefix")
+	}
+}
