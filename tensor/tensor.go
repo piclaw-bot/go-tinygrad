@@ -245,6 +245,9 @@ func (t *Tensor) reduceOp(op Ops, axes []int) *Tensor {
 // Transpose2D returns a transposed copy of a 2D tensor.
 // [M, N] → [N, M]. Eagerly realized.
 func (t *Tensor) Transpose2D() *Tensor {
+	if t == nil || t.uop == nil {
+		panic("Transpose2D: nil tensor")
+	}
 	t.Realize()
 	dims := t.Shape()
 	if len(dims) != 2 {
@@ -252,7 +255,11 @@ func (t *Tensor) Transpose2D() *Tensor {
 	}
 	m, n := dims[0], dims[1]
 	data := t.Data()
-	out := make([]float32, m*n)
+	total := shapeSize(dims)
+	if total < 0 || len(data) < total {
+		panic("Transpose2D: invalid backing data")
+	}
+	out := make([]float32, total)
 	for i := 0; i < m; i++ {
 		for j := 0; j < n; j++ {
 			out[j*m+i] = data[i*n+j]
@@ -263,8 +270,19 @@ func (t *Tensor) Transpose2D() *Tensor {
 
 // Where selects elements: out[i] = cond[i] ? x[i] : y[i]
 func Where(cond, x, y *Tensor) *Tensor {
+	if cond == nil || x == nil || y == nil || cond.uop == nil || x.uop == nil || y.uop == nil {
+		panic("where: nil tensor")
+	}
+	outDims, _, _, err := broadcast(x.shape, y.shape)
+	if err != nil {
+		panic(err)
+	}
+	condDims, _, _, err := broadcast(cond.shape, NewShape(outDims))
+	if err != nil {
+		panic(err)
+	}
 	u := newUOp(OpWhere, x.uop.DType, []*UOp{cond.uop, x.uop, y.uop}, nil)
-	return &Tensor{uop: u, shape: x.shape}
+	return &Tensor{uop: u, shape: NewShape(condDims)}
 }
 
 // CmpLt returns a boolean tensor: out[i] = (a[i] < b[i])
@@ -279,6 +297,9 @@ func (t *Tensor) CmpEq(other *Tensor) *Tensor {
 
 // Clip clamps values to [min, max].
 func (t *Tensor) Clip(min, max float32) *Tensor {
+	if t == nil || t.uop == nil {
+		panic("clip: nil tensor")
+	}
 	lo := Full(t.Shape(), min)
 	hi := Full(t.Shape(), max)
 	return t.Max(lo).Add(hi.Neg()).Neg().Add(hi)
@@ -286,12 +307,18 @@ func (t *Tensor) Clip(min, max float32) *Tensor {
 
 // ReLU returns max(0, x).
 func (t *Tensor) ReLU() *Tensor {
+	if t == nil || t.uop == nil {
+		panic("relu: nil tensor")
+	}
 	zero := Zeros(t.Shape())
 	return t.Max(zero)
 }
 
 // Sigmoid returns 1 / (1 + exp(-x)).
 func (t *Tensor) Sigmoid() *Tensor {
+	if t == nil || t.uop == nil {
+		panic("sigmoid: nil tensor")
+	}
 	// sigmoid(x) = 1 / (1 + exp2(-x / ln2))
 	// Approximation via exp2
 	t.Realize()

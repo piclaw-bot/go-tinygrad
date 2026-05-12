@@ -566,3 +566,22 @@ func TestShapeIsContiguousRejectsMalformedShape(t *testing.T) {
 		t.Fatal("IsContiguous accepted overflowing dims")
 	}
 }
+
+func TestTensorConvenienceOpsValidateInputs(t *testing.T) {
+	var nilTensor *Tensor
+	assertPanics(t, func() { nilTensor.Transpose2D() })
+	assertPanics(t, func() { nilTensor.Clip(0, 1) })
+	assertPanics(t, func() { nilTensor.ReLU() })
+	assertPanics(t, func() { nilTensor.Sigmoid() })
+	assertPanics(t, func() { Where(nil, Ones([]int{1}), Ones([]int{1})) })
+	assertPanics(t, func() { Where(Ones([]int{2}), Ones([]int{2}), Ones([]int{3})) })
+
+	a := FromFloat32([]float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	tr := a.Transpose2D().Data()
+	want := []float32{1, 4, 2, 5, 3, 6}
+	for i := range want {
+		if tr[i] != want[i] {
+			t.Fatalf("Transpose2D[%d]=%v want %v", i, tr[i], want[i])
+		}
+	}
+}

@@ -989,3 +989,10 @@ Hardened tensor shape sizing:
 
 - `Shape.Numel` now reports `0` for malformed shapes instead of exposing negative sentinel sizes to callers.
 - `Shape.Reshape` now checks source and destination shape products directly so malformed source shapes cannot be treated as size-compatible with zero-element targets.
+
+## Session 108: Tensor convenience op input audit
+
+Hardened tensor convenience helpers:
+
+- `Transpose2D`, `Clip`, `ReLU`, `Sigmoid`, and `Where` now validate nil tensors and malformed shapes before dereferencing internals.
+- `Where` now validates broadcast compatibility across condition/x/y shapes instead of assuming `x` owns the output shape.
