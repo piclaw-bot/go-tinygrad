@@ -9,12 +9,15 @@ import "unsafe"
 // MR=6 rows × NR=8 columns per tile. Index vector [0,ldb,2*ldb,...,7*ldb]
 // enables VGATHERDPS to read B[jj+0..7, p] in one instruction.
 func SgemmNTGather(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) {
-	if m == 0 || n == 0 || k == 0 {
+	if !HasSgemmAsm || !validGEBPArgs(m, n, k, aPtr, bPtr, cPtr, lda, ldb, ldc) {
 		return
 	}
 	const MR = 6
 	const NR = 8
 
+	if ldb > int(int32Max)/7 {
+		return
+	}
 	// Build gather index: [0, ldb, 2*ldb, ..., 7*ldb] (byte offsets / 4 = element offsets)
 	indices := [8]int32{
 		0, int32(ldb), int32(2 * ldb), int32(3 * ldb),

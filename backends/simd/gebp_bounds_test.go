@@ -42,3 +42,18 @@ func TestSgemmNTBlockedValidationRejectsMalformedArgs(t *testing.T) {
 		t.Fatalf("malformed blocked SGEMM mutated C=%v", c[0])
 	}
 }
+
+func TestSgemmNTGatherValidationRejectsMalformedArgs(t *testing.T) {
+	SgemmNTGather(1, 1, 1, 1, nil, nil, nil, 1, 1, 1)
+	a := []float32{1}
+	b := []float32{1}
+	c := []float32{42}
+	SgemmNTGather(1, 1, 2, 1, unsafe.Pointer(&a[0]), unsafe.Pointer(&b[0]), unsafe.Pointer(&c[0]), 1, 1, 1)
+	if c[0] != 42 {
+		t.Fatalf("malformed gather SGEMM mutated C=%v", c[0])
+	}
+	SgemmNTGather(1, 1, 1, 1, unsafe.Pointer(&a[0]), unsafe.Pointer(&b[0]), unsafe.Pointer(&c[0]), 1, int(int32Max)/7+1, 1)
+	if c[0] != 42 {
+		t.Fatalf("overflowing gather index mutated C=%v", c[0])
+	}
+}

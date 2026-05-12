@@ -1,5 +1,7 @@
 package simd
 
+const int32Max = int32(^uint32(0) >> 1)
+
 func checkedMulInt(a, b int) (int, bool) {
 	if a < 0 || b < 0 {
 		return 0, false

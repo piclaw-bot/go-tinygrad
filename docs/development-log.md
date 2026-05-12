@@ -923,3 +923,11 @@ Hardened GEBP packing and fallback dispatch:
 - `packBNT` and `packBNTScalar` now share overflow-safe argument validation instead of computing `k*gebpNR` and row offsets inline.
 - `SgemmNTGebp` now checks `HasSgemmAsm` before reaching architecture-specific microkernels, matching the blocked SGEMM guard.
 - Added regression coverage for overflowing pack arguments.
+
+## Session 99: SIMD gather SGEMM bounds audit
+
+Hardened the unused/experimental gather SGEMM helper:
+
+- `SgemmNTGather` now uses the shared SGEMM/GEBP argument validation and checks `HasSgemmAsm` before reaching architecture-specific gather kernels.
+- Added an int32 gather-index bound check for large `ldb` values before building AVX2 gather offsets.
+- Added malformed/overflowing gather-dispatch regression coverage.
