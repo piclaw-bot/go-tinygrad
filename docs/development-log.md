@@ -751,3 +751,10 @@ Hardened the experimental CUDA JIT compiler helpers:
 - `Compile` validates nil/empty kernel specs, nil nodes, out-of-range buffer indices, and nil node inputs before cache lookup or PTX generation.
 - `CompiledKernel.Launch` now rejects nil kernels, invalid launch metadata, missing buffers, zero GPU pointers, and undersized buffers before CUDA calls.
 - Added malformed-spec and no-op launch regression coverage.
+
+## Session 76: GPU BF16 dispatch validation audit
+
+Hardened BF16 CUDA dispatch helpers:
+
+- Emulated/native BF16 norm, add, SiLU, and GELU launch wrappers now validate nil pointers, positive lengths, byte-size bounds, and length overflow before CUDA calls or fallback dispatch.
+- Added regression coverage for BF16 buffer validation and malformed dispatch calls.

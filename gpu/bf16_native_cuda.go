@@ -79,6 +79,9 @@ func shutdownNativeBF16() {
 
 // DevNativeBF16RMSNorm runs hardware BF16 RMSNorm on Ampere+.
 func DevNativeBF16RMSNorm(x, w *Buffer, n int, eps float32) {
+	if !validBF16Buffer(x, n) || !validBF16Buffer(w, n) {
+		return
+	}
 	if !nativeBF16Ready {
 		DevBF16RMSNorm(x, w, n, eps) // fall back to emulated
 		return
@@ -92,6 +95,9 @@ func DevNativeBF16RMSNorm(x, w *Buffer, n int, eps float32) {
 
 // DevNativeBF16VecAdd runs hardware BF16 add on Ampere+.
 func DevNativeBF16VecAdd(dst, a, b *Buffer, n int) {
+	if !validBF16Buffer(dst, n) || !validBF16Buffer(a, n) || !validBF16Buffer(b, n) {
+		return
+	}
 	if !nativeBF16Ready {
 		DevBF16VecAdd(dst, a, b, n)
 		return

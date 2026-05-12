@@ -21,7 +21,7 @@ var fnBF16Gemv CUfunction
 
 // DevBF16RMSNorm applies RMSNorm on BF16 data: x[i] = BF16(F32(x[i]) * invRMS * F32(w[i]))
 func DevBF16RMSNorm(x, w *Buffer, n int, eps float32) {
-	if fnBF16RMSNorm == 0 {
+	if fnBF16RMSNorm == 0 || !validBF16Buffer(x, n) || !validBF16Buffer(w, n) {
 		return
 	}
 	EnsureContext()
@@ -35,7 +35,7 @@ func DevBF16RMSNorm(x, w *Buffer, n int, eps float32) {
 
 // DevBF16RMSNormNoScale applies RMSNormNoScale on BF16 data: x[i] = BF16(F32(x[i]) * invRMS).
 func DevBF16RMSNormNoScale(x *Buffer, n int, eps float32) {
-	if fnBF16RMSNormNoScale == 0 {
+	if fnBF16RMSNormNoScale == 0 || !validBF16Buffer(x, n) {
 		return
 	}
 	EnsureContext()
@@ -48,7 +48,7 @@ func DevBF16RMSNormNoScale(x *Buffer, n int, eps float32) {
 
 // DevBF16VecAdd computes dst[i] = BF16(F32(a[i]) + F32(b[i]))
 func DevBF16VecAdd(dst, a, b *Buffer, n int) {
-	if fnBF16VecAdd == 0 {
+	if fnBF16VecAdd == 0 || !validBF16Buffer(dst, n) || !validBF16Buffer(a, n) || !validBF16Buffer(b, n) {
 		return
 	}
 	EnsureContext()
@@ -62,7 +62,7 @@ func DevBF16VecAdd(dst, a, b *Buffer, n int) {
 
 // DevBF16SiLUMul computes dst[i] = BF16(SiLU(F32(gate[i])) * F32(up[i])).
 func DevBF16SiLUMul(dst, gate, up *Buffer, n int) {
-	if fnBF16SiLUMul == 0 {
+	if fnBF16SiLUMul == 0 || !validBF16Buffer(dst, n) || !validBF16Buffer(gate, n) || !validBF16Buffer(up, n) {
 		return
 	}
 	EnsureContext()
@@ -76,7 +76,7 @@ func DevBF16SiLUMul(dst, gate, up *Buffer, n int) {
 
 // DevBF16GELUTanhMul computes gate[i] = BF16(GELUTanh(F32(gate[i])) * F32(up[i])) in-place.
 func DevBF16GELUTanhMul(gate, up *Buffer, n int) {
-	if fnBF16GELUTanhMul == 0 {
+	if fnBF16GELUTanhMul == 0 || !validBF16Buffer(gate, n) || !validBF16Buffer(up, n) {
 		return
 	}
 	EnsureContext()
@@ -85,4 +85,15 @@ func DevBF16GELUTanhMul(gate, up *Buffer, n int) {
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&nn))
+}
+
+func validBF16Buffer(b *Buffer, n int) bool {
+	if b == nil || b.Ptr == 0 || n <= 0 {
+		return false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if n > maxInt/2 {
+		return false
+	}
+	return b.Size >= n*2
 }
