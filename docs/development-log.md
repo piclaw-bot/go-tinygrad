@@ -835,3 +835,11 @@ Started Phase 6.5.6 validation gate after the GPU/model/cmd audit batch:
 - Fast no-run package gate passed for GPU, loader, backend, runtime, BERT, tensor, and command packages.
 - `go vet ./...` and `git diff --check` passed.
 - Loader/generation smoke runs passed for `models/smollm2-135m` and `models/gemma4-e2b-mlx4` via `cmd/llmgen`.
+
+## Session 87: Refactor validation gate no-run sweep
+
+Continued Phase 6.5.6 validation:
+
+- Re-ran the fast shared package gate with full tests for `tensor`, `backends/simd`, `runtime/...`, and `loader/...`.
+- Re-ran `models/bert` full package tests.
+- Confirmed repository-wide no-run compile gate with `go test ./... -run '^$'`.
