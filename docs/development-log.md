@@ -1128,3 +1128,11 @@ Hardened GPTQ/Q4 validation:
 - GPTQ qweight/scales/qzeros expected-size calculations now use checked integer multiplication before slice-length comparisons.
 - `ValidateGemvQ4Sym` now validates GPTQ dimensions/layout before checking caller slice lengths, so invalid/overflowing dims are reported without requiring impossible-sized output/input slices.
 - Added overflow and negative-dimension regression coverage.
+
+## Session 127: MLX quant validation overflow audit
+
+Hardened MLX quantized weight validation/loading:
+
+- MLX dequantization, weight-size, scale/bias-size, shape-derived inDim, and float tensor shape product calculations now use checked multiplication.
+- Loader now reports explicit overflow errors for malformed tensor shapes instead of relying on incidental integer wraparound.
+- Added overflow regression coverage for packed weight shapes, scale shapes, in-memory MLX weights, and dequantization.

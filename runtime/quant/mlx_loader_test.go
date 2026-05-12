@@ -129,6 +129,25 @@ func TestLoadMLXWeightRejectsIntegerScales(t *testing.T) {
 	}
 }
 
+func TestLoadMLXWeightRejectsOverflowingShapes(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	src := validMLXSource()
+	w := src["proj.weight"]
+	w.shape = []int{2, maxInt/2 + 1}
+	src["proj.weight"] = w
+	_, err := LoadMLXWeight(src, "proj", 2, 8, 8, 4)
+	if err == nil || !strings.Contains(err.Error(), "overflows") {
+		t.Fatalf("err=%v, want overflow error", err)
+	}
+
+	src = validMLXSource()
+	src["proj.scales"] = fakeMLXTensor{raw: packedF32(0.1, 0.2), dtype: "F32", shape: []int{maxInt/2 + 1, 3}}
+	_, err = LoadMLXWeight(src, "proj", 2, 8, 8, 4)
+	if err == nil || !strings.Contains(err.Error(), "overflows") {
+		t.Fatalf("err=%v, want scale shape overflow error", err)
+	}
+}
+
 func TestValidateMLXQuantWeightAndMalformedUse(t *testing.T) {
 	if err := ValidateMLXQuantWeight(nil); err == nil {
 		t.Fatal("expected nil weight error")
@@ -145,6 +164,14 @@ func TestValidateMLXQuantWeightAndMalformedUse(t *testing.T) {
 	if out[0] != 123 {
 		t.Fatalf("GemvMLQ malformed changed output to %f", out[0])
 	}
+	overflow := &MLXQuantWeight{Weight: []uint32{1}, Scales: []float32{1}, Biases: []float32{0}, OutDim: maxIntForTest(), InDim: 16, Groups: 2, GroupSize: 8, Bits: 4}
+	if err := ValidateMLXQuantWeight(overflow); err == nil || !strings.Contains(err.Error(), "overflows") {
+		t.Fatalf("overflow ValidateMLXQuantWeight err=%v", err)
+	}
+	if got := DequantMLX(overflow); got != nil {
+		t.Fatalf("DequantMLX overflow len=%d, want nil", len(got))
+	}
+
 	good := &MLXQuantWeight{
 		Weight:    []uint32{0x11111111, 0x22222222},
 		Scales:    []float32{1, 1},
@@ -159,3 +186,5 @@ func TestValidateMLXQuantWeightAndMalformedUse(t *testing.T) {
 		t.Fatalf("ValidateMLXQuantWeight good: %v", err)
 	}
 }
+
+func maxIntForTest() int { return int(^uint(0) >> 1) }

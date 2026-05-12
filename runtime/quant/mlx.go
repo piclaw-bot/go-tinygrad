@@ -44,7 +44,11 @@ func DequantMLX(qw *MLXQuantWeight) []float32 {
 	if err := ValidateMLXQuantWeight(qw); err != nil {
 		return nil
 	}
-	out := make([]float32, qw.OutDim*qw.InDim)
+	outLen, ok := checkedMulInt(qw.OutDim, qw.InDim)
+	if !ok {
+		return nil
+	}
+	out := make([]float32, outLen)
 	packFactor := 32 / qw.Bits
 	mask := uint32((1 << qw.Bits) - 1)
 
@@ -124,8 +128,14 @@ func ValidateMLXQuantWeight(qw *MLXQuantWeight) error {
 	if qw.InDim%qw.GroupSize != 0 || qw.Groups != qw.InDim/qw.GroupSize {
 		return fmt.Errorf("MLX group layout mismatch inDim=%d groupSize=%d groups=%d", qw.InDim, qw.GroupSize, qw.Groups)
 	}
-	wantWeight := qw.OutDim * (qw.InDim / packFactor)
-	wantScale := qw.OutDim * qw.Groups
+	wantWeight, ok := checkedMulInt(qw.OutDim, qw.InDim/packFactor)
+	if !ok {
+		return fmt.Errorf("MLX weight size overflows out=%d in=%d packFactor=%d", qw.OutDim, qw.InDim, packFactor)
+	}
+	wantScale, ok := checkedMulInt(qw.OutDim, qw.Groups)
+	if !ok {
+		return fmt.Errorf("MLX scale/bias size overflows out=%d groups=%d", qw.OutDim, qw.Groups)
+	}
 	if len(qw.Weight) < wantWeight {
 		return fmt.Errorf("MLX weight length=%d, expected at least %d", len(qw.Weight), wantWeight)
 	}
@@ -164,7 +174,10 @@ func LoadMLXWeight(f interface {
 		if shapeOut <= 0 || shapePackedIn <= 0 {
 			return nil, fmt.Errorf("MLX weight invalid shape %v", shape)
 		}
-		shapeIn := shapePackedIn * packFactor
+		shapeIn, ok := checkedMulInt(shapePackedIn, packFactor)
+		if !ok {
+			return nil, fmt.Errorf("MLX weight shape %v overflows inDim with packFactor=%d", shape, packFactor)
+		}
 		if shapeIn%groupSize != 0 {
 			return nil, fmt.Errorf("MLX weight shape %v implies inDim=%d not divisible by groupSize=%d", shape, shapeIn, groupSize)
 		}
@@ -195,19 +208,27 @@ func LoadMLXWeight(f interface {
 		return nil, fmt.Errorf("MLX weight dtype %s not supported (expected U32/I32)", dtype)
 	}
 
-	expectedN := outDim * (inDim / packFactor)
+	expectedN, ok := checkedMulInt(outDim, inDim/packFactor)
+	if !ok {
+		return nil, fmt.Errorf("MLX weight expected size overflows out=%d in=%d packFactor=%d", outDim, inDim, packFactor)
+	}
 	if len(weight) != expectedN {
 		return nil, fmt.Errorf("MLX weight shape mismatch: got %d, expected %d (%dx%d)", len(weight), expectedN, outDim, inDim/packFactor)
 	}
 
+	expectedScaleN, ok := checkedMulInt(outDim, numGroups)
+	if !ok {
+		return nil, fmt.Errorf("MLX scale/bias expected size overflows out=%d groups=%d", outDim, numGroups)
+	}
+
 	// Load scales: [outDim, numGroups]
-	scales, err := loadMLXFloat(f, prefix+".scales", outDim*numGroups)
+	scales, err := loadMLXFloat(f, prefix+".scales", expectedScaleN)
 	if err != nil {
 		return nil, err
 	}
 
 	// Load biases: [outDim, numGroups]
-	biases, err := loadMLXFloat(f, prefix+".biases", outDim*numGroups)
+	biases, err := loadMLXFloat(f, prefix+".biases", expectedScaleN)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +312,11 @@ func validateMLXFloatLen(name string, got int, shape []int, expectedN int) error
 			if d <= 0 {
 				return fmt.Errorf("%s invalid shape %v", name, shape)
 			}
-			shapeN *= d
+			var ok bool
+			shapeN, ok = checkedMulInt(shapeN, d)
+			if !ok {
+				return fmt.Errorf("%s shape %v element count overflows", name, shape)
+			}
 		}
 		if shapeN != got {
 			return fmt.Errorf("%s shape %v has %d elements, raw data has %d", name, shape, shapeN, got)
