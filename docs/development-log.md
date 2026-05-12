@@ -887,3 +887,10 @@ Hardened SIMD scalar norm math:
 
 - Replaced the unsafe inverse-square-root approximation used by `float32Sqrt` with `math.Sqrt` to avoid precision-sensitive RMSNorm drift in scalar fallbacks.
 - Added regression coverage for representative `float32Sqrt` inputs.
+
+## Session 94: SIMD BF16 GEMV dimension audit
+
+Hardened BF16 scalar GEMV fallback:
+
+- `BF16GemvNT` now checks `inDim*outDim` overflow before validating the backing F32 weight slice.
+- Added a shared `checkedMulInt` helper for SIMD package dimension products and regression coverage for overflowing BF16 GEMV dimensions.

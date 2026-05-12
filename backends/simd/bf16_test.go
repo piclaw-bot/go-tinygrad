@@ -227,3 +227,12 @@ func TestBF16HelpersMalformedInputs(t *testing.T) {
 		t.Fatalf("BF16GemvNT malformed mutated output=%v", BF16ToF32(out[0]))
 	}
 }
+
+func TestBF16GemvNTRejectsOverflowingDims(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	out := BF16FromF32Slice([]float32{123})
+	BF16GemvNT(out, BF16FromF32Slice([]float32{1}), []float32{1}, maxInt/2+1, 3)
+	if got := BF16ToF32(out[0]); got != 123 {
+		t.Fatalf("overflowing BF16GemvNT mutated output: %v", got)
+	}
+}

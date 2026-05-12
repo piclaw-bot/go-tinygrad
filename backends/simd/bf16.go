@@ -105,7 +105,8 @@ func BF16VecAdd(dst, a, b []uint16) {
 // BF16GemvNT computes out[j] = dot(x, w[j*inDim:(j+1)*inDim]) for BF16 x, F32 w.
 // This is the mixed-precision GEMV: BF16 activations × F32 weights → BF16 output.
 func BF16GemvNT(out []uint16, x []uint16, w []float32, inDim, outDim int) {
-	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+	weightLen, ok := checkedMulInt(inDim, outDim)
+	if inDim <= 0 || outDim <= 0 || !ok || len(out) < outDim || len(x) < inDim || len(w) < weightLen {
 		return
 	}
 	for j := 0; j < outDim; j++ {
