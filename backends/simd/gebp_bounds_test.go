@@ -27,3 +27,14 @@ func TestGEBPValidationRejectsMalformedArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestSgemmNTBlockedValidationRejectsMalformedArgs(t *testing.T) {
+	SgemmNTBlockedFMA(1, 1, 1, 1, nil, nil, nil, 1, 1, 1)
+	a := []float32{1}
+	b := []float32{1}
+	c := []float32{42}
+	SgemmNTBlockedFMA(1, 1, 2, 1, unsafe.Pointer(&a[0]), unsafe.Pointer(&b[0]), unsafe.Pointer(&c[0]), 1, 1, 1)
+	if c[0] != 42 {
+		t.Fatalf("malformed blocked SGEMM mutated C=%v", c[0])
+	}
+}

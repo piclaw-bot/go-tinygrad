@@ -6,7 +6,7 @@ import "unsafe"
 // Go handles the 64×64 block decomposition (keeps B tiles L1-resident).
 // Assembly handles the inner (i,j,k) loops per tile with FMA.
 func SgemmNTBlockedFMA(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) {
-	if m == 0 || n == 0 || k == 0 {
+	if !validGEBPArgs(m, n, k, aPtr, bPtr, cPtr, lda, ldb, ldc) {
 		return
 	}
 	const bs = 64

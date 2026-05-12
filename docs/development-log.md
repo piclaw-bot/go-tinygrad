@@ -546,3 +546,7 @@ Hardened GEBP/packed-B helper paths in `backends/simd`:
 - `ensureGebpBuf` now returns nil for non-positive requests instead of slicing with invalid bounds.
 - `packBNT`/`packBNTScalar` validate strides, block sizes, `k`, packed-buffer size, and B backing length before slicing or taking row pointers.
 - `SgemmNTGebp` validates dimensions, pointers, strides, and multiplication overflow before building unsafe slices.
+
+## Session 50: SIMD blocked SGEMM validation audit
+
+Reused the GEBP argument preflight for `SgemmNTBlockedFMA` so the blocked FMA path rejects invalid dimensions, nil pointers, short strides, and overflow-prone shape products before pointer arithmetic or tile dispatch.
