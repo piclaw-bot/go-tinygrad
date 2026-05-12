@@ -150,6 +150,22 @@ func closeFloat32s(a, b []float32, tol float32) bool {
 	return true
 }
 
+func TestInferenceHelpersRejectOverflowingProducts(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	tok := &LlamaModel{Config: LlamaConfig{VocabSize: maxInt, HiddenSize: 2}, EmbedTokens: tensor.FromFloat32([]float32{1, 2}, []int{1, 2})}
+	if err := tok.TokenEmbeddingInto(make([]float32, 2), maxInt-1); err == nil {
+		t.Fatal("TokenEmbeddingInto accepted overflowing embedding offset")
+	}
+	pli := &LlamaModel{Config: LlamaConfig{HiddenSize: 2, NumLayers: maxInt/2 + 1, HiddenPerLayer: 2}, PerLayerModelProj: []float32{1}}
+	if _, err := pli.Gemma4PerLayerInputs([]float32{1, 2}, 0); err == nil {
+		t.Fatal("Gemma4PerLayerInputs accepted overflowing per-layer dimensions")
+	}
+	lm := &LlamaModel{Config: LlamaConfig{VocabSize: maxInt/2 + 1, HiddenSize: 2}, LMHead: tensor.FromFloat32([]float32{1}, []int{1})}
+	if err := lm.LMHeadLogitsInto(nil, []float32{1, 2}); err == nil {
+		t.Fatal("LMHeadLogitsInto accepted overflowing output dimensions")
+	}
+}
+
 func TestInferenceHelpersValidateBackingData(t *testing.T) {
 	m := &LlamaModel{
 		Config:      LlamaConfig{VocabSize: 2, HiddenSize: 4},

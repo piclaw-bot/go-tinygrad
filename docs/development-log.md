@@ -1193,3 +1193,10 @@ Hardened transitional MoE helpers:
 - Switch-MLX expert loader now validates nil sources, dimensions, divisibility, stride products, and raw tensor byte lengths before slicing per-expert data.
 - CPU MoE forward now rejects nil/empty/malformed configs, clamps active expert count, guards softmax normalization, and verifies all selected expert weight slices before dispatch.
 - Added malformed MoE forward regression coverage.
+
+## Session 135: Inference helper product arithmetic audit
+
+Hardened transitional model inference helpers:
+
+- Token embedding, Gemma4 per-layer input, and LM-head helpers now use checked product arithmetic for offsets, projection sizes, embedding tables, and LM-head backing data sizes.
+- Added overflow regression coverage for token embedding offsets, per-layer Gemma4 input dimensions, and LM-head output dimensions.
