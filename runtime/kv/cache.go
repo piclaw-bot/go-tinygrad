@@ -55,7 +55,10 @@ func NewCompressedKVCache(kvDim, numKVHeads, headDim int, tq *TurboQuantState, i
 	if rw < 0 {
 		rw = 0
 	}
-	capHint := 2048 * kvDim
+	capHint, ok := checkedMulInt(2048, kvDim)
+	if !ok {
+		capHint = 0
+	}
 	return &CompressedKVCache{
 		FullK:          make([]float32, 0, capHint),
 		FullV:          make([]float32, 0, capHint),
@@ -137,8 +140,11 @@ func (c *CompressedKVCache) GetK() []float32 {
 		return nil
 	}
 	if len(c.CompressedK) == 0 {
-		if c.seqLen > 0 && len(c.FullK) > c.seqLen*c.kvDim {
-			return c.FullK[:c.seqLen*c.kvDim]
+		if c.seqLen > 0 {
+			need, ok := checkedMulInt(c.seqLen, c.kvDim)
+			if ok && len(c.FullK) > need {
+				return c.FullK[:need]
+			}
 		}
 		return c.FullK
 	}
@@ -146,7 +152,10 @@ func (c *CompressedKVCache) GetK() []float32 {
 		return c.FullK
 	}
 	// Decompress + concatenate into reusable scratch storage.
-	need := c.seqLen * c.kvDim
+	need, ok := checkedMulInt(c.seqLen, c.kvDim)
+	if !ok {
+		return c.FullK
+	}
 	if cap(c.scratchK) < need {
 		c.scratchK = make([]float32, 0, need)
 	}
@@ -173,15 +182,21 @@ func (c *CompressedKVCache) GetV() []float32 {
 		return nil
 	}
 	if len(c.CompressedV) == 0 {
-		if c.seqLen > 0 && len(c.FullV) > c.seqLen*c.kvDim {
-			return c.FullV[:c.seqLen*c.kvDim]
+		if c.seqLen > 0 {
+			need, ok := checkedMulInt(c.seqLen, c.kvDim)
+			if ok && len(c.FullV) > need {
+				return c.FullV[:need]
+			}
 		}
 		return c.FullV
 	}
 	if c.tq == nil || c.numKVHeads <= 0 || c.headDim <= 0 || c.numKVHeads*c.headDim != c.kvDim {
 		return c.FullV
 	}
-	need := c.seqLen * c.kvDim
+	need, ok := checkedMulInt(c.seqLen, c.kvDim)
+	if !ok {
+		return c.FullV
+	}
 	if cap(c.scratchV) < need {
 		c.scratchV = make([]float32, 0, need)
 	}
@@ -239,7 +254,19 @@ func compressedEntryValid(entry compressedEntry, heads, bytesPerHead int) bool {
 	if heads <= 0 || bytesPerHead <= 0 {
 		return false
 	}
-	return len(entry.Packed) >= heads*bytesPerHead && len(entry.HeadVMin) >= heads && len(entry.HeadScale) >= heads
+	packedLen, ok := checkedMulInt(heads, bytesPerHead)
+	return ok && len(entry.Packed) >= packedLen && len(entry.HeadVMin) >= heads && len(entry.HeadScale) >= heads
+}
+
+func checkedMulInt(a, b int) (int, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if b != 0 && a > maxInt/b {
+		return 0, false
+	}
+	return a * b, true
 }
 
 func (c *CompressedKVCache) MemoryBytes() int64 {

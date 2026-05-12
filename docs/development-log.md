@@ -1097,3 +1097,10 @@ Hardened tokenizer loading:
 
 - BPE merge strings and array pairs now reject malformed empty/incomplete pairs instead of leaving zero-value merge rules in the rank table.
 - Added malformed merge regression coverage for both tokenizer JSON merge encodings.
+
+## Session 123: Compressed KV cache arithmetic audit
+
+Hardened compressed KV cache arithmetic:
+
+- Constructor capacity hints, full-cache slice bounds, scratch-buffer sizes, and compressed-entry packed-length checks now validate integer products before allocation or slicing.
+- Added regression coverage for overflowing KV dimensions/sequence lengths and packed-entry validation.

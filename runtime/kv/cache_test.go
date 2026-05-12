@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestCompressedKVCacheOverflowGuards(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	c := NewCompressedKVCache(maxInt/2+1, 1, maxInt/2+1, nil, false)
+	if cap(c.FullK) != 0 || cap(c.FullV) != 0 {
+		t.Fatalf("overflowing cap hint should be disabled, got K=%d V=%d", cap(c.FullK), cap(c.FullV))
+	}
+	c.seqLen = maxInt/2 + 1
+	if got := c.GetK(); len(got) != 0 {
+		t.Fatalf("overflowing GetK returned %d values", len(got))
+	}
+	if compressedEntryValid(compressedEntry{Packed: []byte{1}}, maxInt/2+1, 4) {
+		t.Fatal("overflowing compressed entry validated")
+	}
+}
+
 func TestCompressedKVCacheBasic(t *testing.T) {
 	headDim := 128
 	numKVHeads := 4
