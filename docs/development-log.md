@@ -805,3 +805,9 @@ Hardened `LoadGPUModel` upload error handling:
 - Work-buffer upload failures now abort model loading with cleanup instead of silently returning a partially CPU/GPU-backed `GPUModel`.
 - Per-layer weight upload failures are captured and reported after allocation cleanup.
 - KV cache GPU buffer uploads now propagate layer-specific errors instead of ignoring `ToGPU` failures.
+
+## Session 83: Batched prefill scratch lifetime audit
+
+Hardened batched GPU prefill scratch lifetime management:
+
+- Temporary batch `DevBuf` scratch buffers are now freed on all return paths to avoid leaking GPU-side allocations during prefill fallback/error exits.

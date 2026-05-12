@@ -58,6 +58,17 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 	bUp := gpu.NewDevBuf(B * cfg.Intermediate)
 	bDown := gpu.NewDevBuf(B * h)
 	bResidual := gpu.NewDevBuf(B * h)
+	defer bHidden.Free()
+	defer bNormed.Free()
+	defer bQ.Free()
+	defer bK.Free()
+	defer bV.Free()
+	defer bAttnOut.Free()
+	defer bOOut.Free()
+	defer bGate.Free()
+	defer bUp.Free()
+	defer bDown.Free()
+	defer bResidual.Free()
 
 	// Embed all tokens into batch hidden: [B × h]
 	embData := m.EmbedTokens.Data()
