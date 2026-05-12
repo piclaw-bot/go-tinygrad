@@ -162,7 +162,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid ranges are inert
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, KV, prefill, LM-head, and low-level helper guards are being hardened before moves
-- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, and BF16 dispatch guards are hardened
+- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, and attention dispatch guards are hardened
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs

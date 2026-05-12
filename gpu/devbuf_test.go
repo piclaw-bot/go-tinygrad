@@ -225,3 +225,22 @@ func TestDevLMHeadRejectsOverflowProducts(t *testing.T) {
 		t.Fatalf("overflowing DevLMHead mutated output: %v", got)
 	}
 }
+
+func TestDevRoPEAttentionMalformedDoesNotPanic(t *testing.T) {
+	short := NewDevBuf(1)
+	DevRoPE(short, short, -1, 1, 2)
+	DevRoPE(short, short, 0, 2, 3)
+	if DevRoPEPartial(short, short, 0, 2, 4, 3) {
+		t.Fatal("malformed partial RoPE reported success")
+	}
+	if DevAttentionScores(short, short, short, 0, 1, 1, 1, 1) {
+		t.Fatal("malformed attention scores reported success")
+	}
+	if DevSoftmaxRows(short, short, 0, 1) {
+		t.Fatal("malformed softmax rows reported success")
+	}
+	DevAttention(short, short, short, short, 0, 1, 1, 1, 1)
+	maxInt := int(^uint(0) >> 1)
+	DevRoPE(short, short, 0, maxInt/2+1, 4)
+	_ = DevAttentionScores(short, short, short, 3, maxInt/2+1, 1, 4, 1)
+}

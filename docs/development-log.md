@@ -774,3 +774,12 @@ Hardened batched Q4 dispatch:
 
 - `GemmQ4` now validates the quantized weight before reading dimensions, computes batched input/output size products with overflow checks, and rejects malformed buffers before CUDA dispatch.
 - `GemvQ4OrGemm` no longer prints a misleading sequential fallback message for a fallback path that cannot safely slice batched buffers yet; it delegates to the guarded batched dispatch for `B>1`.
+
+
+## Session 79: RoPE/attention dispatch guard audit and docs
+
+Hardened and documented remaining GPU RoPE/attention dispatch wrappers:
+
+- RoPE and partial RoPE validate positions, dimensions, tensor lengths, and size-product overflow before launch.
+- Attention score, softmax-row, and fused GQA attention wrappers validate sequence bounds, head dimensions, cache lengths, and output sizes before launch.
+- Documentation refreshed so the future CUDA backend split preserves these transitional guard expectations.

@@ -522,11 +522,12 @@ func initRoPEAttn() { loadMegaModule() }
 // cosSin is a precomputed [maxSeq * headDim] buffer with interleaved cos,sin pairs.
 func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 	initRoPEAttn()
-	if ropeReady && tryGPU(x, cosSin) {
+	total, okTotal := checkedMulInt(nHeads, headDim)
+	halfDim, okHalf := checkedMulInt(nHeads, headDim/2)
+	if ropeReady && pos >= 0 && nHeads > 0 && headDim > 0 && headDim%2 == 0 && okTotal && okHalf && x != nil && cosSin != nil && x.n >= total && cosSin.n >= total && tryGPU(x, cosSin) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
-		halfDim := nHeads * (headDim / 2)
 		LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
@@ -542,12 +543,14 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 // cosSin is [maxSeq * rotHalf * 2] with interleaved cos,sin pairs.
 func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int) bool {
 	initRoPEAttn()
-	if ropePartialReady && tryGPU(x, cosSin) {
+	total, okTotal := checkedMulInt(nHeads, headDim)
+	totalPairs, okPairs := checkedMulInt(nHeads, rotHalf)
+	cosLen, okCos := checkedMulInt(totalPairs, 2)
+	if ropePartialReady && pos >= 0 && nHeads > 0 && headDim > 0 && rotHalf > 0 && rotHalf <= headDim/2 && okTotal && okPairs && okCos && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosLen && tryGPU(x, cosSin) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
 		rh := uint32(rotHalf)
-		totalPairs := nHeads * rotHalf
 		LaunchKernel(ropePartialFn, (uint32(totalPairs)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
@@ -564,7 +567,11 @@ func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int
 // out[nHeads*seqLen], q[nHeads*headDim], kCache[seqLen*kvDim]
 func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int, scale float32) bool {
 	initRoPEAttn()
-	if attnScoreReady && seqLen <= 2048 && tryGPU(out, q, kCache) {
+	qLen, okQ := checkedMulInt(nHeads, headDim)
+	kvDim, okKVDim := checkedMulInt(nKVHeads, headDim)
+	cacheLen, okCache := checkedMulInt(seqLen, kvDim)
+	scoreLen, okScore := checkedMulInt(nHeads, seqLen)
+	if attnScoreReady && seqLen > 0 && seqLen <= 2048 && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && okScore && out != nil && q != nil && kCache != nil && out.n >= scoreLen && q.n >= qLen && kCache.n >= cacheLen && tryGPU(out, q, kCache) {
 		sl := uint32(seqLen)
 		nh := uint32(nHeads)
 		nkv := uint32(nKVHeads)
@@ -588,7 +595,8 @@ func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDi
 // in/out[nRows*seqLen], one block per row.
 func DevSoftmaxRows(out, in *DevBuf, nRows, seqLen int) bool {
 	initRoPEAttn()
-	if softmaxRowsReady && seqLen <= 2048 && tryGPU(out, in) {
+	total, okTotal := checkedMulInt(nRows, seqLen)
+	if softmaxRowsReady && nRows > 0 && seqLen > 0 && seqLen <= 2048 && okTotal && out != nil && in != nil && out.n >= total && in.n >= total && tryGPU(out, in) {
 		sl := uint32(seqLen)
 		LaunchKernel(softmaxRowsFn, uint32(nRows), 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&in.gpu.Ptr),
@@ -604,7 +612,10 @@ func DevSoftmaxRows(out, in *DevBuf, nRows, seqLen int) bool {
 // q[nHeads*headDim], kCache/vCache[seqLen*kvDim], out[nHeads*headDim]
 func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, headDim int, scale float32) {
 	initRoPEAttn()
-	if attnReady && seqLen <= 2048 && tryGPU(out, q, kCache, vCache) {
+	qLen, okQ := checkedMulInt(nHeads, headDim)
+	kvDim, okKVDim := checkedMulInt(nKVHeads, headDim)
+	cacheLen, okCache := checkedMulInt(seqLen, kvDim)
+	if attnReady && seqLen > 0 && seqLen <= 2048 && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && out != nil && q != nil && kCache != nil && vCache != nil && out.n >= qLen && q.n >= qLen && kCache.n >= cacheLen && vCache.n >= cacheLen && tryGPU(out, q, kCache, vCache) {
 		sl := uint32(seqLen)
 		nh := uint32(nHeads)
 		nkv := uint32(nKVHeads)

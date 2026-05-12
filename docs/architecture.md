@@ -63,7 +63,7 @@ The Phase 6.5 audit now treats guard behavior in shared packages as part of the 
 - SIMD scalar fallbacks bound all participating slices; SGEMM/GEBP wrappers validate dimensions, pointers, strides, and overflow before unsafe slicing or pointer arithmetic.
 - Safetensors validates known dtype byte sizes against declared shapes and data offsets at open time; tokenizer byte maps use one-time initialization for concurrent callers.
 - Transitional model helpers validate staged MTP acceptance, model-specific KV dimensions, embedding and LM-head backing slices, GPU prefill/chunked-LM-head entrypoints, and low-level GEMV/GQA product arithmetic before slicing or dispatch.
-- Transitional CUDA helpers validate `DevBuf` receiver/upload state, graph launches, stream kernel arguments, allocation sizes, Q4/MLX packed-weight layouts, expert-pool IDs, experimental NV helper inputs, dense SGEMM/LM-head buffers, JIT specs, and BF16 buffers before driver calls or kernel dispatch.
+- Transitional CUDA helpers validate `DevBuf` receiver/upload state, graph launches, stream kernel arguments, allocation sizes, Q4/MLX packed-weight layouts, expert-pool IDs, experimental NV helper inputs, dense SGEMM/LM-head buffers, JIT specs, BF16 buffers, and RoPE/attention tensor shapes before driver calls or kernel dispatch.
 
 Later package moves should preserve this policy and keep focused regression tests close to the package that owns the guard.
 
