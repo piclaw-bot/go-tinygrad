@@ -250,10 +250,52 @@ GEMMA4_TRACE_TEST=1 go test -tags diagnostic ./model -run 'TestGemma4GPUGenerate
 
 ## Definition of done for Phase 6.5
 
-- `docs/refactor-plan.md` exists and is current.
-- Package ownership and import rules are enforced by review, and ideally by a small script later.
-- Major files are moved out of `model/` catch-all into loader/runtime/backend/model packages.
-- No compatibility wrappers remain unless explicitly documented as short-lived temporary bridges.
-- Diagnostic tests are separated or clearly gated.
-- CLI behavior and flags are unchanged.
-- Validation gate passes and the refactor is committed/pushed before more MTP or backend functionality lands.
+Phase 6.5 is complete only when each checklist item below is either checked off or explicitly deferred into a named follow-up phase with rationale. This replaces the earlier broad "cleanup until it feels stable" approach.
+
+### 6.5 completion checklist
+
+1. **Ownership docs and import rules**
+   - [x] `docs/refactor-plan.md` exists and is current.
+   - [x] Current package ownership map is documented.
+   - [x] Target package architecture and import direction are documented.
+   - [ ] Optional: add a small import-boundary check script, or explicitly defer it.
+
+2. **Mechanical ownership moves**
+   - [x] Loader boundaries moved: tokenizer, config, safetensors, weights.
+   - [x] Shared runtime boundaries moved: KV/TurboQuant, MLX/GPTQ/Q4 quant helpers, mmap advisor.
+   - [x] Backend boundaries moved: SIMD facade, placement policy, Vulkan scaffolding/assets, CUDA PTX assets.
+   - [x] BERT/GTE encoder path moved to `models/bert`.
+   - [ ] CUDA runtime split from transitional `gpu` to `backends/cuda`, or explicitly defer with a preservation plan for `DevBuf`, upload state, GPU quantized weights, expert resources, and guard behavior.
+   - [ ] LLaMA/Gemma/Qwen/MoE/MTP split from transitional `model`, or explicitly defer with a named follow-up plan.
+   - [ ] Generation/runtime split from transitional `model`, or explicitly defer until model/backend interfaces are stable.
+
+3. **Audit/guard baseline**
+   - [x] `tensor` malformed-input, unsafe-view, NN/convenience, matmul/linear, module guards audited.
+   - [x] `loader` tokenizer/safetensors/weights/config edge cases audited.
+   - [x] `runtime/kv`, `runtime/memory`, and `runtime/quant` arithmetic/layout/nil/malformed-input guards audited.
+   - [x] `backends/placement`, `backends/simd`, and `backends/vulkan` guard/logging status audited.
+   - [x] Transitional `gpu` CUDA/NV helper guard/logging baseline audited before CUDA split.
+   - [ ] Transitional `model` audit complete for loader/forward/generation helpers, including chunked LM-head, batched prefill, MTP scaffold, MoE, and remaining large forward paths.
+   - [ ] `cmd` front-end/server boundary audit complete after any final model/generation changes.
+
+4. **Debug/test/logging hygiene**
+   - [x] Heavy Gemma4 diagnostics are `diagnostic` build-tagged and gated by `GEMMA4_TRACE_TEST=1`.
+   - [x] Library/backend normal-path progress diagnostics are quiet by default and gated by `GO_PHERENCE_*_DEBUG` env vars.
+   - [ ] Remaining non-test stdout/stderr/logging scan is clean or documented as explicit user-facing CLI/reporting behavior.
+
+5. **Documentation alignment**
+   - [x] README, architecture, runtime/backend notes, TurboQuant, GPU options, weight-budget docs, and development log reflect completed moves/audits through the loader/runtime batch.
+   - [ ] Final documentation sweep after any remaining transitional `model`/`cmd` audit or explicit deferrals.
+
+6. **Validation gate**
+   - [x] Fast shared gates have passed repeatedly during audit batches.
+   - [x] No-run compile gate `go test ./... -run '^$'` passes after recent batches.
+   - [x] `go vet ./...` and `git diff --check` pass after recent batches.
+   - [ ] Focused model helper tests pass after remaining `model` audit.
+   - [ ] Smoke runs for SmolLM2 and Gemma4 loader/generation paths pass or are explicitly skipped with reason.
+   - [ ] Final full `go test ./... -count=1` passes, or any resource-related skip/failure mode is documented with the focused substitute gate.
+
+7. **Final closeout**
+   - [ ] All Phase 6.5 commits are pushed.
+   - [ ] Plan sidebar is updated to mark complete/deferred items accurately.
+   - [ ] A final Phase 6.5 closeout note states whether MTP/verifier/drafter work may resume.

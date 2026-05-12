@@ -1168,3 +1168,11 @@ Hardened chunked GPU LM-head setup:
 - Clamp reported free VRAM before converting to `int` for chunk sizing.
 - Check chunk buffer element products before allocating GPU buffers.
 - Free temporary GPU buffers on all return paths from chunked LM-head execution.
+
+## Session 132: Phase 6.5 completion checklist
+
+Made the Phase 6.5 exit criteria explicit:
+
+- Replaced the broad definition-of-done section in `docs/refactor-plan.md` with a concrete checklist covering ownership docs, mechanical moves, audit baselines, debug/logging hygiene, documentation alignment, validation gates, and final closeout.
+- Marked completed loader/runtime/backend/tensor/GPU audit work separately from still-pending transitional `model`, CUDA-runtime split, model-package split, command-boundary audit, smoke tests, and final validation.
+- This checklist is now the source of truth for deciding whether Phase 6.5 is done or whether remaining work is deliberately deferred.
