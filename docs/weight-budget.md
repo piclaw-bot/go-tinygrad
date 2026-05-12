@@ -23,8 +23,7 @@ and touches one byte per page at model load time.
 ./bin/llmgen -model models/gemma4-e2b-mlx4 --eager-load --turbo-quant
 ```
 
-The loader logs the total mapped bytes and elapsed pre-fault time. Sharded models
-pre-fault each shard and report the aggregate size.
+When `GO_PHERENCE_LOAD_DEBUG=1` is set, the loader logs the total mapped bytes and elapsed pre-fault time. Sharded models pre-fault each shard and report the aggregate size through the same opt-in diagnostics gate.
 
 ## Memory Tiers
 
@@ -39,8 +38,8 @@ Tier 3: mmap (disk)       OS page cache, madvise control
 
 Backend-neutral budget and layer-placement policy now lives in `backends/placement`:
 
-- `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters, with guarded accounting for negative/overflowing inputs.
-- `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery; invalid dimensions are clamped for safe planning.
+- `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters, with nil-safe methods, invalid-category rejection, allocation-overflow rejection, and free-underflow clamping.
+- `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery; invalid dimensions are clamped, estimator arithmetic saturates, and odd INT4 packed sizes round up instead of truncating.
 - `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints with idempotent hot-byte accounting; `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
 - GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting and handle disabled/replacement cases explicitly.
 

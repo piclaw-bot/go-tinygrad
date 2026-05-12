@@ -1081,3 +1081,12 @@ Hardened backend-neutral budget accounting:
 - Budget manager methods now tolerate nil receivers and reject unknown budget categories instead of aliasing them to resident accounting.
 - Allocation now rejects usage overflow before mutating counters; free clamps without subtract-underflow.
 - Added regression coverage for nil managers, invalid categories, and overflow rejection.
+
+
+## Session 121: Logging and placement audit documentation sweep
+
+Refreshed documentation after the logging and placement/budget audit batches:
+
+- README, architecture notes, GPU options, weight-budget notes, and refactor plan now document quiet-by-default library diagnostics and the `GO_PHERENCE_*_DEBUG` gates.
+- Placement docs now record guarded budget accounting, invalid-category rejection, nil-safe budget manager methods, saturating estimator math, and odd INT4 packed-size rounding.
+- Refactor notes call out that these guard/logging semantics should be preserved during the later CUDA/model package splits.

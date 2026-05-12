@@ -61,6 +61,16 @@ else:
 
 The current production model path chooses CUDA when requested/available, otherwise CPU SIMD/scalar. Vulkan device/shader scaffolding is present but full forward dispatch remains a Phase 3.6 item.
 
+### Debug and diagnostics gates
+
+Library/backend progress diagnostics are quiet by default. Opt in when debugging backend discovery or placement:
+
+- `GO_PHERENCE_GPU_DEBUG=1` — CUDA/NV backend init, module, stream, native-BF16, and experimental direct-NVIDIA ioctl diagnostics.
+- `GO_PHERENCE_VULKAN_DEBUG=1` — Vulkan discovery, CPU-device rejection, device creation, and pending-SPIR-V diagnostics.
+- `GO_PHERENCE_LOAD_DEBUG=1` — model loader, quantization detection, GPU placement, LM-head, expert-pool, and VRAM budget diagnostics.
+- `GO_PHERENCE_PREFILL_DEBUG=1` — batched-prefill progress diagnostics.
+- `GO_PHERENCE_VULKAN_ALLOW_CPU=1` — allows CPU/software Vulkan implementations such as llvmpipe for shader/backend debugging; by default these are rejected so `--gpu` does not silently select a CPU device.
+
 
 ## DevBuf/dispatch guard status
 

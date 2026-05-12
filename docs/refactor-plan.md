@@ -15,20 +15,20 @@ The immediate goal is not to make the architecture perfect. It is to create enou
 Current Go packages from `go list ./...` after the loader/backend/runtime moves completed so far:
 
 ```text
-backends/placement   -> backend-neutral memory budget and layer placement policy
+backends/placement   -> backend-neutral memory budget and layer placement policy; guarded accounting and saturating estimators
 backends/simd        -> AVX2/FMA/NEON dispatch and kernels
-backends/vulkan      -> Vulkan loader/device/buffer/shader dispatch + SPIR-V assets
+backends/vulkan      -> Vulkan loader/device/buffer/shader dispatch + SPIR-V assets; opt-in diagnostics
 cmd/llmchat          -> imports gpu, loader/tokenizer, model
 cmd/llmgen           -> imports loader/tokenizer, model
 cmd/llmserver        -> imports gpu, loader/tokenizer, model
 cmd/tinydemo         -> imports tensor
-gpu                  -> CUDA/PTX path plus GPU-resident expert pool; runtime guards hardened
+gpu                  -> CUDA/PTX path plus GPU-resident expert pool; runtime guards and opt-in diagnostics hardened
 loader/config        -> config.json and quantize_config JSON helpers
 loader/safetensors   -> mmap safetensors reader and sharded reader with metadata validation, nil helpers, and partial-open cleanup
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode; race-safe byte maps
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
-                        MoE, MTP scaffold, model-specific KV sizing; helper guards hardened
+                        MoE, MTP scaffold, model-specific KV sizing; helper guards and logging gates hardened
 models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout/protected-layer guards
 runtime/memory       -> mmap residency advice and range tracking; nil/invalid ranges are inert
@@ -66,7 +66,7 @@ gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
-6. **Tensor/runtime/backend/loader guards are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata and tokenizer byte maps are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Transitional GPU guards cover DevBuf nil/upload behavior, CUDA stream/graph launch validation, allocation overflow, Q4/MLX weight layout validation, expert-pool edge cases, experimental NV helper validation, dense SGEMM/LM-head products, JIT spec checks, BF16 dispatch buffers, and RoPE/softmax/attention tensor-shape guards. Keep these guards intact during later backend/model moves.
+6. **Tensor/runtime/backend/loader guards and quiet library logging are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata and tokenizer byte maps are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Transitional GPU guards cover DevBuf nil/upload behavior, CUDA stream/graph launch validation, allocation overflow, Q4/MLX weight layout validation, expert-pool edge cases, experimental NV helper validation, dense SGEMM/LM-head products, JIT spec checks, BF16 dispatch buffers, and RoPE/softmax/attention tensor-shape guards. Keep these guards intact during later backend/model moves.
 7. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
 8. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
