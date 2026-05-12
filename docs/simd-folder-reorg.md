@@ -59,7 +59,8 @@ Before introducing subpackages:
 - ensure each public wrapper has scalar fallback coverage and precise scalar math for norm-sensitive paths;
 - keep architecture-specific build tags on all assembly-backed entrypoints;
 - avoid moving unexported assembly symbols across package boundaries until the public facade wrappers are complete;
-- keep shared guard helpers such as `checkedMulInt` in the facade package until subpackage bridge APIs are designed;
+- keep shared guard helpers such as `checkedMulInt`/`checkedAddInt` in the facade package until subpackage bridge APIs are designed;
+- keep SGEMM/GEBP/gather capability checks (`HasSgemmAsm`) at the public facade boundary so unsupported architectures no-op safely instead of reaching fallback panic stubs;
 - run at minimum:
 
 ```sh

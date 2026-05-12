@@ -931,3 +931,11 @@ Hardened the unused/experimental gather SGEMM helper:
 - `SgemmNTGather` now uses the shared SGEMM/GEBP argument validation and checks `HasSgemmAsm` before reaching architecture-specific gather kernels.
 - Added an int32 gather-index bound check for large `ldb` values before building AVX2 gather offsets.
 - Added malformed/overflowing gather-dispatch regression coverage.
+
+
+## Session 100: SIMD SGEMM guard documentation refresh
+
+Refreshed documentation after the latest Phase 6.6 SGEMM/GEBP/gather guard audit:
+
+- README and architecture docs now mention SGEMM/GEBP/gather capability gates and overflow preflights.
+- SIMD folder reorg notes now call out keeping `HasSgemmAsm` and shared arithmetic guards at the public facade boundary until subpackage bridge APIs exist.
