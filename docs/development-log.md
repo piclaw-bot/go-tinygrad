@@ -850,3 +850,10 @@ Completed the broad Phase 6.5.6 validation gate after the cleanup/hardening batc
 
 - Full repository test suite passed with `go test ./... -count=1`.
 - This complements the earlier focused model tests, fast shared-package gates, no-run compile sweep, vet/diff-check, and SmolLM2/Gemma4 `llmgen` smoke runs.
+
+## Session 89: GPU DevBuf RoPE/attention split
+
+Continued Phase 6.5 cleanup by splitting an oversized transitional GPU file:
+
+- Moved RoPE, partial RoPE, softmax-row, and GQA attention dispatch helpers out of `gpu/devbuf.go` into `gpu/rope_attention.go` without semantic changes.
+- Kept the recently added launch-shape guards with the moved dispatch helpers so they remain visible for the future CUDA backend split.
