@@ -36,7 +36,7 @@ func initVkKernels() {
 		}
 		// Shader compilation may crash on some Vulkan drivers (e.g. llvmpipe)
 		// due to hand-assembled SPIR-V. Non-fatal — skip gracefully.
-		fmt.Println("[vulkan] compute shaders: pending SPIR-V validation (use glslangValidator for production)")
+		debugln("[vulkan] compute shaders: pending SPIR-V validation (use glslangValidator for production)")
 	})
 }
 

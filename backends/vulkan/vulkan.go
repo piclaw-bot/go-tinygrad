@@ -25,7 +25,6 @@ package vulkan
 //   - ARM Mali
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"unsafe"
@@ -237,7 +236,7 @@ func VulkanInit() bool {
 	}
 
 	if r := vkCreateInstance(unsafe.Pointer(&createInfo), nil, &vkInstance); r != VK_SUCCESS {
-		fmt.Printf("[vulkan] vkCreateInstance failed: %d\n", r)
+		debugf("[vulkan] vkCreateInstance failed: %d\n", r)
 		return false
 	}
 
@@ -245,7 +244,7 @@ func VulkanInit() bool {
 	var devCount uint32
 	vkEnumeratePhysicalDevices(vkInstance, &devCount, nil)
 	if devCount == 0 {
-		fmt.Println("[vulkan] no physical devices found")
+		debugln("[vulkan] no physical devices found")
 		return false
 	}
 
@@ -304,7 +303,7 @@ func VulkanInit() bool {
 		}
 	}
 	if bestIdx < 0 {
-		fmt.Println("[vulkan] no non-CPU Vulkan GPU found (set GO_PHERENCE_VULKAN_ALLOW_CPU=1 to allow software/CPU drivers)")
+		debugln("[vulkan] no non-CPU Vulkan GPU found (set GO_PHERENCE_VULKAN_ALLOW_CPU=1 to allow software/CPU drivers)")
 		return false
 	}
 	vkPhysDev = devs[bestIdx]
@@ -332,7 +331,7 @@ func VulkanInit() bool {
 		}
 	}
 	if !found {
-		fmt.Println("[vulkan] no compute queue family found")
+		debugln("[vulkan] no compute queue family found")
 		return false
 	}
 
@@ -370,7 +369,7 @@ func VulkanInit() bool {
 	}
 
 	if r := vkCreateDevice(vkPhysDev, unsafe.Pointer(&deviceCreateInfo), nil, &vkDevice); r != VK_SUCCESS {
-		fmt.Printf("[vulkan] vkCreateDevice failed: %d\n", r)
+		debugf("[vulkan] vkCreateDevice failed: %d\n", r)
 		return false
 	}
 
@@ -389,12 +388,12 @@ func VulkanInit() bool {
 	}
 
 	if r := vkCreateCommandPool(vkDevice, unsafe.Pointer(&poolInfo), nil, &vkCmdPool); r != VK_SUCCESS {
-		fmt.Printf("[vulkan] vkCreateCommandPool failed: %d\n", r)
+		debugf("[vulkan] vkCreateCommandPool failed: %d\n", r)
 		return false
 	}
 
 	vkReady = true
-	fmt.Printf("[vulkan] %s — compute ready\n", vkDevName)
+	debugf("[vulkan] %s — compute ready\n", vkDevName)
 	return true
 }
 

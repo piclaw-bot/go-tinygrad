@@ -1050,3 +1050,10 @@ Gated GPU backend progress and experimental NV ioctl diagnostics:
 
 - CUDA init/module/stream/native-BF16 progress messages and non-fatal module lookup diagnostics now use `GO_PHERENCE_GPU_DEBUG`.
 - Experimental direct-NVIDIA ioctl/VA/GPFIFO diagnostics are now opt-in under the same GPU debug gate.
+
+## Session 117: Vulkan backend debug logging audit
+
+Gated Vulkan backend discovery/progress messages:
+
+- Vulkan init failures, CPU-device rejection notices, compute readiness, and pending-SPIR-V diagnostics now use `GO_PHERENCE_VULKAN_DEBUG` instead of writing to stdout unconditionally.
+- Kept `backends/placement.Plan.PrintPlan` as an explicit caller-requested reporting API.
