@@ -1120,3 +1120,11 @@ Hardened mmap advisor range bookkeeping against corrupted or malformed tracked r
 - Merge and total recomputation now sanitize negative tracked offsets/byte counts.
 - Range end, hot-byte, and merged hit/evict counters now use saturating arithmetic.
 - Added regression coverage for malformed tracked ranges and saturated accounting.
+
+## Session 126: GPTQ validation overflow audit
+
+Hardened GPTQ/Q4 validation:
+
+- GPTQ qweight/scales/qzeros expected-size calculations now use checked integer multiplication before slice-length comparisons.
+- `ValidateGemvQ4Sym` now validates GPTQ dimensions/layout before checking caller slice lengths, so invalid/overflowing dims are reported without requiring impossible-sized output/input slices.
+- Added overflow and negative-dimension regression coverage.

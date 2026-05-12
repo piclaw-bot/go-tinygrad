@@ -57,6 +57,17 @@ func TestValidateGPTQRejectsMalformedInputs(t *testing.T) {
 			ss := make([]float32, 16)
 			return ValidateGPTQ(qw, qz, bad, ss, in, out, false)
 		}, want: "qzeros"},
+		{name: "qweight overflow", fn: func() error {
+			maxInt := int(^uint(0) >> 1)
+			return ValidateGPTQ(nil, nil, nil, nil, maxInt/8*8, 16, true)
+		}, want: "qweight size overflows"},
+		{name: "gemv q4 negative dims", fn: func() error {
+			return ValidateGemvQ4Sym(nil, nil, nil, nil, nil, -8, out)
+		}, want: "invalid GPTQ dims"},
+		{name: "gemv q4 qweight overflow", fn: func() error {
+			maxInt := int(^uint(0) >> 1)
+			return ValidateGemvQ4Sym(nil, nil, nil, nil, nil, maxInt/8*8, 16)
+		}, want: "qweight size overflows"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

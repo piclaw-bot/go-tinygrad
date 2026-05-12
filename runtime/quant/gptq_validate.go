@@ -13,7 +13,10 @@ func ValidateGPTQ(qweight, qzeros, gIdx []int32, scales []float32, inFeatures, o
 	if !sym && outFeatures%8 != 0 {
 		return fmt.Errorf("GPTQ outFeatures=%d is not divisible by 8 for qzeros", outFeatures)
 	}
-	wantQWeight := (inFeatures / 8) * outFeatures
+	wantQWeight, ok := checkedMulInt(inFeatures/8, outFeatures)
+	if !ok {
+		return fmt.Errorf("GPTQ qweight size overflows for in=%d out=%d", inFeatures, outFeatures)
+	}
 	if len(qweight) < wantQWeight {
 		return fmt.Errorf("GPTQ qweight length=%d, expected at least %d", len(qweight), wantQWeight)
 	}
@@ -35,12 +38,18 @@ func ValidateGPTQ(qweight, qzeros, gIdx []int32, scales []float32, inFeatures, o
 		return fmt.Errorf("GPTQ g_idx has no groups")
 	}
 
-	wantScales := (maxGroup + 1) * outFeatures
+	wantScales, ok := checkedMulInt(maxGroup+1, outFeatures)
+	if !ok {
+		return fmt.Errorf("GPTQ scales size overflows for %d groups and out=%d", maxGroup+1, outFeatures)
+	}
 	if len(scales) < wantScales {
 		return fmt.Errorf("GPTQ scales length=%d, expected at least %d for %d groups", len(scales), wantScales, maxGroup+1)
 	}
 	if !sym {
-		wantQZeros := (maxGroup + 1) * (outFeatures / 8)
+		wantQZeros, ok := checkedMulInt(maxGroup+1, outFeatures/8)
+		if !ok {
+			return fmt.Errorf("GPTQ qzeros size overflows for %d groups and out=%d", maxGroup+1, outFeatures)
+		}
 		if len(qzeros) < wantQZeros {
 			return fmt.Errorf("GPTQ qzeros length=%d, expected at least %d for %d groups", len(qzeros), wantQZeros, maxGroup+1)
 		}
@@ -51,4 +60,15 @@ func ValidateGPTQ(qweight, qzeros, gIdx []int32, scales []float32, inFeatures, o
 // ValidateGPTQSym checks symmetric GPTQ tensor lengths and dimensions.
 func ValidateGPTQSym(qweight, gIdx []int32, scales []float32, inFeatures, outFeatures int) error {
 	return ValidateGPTQ(qweight, nil, gIdx, scales, inFeatures, outFeatures, true)
+}
+
+func checkedMulInt(a, b int) (int, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if b != 0 && a > maxInt/b {
+		return 0, false
+	}
+	return a * b, true
 }
