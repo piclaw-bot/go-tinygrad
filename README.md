@@ -154,20 +154,20 @@ Current package ownership is being refactored around explicit loader/model/backe
 
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening
 - **`backends/placement/`** — backend-neutral memory budget and layer placement policy
-- **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels
+- **`backends/simd/`** — AVX2/FMA and NEON dispatch/kernels with guarded scalar fallbacks and SGEMM/GEBP preflights
 - **`backends/cuda/ptx/`** — pure CUDA PTX source assets used by the transitional `gpu` mega-module loader
 - **`backends/vulkan/`** — Vulkan loader/device/buffer/shader dispatch scaffolding and embedded SPIR-V assets
 - **`models/bert/`** — GTE/BERT encoder path
-- **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives
-- **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights
+- **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives with layout/overflow guards
+- **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid ranges are inert
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
 - **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs
-- **Safetensors loader** — `loader/safetensors`, mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized, with bounded offset/shape checks
-- **Tokenizer** — `loader/tokenizer`, BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix
+- **Safetensors loader** — `loader/safetensors`, mmap'd, sharded, F16/BF16/F32, GPTQ/MLX quantized, with bounded offset/shape/dtype-byte checks
+- **Tokenizer** — `loader/tokenizer`, BPE with auto-detect SentencePiece `▁` vs GPT-2 `Ġ` prefix and race-safe byte-level maps
 - **LLaMA decoder** — RoPE (global + local + partial), GQA, KV cache, SiLU/GELU MLP
 - **Mixture of Experts** — router top-k, parallel expert MLP, ExpertPool with LRU GPU caching
 - **QK-Norm** — per-head RMSNorm (Qwen3, Gemma3/4)
@@ -194,8 +194,10 @@ Recent Phase 6.5 audit passes made malformed-input behavior explicit across the 
 
 - `tensor/` validates shapes, reductions, broadcasting, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, embeddings, matmul/linear helpers, and module wrappers.
 - `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts and no-ops or returns nil on malformed in-memory weights.
-- `runtime/kv` and `runtime/memory` guard cache dimensions, staging rollback, TurboQuant bit widths, and mmap range overflow.
+- `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, mmap range overflow, and nil advisor receivers.
 - `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, and copy wrappers before dispatch.
+- `backends/simd` scalar fallbacks bound all input/output slices, and SGEMM/GEBP helpers preflight dimensions, pointers, strides, and overflow before unsafe pointer arithmetic.
+- `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; sharded helpers are nil-safe, and tokenizer byte maps are initialized with `sync.Once`.
 
 Fast refactor validation remains focused to avoid accidentally loading large local model fixtures:
 

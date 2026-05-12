@@ -38,13 +38,13 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | Area | Current package | Notes |
 |---|---|---|
 | CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver` | Flags and user/server I/O only |
-| Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources |
+| Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources; safetensors metadata and tokenizer helpers are guarded |
 | Placement policy | `backends/placement` | Backend-neutral budget manager and layer placement estimator; device memory availability is caller-supplied |
-| SIMD backend | `backends/simd` | Package name remains `simd`; import path is now backend-owned |
+| SIMD backend | `backends/simd` | Package name remains `simd`; import path is backend-owned; scalar fallbacks and SGEMM/GEBP wrappers are bounds-guarded |
 | Vulkan backend | `backends/vulkan` | Vulkan loader/device/buffer/shader dispatch scaffolding and embedded SPIR-V assets |
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
-| KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers |
-| Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming |
+| KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers with layout and overflow guards |
+| Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming; nil advisors are inert |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
 | GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; embedded PTX source assets now live in backend ownership under `backends/cuda/ptx` |
@@ -59,7 +59,9 @@ The Phase 6.5 audit now treats guard behavior in shared packages as part of the 
 - Tensor entrypoints are nil-safe or explicitly panic with domain errors before dereferencing internal fields.
 - Realization, broadcast, reduction, rewrite, and fusion paths validate malformed UOps, source lists, buffer lengths, and reduction metadata before indexing.
 - Embedding, matmul, linear, softmax, layernorm, GELU, and module wrappers validate dimensions and optional parameters before slicing or dispatching SIMD kernels.
-- `runtime/quant`, `runtime/kv`, `runtime/memory`, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
+- `runtime/quant`, `runtime/kv`, `runtime/memory`, loader helpers, SIMD wrappers, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
+- SIMD scalar fallbacks bound all participating slices; SGEMM/GEBP wrappers validate dimensions, pointers, strides, and overflow before unsafe slicing or pointer arithmetic.
+- Safetensors validates known dtype byte sizes against declared shapes and data offsets at open time; tokenizer byte maps use one-time initialization for concurrent callers.
 
 Later package moves should preserve this policy and keep focused regression tests close to the package that owns the guard.
 

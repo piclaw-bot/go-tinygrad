@@ -598,3 +598,13 @@ Hardened tokenizer helper paths:
 - `Tokenizer.VocabSize` is now nil-safe.
 - Byte-level BPE encoder/decoder maps now use `sync.Once` for lazy initialization, avoiding concurrent map initialization races.
 - Added regression coverage for nil vocab size and byte-map roundtrips.
+
+
+## Session 57: Documentation sweep after SIMD/runtime/loader hardening
+
+Reviewed and refreshed documentation after the latest audit batch:
+
+- README now records SIMD fallback/SGEMM preflights, KV/TurboQuant layout and overflow guards, mmap nil-safety, safetensors dtype-byte validation, and tokenizer `sync.Once` byte maps.
+- Architecture docs now treat loader/SIMD/runtime guard policy as part of the shared package-boundary baseline.
+- Refactor plan now includes the newer backend/runtime/loader guard status in the current package map and validation gate.
+- CPU SIMD coverage now documents scalar fallback slice bounding and SGEMM/GEBP unsafe-pointer preflights.

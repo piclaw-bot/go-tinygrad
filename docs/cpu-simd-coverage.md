@@ -52,8 +52,8 @@ go test ./model -run '^$' -bench 'BenchmarkCPUHot' -benchmem
 - `RuntimeCapabilities()` in the `backends/simd` package centralizes architecture/runtime feature reporting.
 - `simd.HasSgemmAsm`, `simd.HasDotAsm`, and `simd.HasVecAsm` expose runtime-safe capability gates.
 - `Sdot`/`Saxpy` now dispatch through small Go wrappers and fall back to scalar code if AVX2/FMA or NEON is unavailable, or if callers pass mismatched lengths.
-- SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels; tensor matmul helpers also avoid passing zero-length slice pointers to SIMD entrypoints.
-- Vector entrypoints (`VecAdd`, `VecMul`, `VecScaleAdd`, `RMSNorm*`, `ToBF16`, BF16 helpers) now dispatch through Go wrappers and fall back to scalar code when runtime SIMD gates are false.
+- SGEMM callers continue to check `simd.HasSgemmAsm` before invoking assembly kernels; tensor matmul helpers avoid passing zero-length slice pointers to SIMD entrypoints. `SgemmNTGebp` and `SgemmNTBlockedFMA` now validate dimensions, pointers, strides, and overflow before unsafe slicing/pointer arithmetic.
+- Vector entrypoints (`VecAdd`, `VecMul`, `VecScaleAdd`, `RMSNorm*`, `ToBF16`, BF16 helpers) now dispatch through Go wrappers and fall back to scalar code when runtime SIMD gates are false. Scalar fallbacks bound all participating slices and leave untouched destination tails unchanged on malformed inputs.
 - Activation wrappers (`VecSiLUMul`, `GELUTanhMul`) intentionally call Go math directly until polynomial SIMD approximations are implemented; prior assembly stubs only bounced back into Go.
 
 ## Baseline snapshot (i7-12700, amd64)
