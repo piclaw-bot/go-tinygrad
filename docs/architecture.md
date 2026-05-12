@@ -46,7 +46,7 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers with layout and overflow guards |
 | Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming; nil advisors are inert |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
-| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split |
+| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split; helper guards now cover MTP, KV sizing, GPU prefill/LM-head, GEMV, and GQA arithmetic |
 | GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; embedded PTX source assets now live in backend ownership under `backends/cuda/ptx` |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, realization, rewrite/fusion, NN helpers, and modules |
 
@@ -62,6 +62,7 @@ The Phase 6.5 audit now treats guard behavior in shared packages as part of the 
 - `runtime/quant`, `runtime/kv`, `runtime/memory`, loader helpers, SIMD wrappers, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
 - SIMD scalar fallbacks bound all participating slices; SGEMM/GEBP wrappers validate dimensions, pointers, strides, and overflow before unsafe slicing or pointer arithmetic.
 - Safetensors validates known dtype byte sizes against declared shapes and data offsets at open time; tokenizer byte maps use one-time initialization for concurrent callers.
+- Transitional model helpers validate staged MTP acceptance, model-specific KV dimensions, embedding and LM-head backing slices, GPU prefill/chunked-LM-head entrypoints, and low-level GEMV/GQA product arithmetic before slicing or dispatch.
 
 Later package moves should preserve this policy and keep focused regression tests close to the package that owns the guard.
 

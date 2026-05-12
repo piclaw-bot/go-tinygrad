@@ -652,3 +652,12 @@ Hardened model-local low-level math helpers:
 - `gemv`, `gemvNT`, and `gemvNTParallel` now check `inDim*outDim` for integer overflow before backing-slice length checks.
 - `gqaAttentionScaleInto` now checks `heads*headDim`, `kvHeads*headDim`, and `seqLen*kvDim` products before cache-length validation.
 - Added regression coverage for overflow-prone GEMV and attention helper inputs.
+
+
+## Session 64: Documentation sweep after model helper hardening
+
+Reviewed and refreshed documentation after the latest transitional `model` audit batch:
+
+- README now records MTP, KV, prefill, chunked LM-head, embedding/LM-head, GEMV, and GQA helper guard coverage.
+- Architecture docs now call out model-helper guard behavior as part of the Phase 6.5 shared hardening baseline.
+- Refactor plan now marks the transitional `model` package helper guards as hardened and clarifies that focused model helper tests remain part of the validation gate.

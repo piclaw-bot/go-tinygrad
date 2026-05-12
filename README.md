@@ -161,7 +161,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives with layout/overflow guards
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid ranges are inert
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers
-- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5
+- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, KV, prefill, LM-head, and low-level helper guards are being hardened before moves
 - **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
@@ -198,6 +198,7 @@ Recent Phase 6.5 audit passes made malformed-input behavior explicit across the 
 - `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, and copy wrappers before dispatch.
 - `backends/simd` scalar fallbacks bound all input/output slices, and SGEMM/GEBP helpers preflight dimensions, pointers, strides, and overflow before unsafe pointer arithmetic.
 - `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; sharded helpers are nil-safe, and tokenizer byte maps are initialized with `sync.Once`.
+- Transitional `model` helpers validate MTP token/KV keep counts, embedding/LM-head backing data, chunked LM-head and batched-prefill dimensions, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic.
 
 Fast refactor validation remains focused to avoid accidentally loading large local model fixtures:
 
