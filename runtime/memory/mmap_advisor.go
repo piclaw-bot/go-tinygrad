@@ -61,6 +61,9 @@ func NewMmapAdvisor(mmapData []byte) *MmapAdvisor {
 
 // align returns (page-aligned offset, page-aligned size).
 func (a *MmapAdvisor) align(offset, bytes int64) (int64, int64) {
+	if a == nil || a.pageSize <= 0 {
+		return 0, 0
+	}
 	alignedOff := offset &^ (a.pageSize - 1)
 	leading := offset - alignedOff
 	alignedBytes := ((leading + bytes) + a.pageSize - 1) &^ (a.pageSize - 1)
@@ -68,6 +71,9 @@ func (a *MmapAdvisor) align(offset, bytes int64) (int64, int64) {
 }
 
 func (a *MmapAdvisor) boundedRange(offset, bytes int64) (int64, int64, bool) {
+	if a == nil {
+		return 0, 0, false
+	}
 	baseLen := int64(len(a.base))
 	if baseLen == 0 || bytes <= 0 || offset < 0 || offset >= baseLen {
 		return 0, 0, false
@@ -161,6 +167,9 @@ func (a *MmapAdvisor) Evict(offset, bytes int64) error {
 
 // EvictCold evicts all ranges that haven't been touched since cutoff (unix nanos).
 func (a *MmapAdvisor) EvictCold(cutoffNanos int64) (int, error) {
+	if a == nil {
+		return 0, nil
+	}
 	a.mu.Lock()
 	var toEvict []AdvisedRange
 	for _, r := range a.ranges {
@@ -181,6 +190,9 @@ func (a *MmapAdvisor) EvictCold(cutoffNanos int64) (int, error) {
 // MergeRanges coalesces overlapping/adjacent tracked ranges.
 // Like ds4 hot_plan_merge.
 func (a *MmapAdvisor) MergeRanges() {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -235,6 +247,9 @@ func mergeCompatible(a, b RangeState) bool {
 }
 
 func (a *MmapAdvisor) recomputeTotalsLocked() {
+	if a == nil {
+		return
+	}
 	var total int64
 	for _, r := range a.ranges {
 		if r.State != RangeCold {
@@ -249,6 +264,9 @@ func (a *MmapAdvisor) recomputeTotalsLocked() {
 
 // Stats returns (numRanges, totalHotBytes, peakBytes).
 func (a *MmapAdvisor) Stats() (int, int64, int64) {
+	if a == nil {
+		return 0, 0, 0
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.ranges), a.TotalBytes.Load(), a.PeakBytes
@@ -256,6 +274,9 @@ func (a *MmapAdvisor) Stats() (int, int64, int64) {
 
 // RangeStats returns a copy of all tracked ranges for reporting.
 func (a *MmapAdvisor) RangeStats() []AdvisedRange {
+	if a == nil {
+		return nil
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	out := make([]AdvisedRange, 0, len(a.ranges))

@@ -210,3 +210,24 @@ func TestMmapAdvisorMergeDoesNotMakeColdRangesHot(t *testing.T) {
 		t.Fatalf("hot/peak=%d/%d, want %d/%d", hot, peak, pageSize, pageSize*2)
 	}
 }
+
+func TestMmapAdvisorNilSafeMethods(t *testing.T) {
+	var a *MmapAdvisor
+	if err := a.Prefetch(0, 1); err != nil {
+		t.Fatalf("nil Prefetch error: %v", err)
+	}
+	a.Touch(0, 1)
+	if err := a.Evict(0, 1); err != nil {
+		t.Fatalf("nil Evict error: %v", err)
+	}
+	if n, err := a.EvictCold(0); n != 0 || err != nil {
+		t.Fatalf("nil EvictCold=(%d,%v), want 0,nil", n, err)
+	}
+	a.MergeRanges()
+	if ranges, hot, peak := a.Stats(); ranges != 0 || hot != 0 || peak != 0 {
+		t.Fatalf("nil Stats=(%d,%d,%d), want zeros", ranges, hot, peak)
+	}
+	if got := a.RangeStats(); got != nil {
+		t.Fatalf("nil RangeStats=%v, want nil", got)
+	}
+}

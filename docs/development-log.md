@@ -574,3 +574,11 @@ Hardened TurboQuant sizing math:
 - `NewTurboQuantState` and `randomOrthogonal` now reject overflowing `headDim*headDim` sizes before allocation.
 - `QuantizeVector` and `DequantizeVector` validate rotation-size arithmetic before indexing rotation matrices.
 - `packIndices` now validates packed byte-length arithmetic before allocation.
+
+## Session 54: MmapAdvisor nil-safety audit
+
+Hardened `runtime/memory.MmapAdvisor` method receivers:
+
+- Public methods now treat a nil advisor as an inert no-op and return zero stats, matching the existing invalid-range behavior.
+- Internal alignment/range helpers and total recomputation now guard nil receivers before touching advisor fields.
+- Added regression coverage for nil advisor method calls.
