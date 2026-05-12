@@ -69,6 +69,11 @@ During the Phase 6.5 refactor audit, the transitional `gpu` package has been har
 - `DevBuf` receiver helpers are nil-safe and `ToGPU`/`GPUPtr` propagate upload failures instead of marking stale GPU state authoritative.
 - CUDA allocation rejects host-side byte-size overflow before driver calls.
 - Stream/graph helpers validate nil graph executables, nil kernel arguments, and invalid launch dimensions before CUDA calls.
-- Q4 quantized weight upload/dispatch validates packed-weight and scale product arithmetic, buffer byte sizes, group indices, and download errors in CPU fallback.
+- Q4/MLX quantized weight upload/dispatch validates packed-weight and scale product arithmetic, buffer byte sizes, group consistency/indices, batched dimensions, and download errors in CPU fallback.
+- Expert-pool helpers reject nil pools and invalid expert IDs without leaking caller-owned GPU resources.
+- Experimental direct-NVIDIA ioctl/memory/query/GPFIFO helpers validate nil receivers, size arithmetic, fd/argument state, class-list sizes, and release partially allocated resources on setup failure.
+- Dense SGEMM/LM-head dispatch validates dimensions, buffer byte sizes, and product overflow before kernel launch.
+- CUDA JIT helpers validate kernel specs and launch buffers before PTX generation or dispatch.
+- BF16 CUDA wrappers validate nil/undersized buffers and length overflow before emulated/native dispatch.
 
 These guards are part of the current backend baseline and should move with the CUDA runtime when `gpu` is split into `backends/cuda`.

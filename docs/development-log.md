@@ -758,3 +758,12 @@ Hardened BF16 CUDA dispatch helpers:
 
 - Emulated/native BF16 norm, add, SiLU, and GELU launch wrappers now validate nil pointers, positive lengths, byte-size bounds, and length overflow before CUDA calls or fallback dispatch.
 - Added regression coverage for BF16 buffer validation and malformed dispatch calls.
+
+
+## Session 77: Documentation sweep after GPU backend guard batch
+
+Reviewed and refreshed documentation after the latest GPU/backend audit batch:
+
+- README and architecture docs now record hardened MLX, expert pool, experimental NV helpers, dense SGEMM/LM-head, JIT, and BF16 dispatch validation.
+- GPU options docs now list the expanded DevBuf/dispatch guard baseline that must move with the future `backends/cuda` split.
+- Refactor plan now reflects the broader transitional GPU guard coverage in Phase 6.5.
