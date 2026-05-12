@@ -62,3 +62,15 @@ func TestLayerKVDimValidation(t *testing.T) {
 		t.Fatal("LayerKVDim accepted out-of-range layer")
 	}
 }
+
+func TestLayerKVDimRejectsOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	m := &LlamaModel{Config: LlamaConfig{NumKVHeads: maxInt/2 + 1, HeadDim: 3}, Layers: []LlamaLayer{{HasKV: true}}}
+	if _, err := m.LayerKVDim(0); err == nil {
+		t.Fatal("LayerKVDim accepted overflowing KV dimension")
+	}
+	m = &LlamaModel{Config: LlamaConfig{NumKVHeads: 2, HeadDim: maxInt/2 + 1}, Layers: []LlamaLayer{{HasKV: true}}}
+	if _, err := m.LayerKVDim(0); err == nil {
+		t.Fatal("LayerKVDim accepted overflowing local head dimension")
+	}
+}

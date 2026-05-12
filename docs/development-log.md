@@ -623,3 +623,10 @@ Hardened the transitional chunked GPU LM-head helper:
 
 - Rejects nil/malformed model inputs, non-positive dimensions, short logits/hidden slices, short LM-head backing data, and overflow-prone `vocabSize*hidden` products before GPU allocation.
 - Checks all chunk/input/output GPU upload errors before dispatching chunked LM-head kernels.
+
+## Session 60: Model KV dimension overflow audit
+
+Hardened model-specific KV staging helpers:
+
+- `LayerKVDim` now checks `num_key_value_heads * head_dim` for integer overflow before returning per-token KV widths used by staged verifier commits.
+- Added regression coverage for overflowing model-level and layer-local KV dimensions.

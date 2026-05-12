@@ -29,6 +29,10 @@ func (m *LlamaModel) LayerKVDim(layerIdx int) (int, error) {
 	if headDim <= 0 {
 		return 0, fmt.Errorf("layer %d head_dim=%d", layerIdx, headDim)
 	}
+	maxInt := int(^uint(0) >> 1)
+	if m.Config.NumKVHeads > maxInt/headDim {
+		return 0, fmt.Errorf("layer %d kv dim overflow: heads=%d head_dim=%d", layerIdx, m.Config.NumKVHeads, headDim)
+	}
 	return m.Config.NumKVHeads * headDim, nil
 }
 
