@@ -819,3 +819,10 @@ Hardened token-output boundary handling in front-ends:
 - `llmchat` now stops cleanly if generation returns an out-of-vocabulary token ID instead of indexing `InvVocab` blindly.
 - `llmserver` applies the same generated-token bounds check in OpenAI-compatible responses.
 - SSE chunk writing now handles JSON marshal errors instead of ignoring them.
+
+## Session 85: Server response write-error audit
+
+Hardened OpenAI-compatible server response writes:
+
+- `/v1/models` and non-streaming chat responses now log JSON encode/write failures.
+- Streaming final `[DONE]` and chunk writes now handle write errors instead of silently ignoring them.

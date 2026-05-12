@@ -108,7 +108,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("models response encode failed: %v", err)
+	}
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +212,9 @@ func (s *Server) nonStreamResponse(w http.ResponseWriter, ids []int, maxTokens i
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("chat response encode failed: %v", err)
+	}
 }
 
 func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []int, maxTokens int) {
@@ -258,7 +262,10 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 		Choices: []StreamChoice{{Index: 0, Delta: StreamDelta{}, FinishReason: &finishReason}},
 	})
 
-	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
+		log.Printf("stream done write failed: %v", err)
+		return
+	}
 	flusher.Flush()
 }
 
@@ -267,7 +274,10 @@ func writeSSE(w io.Writer, flusher http.Flusher, chunk StreamChunk) {
 	if err != nil {
 		return
 	}
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		log.Printf("stream chunk write failed: %v", err)
+		return
+	}
 	flusher.Flush()
 }
 
