@@ -203,6 +203,9 @@ func (f *File) rawTensor(name string) (TensorInfo, []byte, error) {
 
 // Names returns all tensor names in sorted order.
 func (f *File) Names() []string {
+	if f == nil {
+		return nil
+	}
 	names := make([]string, 0, len(f.Tensors))
 	for k := range f.Tensors {
 		names = append(names, k)
@@ -377,6 +380,7 @@ func OpenSharded(indexPath string) (*ShardedFile, error) {
 		path := filepath.Join(dir, filename)
 		f, err := Open(path)
 		if err != nil {
+			_ = sf.Close()
 			return nil, fmt.Errorf("open shard %s: %w", filename, err)
 		}
 		sf.shards[filename] = f

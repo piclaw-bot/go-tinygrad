@@ -946,3 +946,10 @@ Hardened a small TurboQuant helper edge case:
 
 - `TurboQuantState.IsProtectedLayer` is now nil-safe and rejects negative query indices before applying negative configured aliases for last layers.
 - Added regression coverage for nil state and negative layer queries.
+
+## Session 102: Safetensors nil/partial-open audit
+
+Hardened safetensors helper edge cases:
+
+- `File.Names` is now nil-safe, matching `ShardedFile.Names` behavior.
+- `OpenSharded` now closes any shards already opened when a later shard fails, preventing partial-open mmap/file descriptor leaks.

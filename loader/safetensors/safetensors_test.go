@@ -159,6 +159,10 @@ func TestOpenRejectsShapeByteMismatch(t *testing.T) {
 }
 
 func TestShardedMissingShardReturnsError(t *testing.T) {
+	var nilFile *File
+	if got := nilFile.Names(); got != nil {
+		t.Fatalf("nil file Names=%v, want nil", got)
+	}
 	var nilSF *ShardedFile
 	if err := nilSF.Close(); err != nil {
 		t.Fatalf("nil Close: %v", err)
