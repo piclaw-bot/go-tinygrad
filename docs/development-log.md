@@ -719,3 +719,11 @@ Hardened experimental direct-NVIDIA memory helpers:
 - `AllocHostMem` validates nil devices and invalid/overflowing sizes, stores the mmap slice, and unmaps host memory on registration failure.
 - `mapToCPU` validates inputs and stores the mmap slice in `cpuMem` so upload/download paths can use it.
 - `NVBuffer` upload/download/free methods are nil-safe, handle empty slices as no-ops, and validate byte-size arithmetic/bounds before unsafe slice conversion.
+
+## Session 72: Experimental NV ioctl helper audit
+
+Hardened experimental direct-NVIDIA ioctl helpers:
+
+- NV device helper methods are nil-safe where practical and return explicit errors for nil receivers.
+- VA allocation now rejects zero/overflowing sizes and bump-pointer overflow.
+- ioctl/RM helper wrappers validate file descriptors and nil parameter pointers before raw syscalls.

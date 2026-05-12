@@ -25,46 +25,46 @@ import (
 const (
 	nvIoctlMagic = 'F'
 
-	NV_ESC_CARD_INFO    = 200
-	NV_ESC_REGISTER_FD  = 201
-	NV_ESC_RM_ALLOC     = 0x2B // 43 - via NV_IOCTL_MAGIC
-	NV_ESC_RM_CONTROL   = 0x2A // 42
-	NV_ESC_RM_FREE      = 0x29 // 41
-	NV_ESC_RM_MAP_MEMORY = 0x4E
-	NV_ESC_RM_ALLOC_MEMORY = 0x27
+	NV_ESC_CARD_INFO         = 200
+	NV_ESC_REGISTER_FD       = 201
+	NV_ESC_RM_ALLOC          = 0x2B // 43 - via NV_IOCTL_MAGIC
+	NV_ESC_RM_CONTROL        = 0x2A // 42
+	NV_ESC_RM_FREE           = 0x29 // 41
+	NV_ESC_RM_MAP_MEMORY     = 0x4E
+	NV_ESC_RM_ALLOC_MEMORY   = 0x27
 	NV_ESC_RM_MAP_MEMORY_DMA = 0x33
 )
 
 // NVIDIA RM class IDs
 const (
-	NV01_ROOT_CLIENT   = 0x0041
-	NV01_DEVICE_0      = 0x0080
-	NV20_SUBDEVICE_0   = 0x2080
-	NV01_MEMORY_VIRTUAL = 0x00F0
-	NV01_MEMORY_SYSTEM = 0x003E
-	NV1_MEMORY_USER    = 0x003D
-	FERMI_VASPACE_A    = 0x90F1
-	KEPLER_CHANNEL_GROUP_A = 0xA06C
-	FERMI_CONTEXT_SHARE_A  = 0x9067
+	NV01_ROOT_CLIENT        = 0x0041
+	NV01_DEVICE_0           = 0x0080
+	NV20_SUBDEVICE_0        = 0x2080
+	NV01_MEMORY_VIRTUAL     = 0x00F0
+	NV01_MEMORY_SYSTEM      = 0x003E
+	NV1_MEMORY_USER         = 0x003D
+	FERMI_VASPACE_A         = 0x90F1
+	KEPLER_CHANNEL_GROUP_A  = 0xA06C
+	FERMI_CONTEXT_SHARE_A   = 0x9067
 	AMPERE_CHANNEL_GPFIFO_A = 0xC46F
-	AMPERE_COMPUTE_B       = 0xC7C0
-	AMPERE_DMA_COPY_B      = 0xC7B5
+	AMPERE_COMPUTE_B        = 0xC7C0
+	AMPERE_DMA_COPY_B       = 0xC7B5
 )
 
 // NVIDIA RM control commands
 const (
-	NV0000_CTRL_CMD_GPU_GET_ID_INFO_V2     = 0x00000211
+	NV0000_CTRL_CMD_GPU_GET_ID_INFO_V2          = 0x00000211
 	NV0000_CTRL_CMD_SYSTEM_GET_BUILD_VERSION_V2 = 0x0000013e
-	NV2080_CTRL_CMD_GPU_GET_GID_INFO       = 0x2080014A
-	NV2080_CTRL_CMD_GR_GET_INFO            = 0x20801201
-	NV2080_CTRL_CMD_PERF_BOOST             = 0x2080200A
-	NV0080_CTRL_CMD_GPU_GET_CLASSLIST      = 0x00800201
+	NV2080_CTRL_CMD_GPU_GET_GID_INFO            = 0x2080014A
+	NV2080_CTRL_CMD_GR_GET_INFO                 = 0x20801201
+	NV2080_CTRL_CMD_PERF_BOOST                  = 0x2080200A
+	NV0080_CTRL_CMD_GPU_GET_CLASSLIST           = 0x00800201
 )
 
 // UVM ioctl commands (these ARE the ioctl numbers, not escape codes)
 const (
-	UVM_INITIALIZE                = 0x30000001
-	UVM_DEINITIALIZE              = 0x30000002
+	UVM_INITIALIZE   = 0x30000001
+	UVM_DEINITIALIZE = 0x30000002
 )
 
 // --- ioctl struct definitions (matching NVIDIA kernel module) ---
@@ -102,26 +102,26 @@ type nvos00Params struct {
 // nv_ioctl_card_info_t — GPU discovery (matches kernel struct layout)
 // NvBool=4, nv_pci_info_t={domain:4, bus:1, slot:1, function:1, pad:1, vendor_id:2, device_id:2}
 type nvCardInfo struct {
-	Valid       uint32
+	Valid uint32
 	// nv_pci_info_t
-	Domain      uint32
-	Bus         uint8
-	Slot        uint8
-	Function    uint8
-	_pad1       uint8
-	Vendor      uint16
-	DeviceID    uint16
+	Domain   uint32
+	Bus      uint8
+	Slot     uint8
+	Function uint8
+	_pad1    uint8
+	Vendor   uint16
+	DeviceID uint16
 	// rest of card_info
 	GpuID       uint32
 	Interrupt   uint16
-	_pad2       [6]byte  // align to 8
+	_pad2       [6]byte // align to 8
 	Reg_address uint64
 	Reg_size    uint64
 	Fb_address  uint64
 	Fb_size     uint64
 	Minor       uint32
 	DevName     [10]byte
-	_pad3       [2]byte  // align
+	_pad3       [2]byte // align
 }
 
 // nv_ioctl_register_fd_t
@@ -147,11 +147,11 @@ type uvmRegisterGPUParams struct {
 }
 
 type uvmRegisterGPUVASpaceParams struct {
-	GpuUUID   [16]byte
-	RmCtrlFd  int32
-	HClient   uint32
-	HVASpace  uint32
-	RmStatus  uint32
+	GpuUUID  [16]byte
+	RmCtrlFd int32
+	HClient  uint32
+	HVASpace uint32
+	RmStatus uint32
 }
 
 type uvmCreateExternalRangeParams struct {
@@ -174,8 +174,8 @@ type NVDevice struct {
 	fdCtl      int // /dev/nvidiactl
 	fdDev      int // /dev/nvidia0
 	fdDevAlloc int // /dev/nvidia0 (for memory allocs)
-	fdUVM  int // /dev/nvidia-uvm
-	fdUVM2 int // second UVM fd
+	fdUVM      int // /dev/nvidia-uvm
+	fdUVM2     int // second UVM fd
 
 	root      uint32 // root client handle
 	device    uint32 // NV01_DEVICE_0
@@ -295,14 +295,23 @@ func nvInit() (*NVDevice, error) {
 }
 
 func (d *NVDevice) nextHandle() uint32 {
+	if d == nil {
+		return 0
+	}
 	d.handleCounter++
 	return d.handleCounter
 }
 
 func (d *NVDevice) allocVA(size uint64) uint64 {
+	if d == nil || size == 0 || size > ^uint64(0)-0xFFF {
+		return 0
+	}
 	// Simple bump allocator, 4KB aligned
 	size = (size + 0xFFF) &^ 0xFFF
 	addr := d.vaAllocator
+	if addr > ^uint64(0)-size {
+		return 0
+	}
 	d.vaAllocator += size
 	return addr
 }
@@ -310,6 +319,9 @@ func (d *NVDevice) allocVA(size uint64) uint64 {
 // --- ioctl helpers ---
 
 func (d *NVDevice) nvIoctl(fd int, cmd uint32, arg unsafe.Pointer, size uintptr) error {
+	if fd < 0 || (arg == nil && size != 0) {
+		return fmt.Errorf("invalid ioctl fd=%d arg=%p size=%d", fd, arg, size)
+	}
 	// NVIDIA uses _IOWR('F', cmd, size) = _IOC(3, 'F', cmd, size)
 	// _IOC encoding: dir(2) << 30 | size(14) << 16 | type(8) << 8 | nr(8)
 	ioctlNum := uintptr(3)<<30 | (size&0x3FFF)<<16 | uintptr(nvIoctlMagic)<<8 | uintptr(cmd)&0xFF
@@ -321,6 +333,9 @@ func (d *NVDevice) nvIoctl(fd int, cmd uint32, arg unsafe.Pointer, size uintptr)
 }
 
 func (d *NVDevice) uvmIoctl(fd int, cmd uint32, arg unsafe.Pointer, size uintptr) error {
+	if fd < 0 || (arg == nil && size != 0) {
+		return fmt.Errorf("invalid UVM ioctl fd=%d arg=%p size=%d", fd, arg, size)
+	}
 	// UVM uses the command directly as the ioctl number
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(cmd), uintptr(arg))
 	if errno != 0 {
@@ -331,6 +346,12 @@ func (d *NVDevice) uvmIoctl(fd int, cmd uint32, arg unsafe.Pointer, size uintptr
 
 // rmAlloc allocates an RM object.
 func (d *NVDevice) rmAlloc(parent uint32, class uint32, allocParams unsafe.Pointer, allocSize uint32) (uint32, error) {
+	if d == nil {
+		return 0, fmt.Errorf("nil NVDevice")
+	}
+	if allocParams == nil && allocSize != 0 {
+		return 0, fmt.Errorf("nil allocation params for size %d", allocSize)
+	}
 	handle := d.nextHandle()
 	root := d.root
 	if root == 0 {
@@ -357,6 +378,12 @@ func (d *NVDevice) rmAlloc(parent uint32, class uint32, allocParams unsafe.Point
 
 // rmControl calls an RM control method.
 func (d *NVDevice) rmControl(object uint32, cmd uint32, ctrlParams unsafe.Pointer, ctrlSize uint32) error {
+	if d == nil {
+		return fmt.Errorf("nil NVDevice")
+	}
+	if ctrlParams == nil && ctrlSize != 0 {
+		return fmt.Errorf("nil control params for size %d", ctrlSize)
+	}
 	params := nvos54Params{
 		HClient:    d.root,
 		HObject:    object,
@@ -376,6 +403,9 @@ func (d *NVDevice) rmControl(object uint32, cmd uint32, ctrlParams unsafe.Pointe
 
 // Close releases all resources.
 func (d *NVDevice) Close() {
+	if d == nil {
+		return
+	}
 	if d.fdCtl > 0 {
 		unix.Close(d.fdCtl)
 	}
@@ -395,16 +425,19 @@ var _ = os.NewFile
 
 // SetupDevice creates the RM device/subdevice chain and queries GPU capabilities.
 func (d *NVDevice) SetupDevice(gpuID uint32) error {
+	if d == nil {
+		return fmt.Errorf("nil NVDevice")
+	}
 	// Allocate NV01_DEVICE_0
 	// NV0080_ALLOC_PARAMETERS
 	type deviceParams struct {
-		DeviceID     uint32
-		HClientShare uint32
+		DeviceID      uint32
+		HClientShare  uint32
 		HTargetClient uint32
 		HTargetDevice uint32
-		Flags        uint32
-		_pad         uint32
-		VAMode       uint64
+		Flags         uint32
+		_pad          uint32
+		VAMode        uint64
 	}
 	dp := deviceParams{
 		DeviceID:     0, // GPU instance 0
