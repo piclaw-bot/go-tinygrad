@@ -735,3 +735,11 @@ Hardened remaining experimental direct-NVIDIA helpers:
 - GPFIFO/channel setup now validates nil devices, channel groups, context handles, and class info before allocating resources.
 - GPFIFO setup frees already allocated ring/notifier buffers on later setup failures.
 - NV query helpers validate nil/uninitialized devices and cap class-list sizes before allocation.
+
+## Session 74: GPU SGEMM/LM-head validation audit
+
+Hardened remaining dense CUDA dispatch helpers:
+
+- `Sgemm` now validates dimensions, non-nil/non-zero buffers, size-product overflow, and backing buffer byte sizes before kernel launch.
+- `SgemmHost` validates host dimensions, slice lengths, and size-products before allocation/upload.
+- `DevLMHead` now checks `vocab*hidden` overflow before backing-buffer validation.

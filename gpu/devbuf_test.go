@@ -214,3 +214,14 @@ func TestMallocRejectsSizeOverflow(t *testing.T) {
 		t.Fatal("Malloc accepted overflowing size")
 	}
 }
+
+func TestDevLMHeadRejectsOverflowProducts(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	out := NewDevBuf(1)
+	x := NewDevBufFrom([]float32{1})
+	w := NewDevBufFrom([]float32{1})
+	DevLMHead(out, x, w, maxInt/2+1, 3)
+	if got := out.Data(); got[0] != 0 {
+		t.Fatalf("overflowing DevLMHead mutated output: %v", got)
+	}
+}

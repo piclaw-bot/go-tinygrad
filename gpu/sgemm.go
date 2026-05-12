@@ -12,10 +12,18 @@ var (
 	sgemmOK   bool
 )
 
-
 // SgemmReady returns true if GPU SGEMM is available.
 
 func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
+	if M <= 0 || N <= 0 || K <= 0 || A == nil || B == nil || C == nil || A.Ptr == 0 || B.Ptr == 0 || C.Ptr == 0 {
+		return fmt.Errorf("invalid SGEMM inputs M=%d N=%d K=%d", M, N, K)
+	}
+	mk, okMK := checkedMulInt(M, K)
+	kn, okKN := checkedMulInt(K, N)
+	mn, okMN := checkedMulInt(M, N)
+	if !okMK || !okKN || !okMN || A.Size < mk*4 || B.Size < kn*4 || C.Size < mn*4 {
+		return fmt.Errorf("invalid SGEMM buffer sizes")
+	}
 	if !SgemmReady() {
 		return fmt.Errorf("GPU SGEMM not available")
 	}
@@ -44,23 +52,29 @@ func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
 // Handles upload, compute, download, and cleanup.
 // A is [M,K], B is [K,N], C (output) is [M,N].
 func SgemmHost(M, N, K int, alpha float32, A, B []float32) ([]float32, error) {
+	mk, okMK := checkedMulInt(M, K)
+	kn, okKN := checkedMulInt(K, N)
+	mn, okMN := checkedMulInt(M, N)
+	if M <= 0 || N <= 0 || K <= 0 || !okMK || !okKN || !okMN || len(A) < mk || len(B) < kn {
+		return nil, fmt.Errorf("invalid SGEMM host inputs M=%d N=%d K=%d", M, N, K)
+	}
 	if !SgemmReady() {
 		return nil, fmt.Errorf("GPU SGEMM not available")
 	}
 
-	dA, err := Malloc(M * K)
+	dA, err := Malloc(mk)
 	if err != nil {
 		return nil, err
 	}
 	defer dA.Free()
 
-	dB, err := Malloc(K * N)
+	dB, err := Malloc(kn)
 	if err != nil {
 		return nil, err
 	}
 	defer dB.Free()
 
-	dC, err := Malloc(M * N)
+	dC, err := Malloc(mn)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +92,7 @@ func SgemmHost(M, N, K int, alpha float32, A, B []float32) ([]float32, error) {
 	}
 	Sync()
 
-	out := make([]float32, M*N)
+	out := make([]float32, mn)
 	if err := dC.Download(out); err != nil {
 		return nil, err
 	}
