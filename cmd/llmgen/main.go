@@ -35,6 +35,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: llmgen -model <dir> [-prompt text] [-tokens N]")
 		os.Exit(1)
 	}
+	if *tokens < 0 {
+		fmt.Fprintln(os.Stderr, "tokens must be non-negative")
+		os.Exit(1)
+	}
 
 	fmt.Printf("Loading model from %s...\n", *dir)
 	t0 := time.Now()
@@ -81,7 +85,10 @@ func main() {
 	}
 	elapsed := time.Since(start)
 
-	generated := output[len(ids):]
+	generated := output
+	if len(output) >= len(ids) {
+		generated = output[len(ids):]
+	}
 	text := tok.Decode(output)
 	genText := tok.Decode(generated)
 

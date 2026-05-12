@@ -126,7 +126,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	maxTokens := req.MaxTokens
-	if maxTokens <= 0 {
+	if maxTokens < 0 {
+		http.Error(w, "max_tokens must be non-negative", http.StatusBadRequest)
+		return
+	}
+	if maxTokens == 0 {
 		maxTokens = 2048
 	}
 

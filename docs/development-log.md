@@ -1214,3 +1214,12 @@ Hardened the OpenAI-compatible streaming response path:
 
 - `writeSSE` now returns success/failure, logs marshal errors, and lets callers stop generation immediately on broken client writes.
 - Streaming response setup, token chunks, and final chunks now abort cleanly when SSE writes fail instead of continuing to generate after a disconnected client.
+
+## Session 138: CLI/server token-boundary audit
+
+Hardened command front-end token-count boundaries:
+
+- `llmgen` and `llmchat` now reject negative generation counts before model loading.
+- `llmgen` no longer slices output by prompt length unless the output is long enough, preserving GPU/CPU normalization safety.
+- `llmchat` avoids divide-by-zero throughput reporting on sub-tick generations.
+- `llmserver` now rejects negative `max_tokens` with HTTP 400 while keeping zero as the default behavior.

@@ -28,6 +28,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: llmchat -model <dir> [-n 256] [-gpu]")
 		os.Exit(1)
 	}
+	if *maxTokens < 0 {
+		fmt.Fprintln(os.Stderr, "max tokens must be non-negative")
+		os.Exit(1)
+	}
 
 	if *eagerLoad {
 		os.Setenv("GO_PHERENCE_EAGER_LOAD", "1")
@@ -124,7 +128,10 @@ func main() {
 		}
 		fmt.Println()
 
-		tokPerSec := float64(count) / elapsed.Seconds()
+		tokPerSec := 0.0
+		if elapsed > 0 {
+			tokPerSec = float64(count) / elapsed.Seconds()
+		}
 		fmt.Printf("[%d tok, %.1f tok/s, %.0fms]\n\n",
 			count, tokPerSec, float64(elapsed.Milliseconds()))
 	}
