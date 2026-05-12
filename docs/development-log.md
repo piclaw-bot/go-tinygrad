@@ -1112,3 +1112,11 @@ Finished another compressed KV cache edge-case pass:
 - `SeqLen`, `CompressedCount`, `FullCount`, and `MemoryBytes` are now nil-safe.
 - Memory accounting now uses checked/saturating arithmetic instead of direct slice-length products/sums.
 - Added regression coverage for nil accessors and saturating helper behavior.
+
+## Session 125: Mmap advisor range accounting audit
+
+Hardened mmap advisor range bookkeeping against corrupted or malformed tracked ranges:
+
+- Merge and total recomputation now sanitize negative tracked offsets/byte counts.
+- Range end, hot-byte, and merged hit/evict counters now use saturating arithmetic.
+- Added regression coverage for malformed tracked ranges and saturated accounting.

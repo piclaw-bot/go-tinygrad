@@ -211,6 +211,31 @@ func TestMmapAdvisorMergeDoesNotMakeColdRangesHot(t *testing.T) {
 	}
 }
 
+func TestMmapAdvisorSanitizesTrackedRangeAccounting(t *testing.T) {
+	a := NewMmapAdvisor(make([]byte, 4096))
+	a.ranges[0] = &AdvisedRange{Offset: -1, Bytes: -10, State: RangeHot}
+	a.ranges[1] = &AdvisedRange{Offset: 1, Bytes: math.MaxInt64, State: RangeHot, Hits: ^uint64(0), Evicts: ^uint64(0)}
+	a.ranges[2] = &AdvisedRange{Offset: 2, Bytes: math.MaxInt64, State: RangeHot, Hits: 1, Evicts: 1}
+	a.recomputeTotalsLocked()
+	if _, hot, peak := a.Stats(); hot != math.MaxInt64 || peak != math.MaxInt64 {
+		t.Fatalf("saturated hot/peak=%d/%d, want MaxInt64", hot, peak)
+	}
+	a.MergeRanges()
+	ranges := a.RangeStats()
+	var mergedHot *AdvisedRange
+	for i := range ranges {
+		if ranges[i].Offset < 0 || ranges[i].Bytes < 0 {
+			t.Fatalf("range sanitization failed: %+v", ranges)
+		}
+		if ranges[i].Bytes == math.MaxInt64 {
+			mergedHot = &ranges[i]
+		}
+	}
+	if mergedHot == nil || mergedHot.Hits != ^uint64(0) || mergedHot.Evicts != ^uint64(0) {
+		t.Fatalf("hit/evict counters did not saturate: %+v", ranges)
+	}
+}
+
 func TestMmapAdvisorNilSafeMethods(t *testing.T) {
 	var a *MmapAdvisor
 	if err := a.Prefetch(0, 1); err != nil {

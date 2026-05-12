@@ -211,18 +211,19 @@ func (a *MmapAdvisor) MergeRanges() {
 
 	// Merge overlapping/adjacent
 	merged := make(map[int64]*AdvisedRange)
-	cur := *sorted[0]
+	cur := sanitizeRange(*sorted[0])
 	for i := 1; i < len(sorted); i++ {
-		r := sorted[i]
-		curEnd := cur.Offset + cur.Bytes
+		rv := sanitizeRange(*sorted[i])
+		r := &rv
+		curEnd := saturatingAddInt64(cur.Offset, cur.Bytes)
 		if r.Offset <= curEnd && mergeCompatible(cur.State, r.State) {
 			// Overlapping or adjacent with equivalent residency — extend
-			rEnd := r.Offset + r.Bytes
+			rEnd := saturatingAddInt64(r.Offset, r.Bytes)
 			if rEnd > curEnd {
-				cur.Bytes = rEnd - cur.Offset
+				cur.Bytes = saturatingSubInt64(rEnd, cur.Offset)
 			}
-			cur.Hits += r.Hits
-			cur.Evicts += r.Evicts
+			cur.Hits = saturatingAddUint64(cur.Hits, r.Hits)
+			cur.Evicts = saturatingAddUint64(cur.Evicts, r.Evicts)
 			if r.LastUsed > cur.LastUsed {
 				cur.LastUsed = r.LastUsed
 			}
@@ -246,14 +247,55 @@ func mergeCompatible(a, b RangeState) bool {
 	return (a == RangeCold) == (b == RangeCold)
 }
 
+func sanitizeRange(r AdvisedRange) AdvisedRange {
+	if r.Offset < 0 {
+		r.Offset = 0
+	}
+	if r.Bytes < 0 {
+		r.Bytes = 0
+	}
+	return r
+}
+
+func maxInt64() int64 { return int64(^uint64(0) >> 1) }
+
+func saturatingAddInt64(a, b int64) int64 {
+	if a < 0 || b < 0 {
+		return 0
+	}
+	max := maxInt64()
+	if a > max-b {
+		return max
+	}
+	return a + b
+}
+
+func saturatingSubInt64(a, b int64) int64 {
+	if a <= b {
+		return 0
+	}
+	return a - b
+}
+
+func saturatingAddUint64(a, b uint64) uint64 {
+	if a > ^uint64(0)-b {
+		return ^uint64(0)
+	}
+	return a + b
+}
+
 func (a *MmapAdvisor) recomputeTotalsLocked() {
 	if a == nil {
 		return
 	}
 	var total int64
 	for _, r := range a.ranges {
+		if r == nil {
+			continue
+		}
+		*r = sanitizeRange(*r)
 		if r.State != RangeCold {
-			total += r.Bytes
+			total = saturatingAddInt64(total, r.Bytes)
 		}
 	}
 	a.TotalBytes.Store(total)
