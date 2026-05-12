@@ -14,7 +14,6 @@ package gpu
 //   - Potential for BF16 tensor core operations (future)
 
 import (
-	"fmt"
 	"unsafe"
 
 	"github.com/rcarmo/go-pherence/backends/cuda/ptx"
@@ -59,7 +58,7 @@ func InitNativeBF16() {
 
 	if fnNativeBF16RMSNorm != 0 {
 		nativeBF16Ready = true
-		fmt.Println("[gpu] Native BF16 kernels loaded (PTX 7.8/sm_86)")
+		debugln("[gpu] Native BF16 kernels loaded (PTX 7.8/sm_86)")
 	}
 }
 

@@ -1043,3 +1043,10 @@ Cleaned up model loader stdout noise:
 Finished gating the remaining normal-path model/GPU progress prints:
 
 - Per-layer embedding, Gemma4 RoPE, TurboQuant, GPU weight placement, LM-head placement, expert-pool, VRAM-budget, and first MLX upload error diagnostics now use `GO_PHERENCE_LOAD_DEBUG` instead of writing to stdout unconditionally.
+
+## Session 116: GPU runtime debug logging audit
+
+Gated GPU backend progress and experimental NV ioctl diagnostics:
+
+- CUDA init/module/stream/native-BF16 progress messages and non-fatal module lookup diagnostics now use `GO_PHERENCE_GPU_DEBUG`.
+- Experimental direct-NVIDIA ioctl/VA/GPFIFO diagnostics are now opt-in under the same GPU debug gate.

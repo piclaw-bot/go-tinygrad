@@ -80,7 +80,7 @@ func initStreams() error {
 	}
 
 	streamsReady = true
-	fmt.Println("[gpu] Streams + events initialized (prefetch overlap)")
+	debugln("[gpu] Streams + events initialized (prefetch overlap)")
 	return nil
 }
 

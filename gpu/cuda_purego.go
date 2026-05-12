@@ -134,13 +134,13 @@ func Init() bool {
 
 		// Initialize CUDA
 		if r := cuInit(0); r != CUDA_SUCCESS {
-			fmt.Printf("[gpu] cuInit failed: %d\n", r)
+			debugf("[gpu] cuInit failed: %d\n", r)
 			return
 		}
 
 		// Get device 0
 		if r := cuDeviceGet(&gpuDev, 0); r != CUDA_SUCCESS {
-			fmt.Printf("[gpu] cuDeviceGet failed: %d\n", r)
+			debugf("[gpu] cuDeviceGet failed: %d\n", r)
 			return
 		}
 
@@ -160,12 +160,12 @@ func Init() bool {
 
 		// Create context
 		if r := cuCtxCreate(&gpuCtx, 0, gpuDev); r != CUDA_SUCCESS {
-			fmt.Printf("[gpu] cuCtxCreate failed: %d\n", r)
+			debugf("[gpu] cuCtxCreate failed: %d\n", r)
 			return
 		}
 
 		gpuOK = true
-		fmt.Printf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
+		debugf("[gpu] %s (%d SMs) — pure Go, no CGo\n", gpuName, gpuSMs)
 	})
 	return gpuOK
 }

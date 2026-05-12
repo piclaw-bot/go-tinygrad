@@ -291,6 +291,6 @@ func (d *NVDevice) SetupVASpace() error {
 		return fmt.Errorf("UVM register VA space status: 0x%X", regVA.RmStatus)
 	}
 
-	fmt.Printf("[nv] VA space setup OK (vaspace=0x%x)\n", d.vaspace)
+	debugf("[nv] VA space setup OK (vaspace=0x%x)\n", d.vaspace)
 	return nil
 }

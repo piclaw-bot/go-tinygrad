@@ -260,7 +260,7 @@ func nvInit() (*NVDevice, error) {
 		return nil, fmt.Errorf("no GPU found")
 	}
 
-	fmt.Printf("[nv] GPU %d: vendor=0x%04x device=0x%04x minor=%d\n",
+	debugf("[nv] GPU %d: vendor=0x%04x device=0x%04x minor=%d\n",
 		0, cards[0].Vendor, cards[0].DeviceID, cards[0].Minor)
 
 	// Register device FDs
@@ -287,10 +287,10 @@ func nvInit() (*NVDevice, error) {
 
 	// Setup VA space and UVM
 	if err := d.SetupVASpace(); err != nil {
-		fmt.Printf("[nv] Warning: VA space setup: %v\n", err)
+		debugf("[nv] Warning: VA space setup: %v\n", err)
 	}
 
-	fmt.Println("[nv] Direct ioctl interface initialized — pure Go, no libcuda")
+	debugln("[nv] Direct ioctl interface initialized — pure Go, no libcuda")
 	return d, nil
 }
 
@@ -474,7 +474,7 @@ func (d *NVDevice) SetupDevice(gpuID uint32) error {
 	d.virtmem, err = d.rmAlloc(d.device, NV01_MEMORY_VIRTUAL, unsafe.Pointer(&vp), uint32(unsafe.Sizeof(vp)))
 	if err != nil {
 		// Non-fatal: we can still use UVM without explicit virtmem
-		fmt.Printf("[nv] Warning: virtmem alloc failed: %v\n", err)
+		debugf("[nv] Warning: virtmem alloc failed: %v\n", err)
 	}
 
 	// Get GPU UUID for UVM
@@ -489,12 +489,12 @@ func (d *NVDevice) SetupDevice(gpuID uint32) error {
 		Length: 16,
 	}
 	if err := d.rmControl(d.subdevice, NV2080_CTRL_CMD_GPU_GET_GID_INFO, unsafe.Pointer(&gid), uint32(unsafe.Sizeof(gid))); err != nil {
-		fmt.Printf("[nv] Warning: get GPU UUID failed: %v\n", err)
+		debugf("[nv] Warning: get GPU UUID failed: %v\n", err)
 	} else {
 		copy(d.gpuUUID[:], gid.Data[:16])
-		fmt.Printf("[nv] GPU UUID: %x\n", d.gpuUUID)
+		debugf("[nv] GPU UUID: %x\n", d.gpuUUID)
 	}
 
-	fmt.Printf("[nv] Device setup OK (device=0x%x subdevice=0x%x)\n", d.device, d.subdevice)
+	debugf("[nv] Device setup OK (device=0x%x subdevice=0x%x)\n", d.device, d.subdevice)
 	return nil
 }

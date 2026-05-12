@@ -4,7 +4,6 @@ package gpu
 // Solves the cuModuleLoadData error 201 (can't load multiple modules).
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"unsafe"
@@ -98,7 +97,7 @@ func loadMegaModule() {
 
 		EnsureContext()
 		if r := cuModuleLoadData(&megaModule, unsafe.Pointer(&ptxBytes[0])); r != CUDA_SUCCESS {
-			fmt.Printf("[gpu] mega module load failed: error %d\n", r)
+			debugf("[gpu] mega module load failed: error %d\n", r)
 			return
 		}
 
@@ -108,7 +107,7 @@ func loadMegaModule() {
 			nameBytes := append([]byte(name), 0)
 			var fn CUfunction
 			if r := cuModuleGetFunction(&fn, megaModule, unsafe.Pointer(&nameBytes[0])); r != CUDA_SUCCESS {
-				fmt.Printf("[gpu] get %s: error %d\n", name, r)
+				debugf("[gpu] get %s: error %d\n", name, r)
 				allOK = false
 				return 0
 			}
@@ -155,10 +154,10 @@ func loadMegaModule() {
 			attnReady = true
 			q4Ready = true
 			fusedSiLUMulOK = true
-			fmt.Printf("[gpu] All %d kernels loaded in 1 module\n", len(entries))
+			debugf("[gpu] All %d kernels loaded in 1 module\n", len(entries))
 			// Initialize streams for prefetch overlap
 			if err := initStreams(); err != nil {
-				fmt.Printf("[gpu] streams: %v\n", err)
+				debugf("[gpu] streams: %v\n", err)
 			}
 			// Try native BF16 kernels (Ampere+)
 			InitNativeBF16()
