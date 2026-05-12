@@ -1176,3 +1176,12 @@ Made the Phase 6.5 exit criteria explicit:
 - Replaced the broad definition-of-done section in `docs/refactor-plan.md` with a concrete checklist covering ownership docs, mechanical moves, audit baselines, debug/logging hygiene, documentation alignment, validation gates, and final closeout.
 - Marked completed loader/runtime/backend/tensor/GPU audit work separately from still-pending transitional `model`, CUDA-runtime split, model-package split, command-boundary audit, smoke tests, and final validation.
 - This checklist is now the source of truth for deciding whether Phase 6.5 is done or whether remaining work is deliberately deferred.
+
+## Session 133: MTP drafter projection arithmetic audit
+
+Hardened Gemma4 MTP drafter helper arithmetic:
+
+- Pre/post projection helpers now check projection-size products before backing-slice validation or indexing.
+- Drafter loader checks pre-projection width overflow before constructing expected tensor shapes.
+- Integer tensor loading checks expected raw byte sizes before dtype-specific decoding.
+- Added regression coverage for overflowing drafter projection dimensions.

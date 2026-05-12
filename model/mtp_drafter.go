@@ -153,7 +153,11 @@ func LoadGemma4MTPDrafter(dir string) (*Gemma4MTPDrafter, error) {
 	if d.MaskedEmbeddingOrdering, err = loadIntTensor(f, "masked_embedding.token_ordering", cfg.VocabSize); err != nil {
 		return nil, err
 	}
-	if d.PreProjection, err = loadData("pre_projection.weight", []int{h, 2 * d.BackboneHiddenSize}); err != nil {
+	preWidth, ok := checkedProduct(2, d.BackboneHiddenSize)
+	if !ok {
+		return nil, fmt.Errorf("pre_projection width overflows for backbone_hidden_size=%d", d.BackboneHiddenSize)
+	}
+	if d.PreProjection, err = loadData("pre_projection.weight", []int{h, preWidth}); err != nil {
 		return nil, err
 	}
 	if d.PostProjection, err = loadData("post_projection.weight", []int{d.BackboneHiddenSize, h}); err != nil {
@@ -260,6 +264,17 @@ func (d *Gemma4MTPDrafter) PreProjectInto(dst, backboneTokenEmbedding, activatio
 	}
 	bh := d.BackboneHiddenSize
 	h := d.Config.HiddenSize
+	if h <= 0 || bh <= 0 {
+		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
+	}
+	preWidth, ok := checkedProduct(2, bh)
+	if !ok {
+		return fmt.Errorf("pre-project width overflows for backbone=%d", bh)
+	}
+	want, ok := checkedProduct(h, preWidth)
+	if !ok {
+		return fmt.Errorf("pre-project size overflows hidden=%d backbone=%d", h, bh)
+	}
 	if len(dst) != h {
 		return fmt.Errorf("pre-project dst len=%d, want %d", len(dst), h)
 	}
@@ -269,15 +284,12 @@ func (d *Gemma4MTPDrafter) PreProjectInto(dst, backboneTokenEmbedding, activatio
 	if len(activation) != bh {
 		return fmt.Errorf("pre-project activation len=%d, want %d", len(activation), bh)
 	}
-	if h <= 0 || bh <= 0 {
-		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
-	}
-	want := h * 2 * bh
 	if len(d.PreProjection) < want {
 		return fmt.Errorf("pre_projection len=%d, want at least %d", len(d.PreProjection), want)
 	}
 	for row := 0; row < h; row++ {
-		w := d.PreProjection[row*2*bh : (row+1)*2*bh]
+		start := row * preWidth
+		w := d.PreProjection[start : start+preWidth]
 		dst[row] = simdDot(backboneTokenEmbedding, w[:bh]) + simdDot(activation, w[bh:])
 	}
 	return nil
@@ -290,16 +302,19 @@ func (d *Gemma4MTPDrafter) PostProjectInto(dst, assistantHidden []float32) error
 	}
 	bh := d.BackboneHiddenSize
 	h := d.Config.HiddenSize
+	if h <= 0 || bh <= 0 {
+		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
+	}
+	want, ok := checkedProduct(bh, h)
+	if !ok {
+		return fmt.Errorf("post-project size overflows hidden=%d backbone=%d", h, bh)
+	}
 	if len(dst) != bh {
 		return fmt.Errorf("post-project dst len=%d, want %d", len(dst), bh)
 	}
 	if len(assistantHidden) != h {
 		return fmt.Errorf("post-project hidden len=%d, want %d", len(assistantHidden), h)
 	}
-	if h <= 0 || bh <= 0 {
-		return fmt.Errorf("invalid projection dims hidden=%d backbone=%d", h, bh)
-	}
-	want := bh * h
 	if len(d.PostProjection) < want {
 		return fmt.Errorf("post_projection len=%d, want at least %d", len(d.PostProjection), want)
 	}
@@ -386,7 +401,11 @@ func loadIntTensor(f weights.Source, name string, expectedLen int) ([]int, error
 	minInt := -maxInt - 1
 	switch strings.ToUpper(dtype) {
 	case "I64", "INT64":
-		if len(raw) != expectedLen*8 {
+		wantBytes, ok := checkedProduct(expectedLen, 8)
+		if !ok {
+			return nil, fmt.Errorf("load %s: expected I64 byte size overflows for len %d", name, expectedLen)
+		}
+		if len(raw) != wantBytes {
 			return nil, fmt.Errorf("load %s: raw size %d does not match I64 len %d", name, len(raw), expectedLen)
 		}
 		for i := range out {
@@ -397,7 +416,11 @@ func loadIntTensor(f weights.Source, name string, expectedLen int) ([]int, error
 			out[i] = int(v)
 		}
 	case "I32", "INT32":
-		if len(raw) != expectedLen*4 {
+		wantBytes, ok := checkedProduct(expectedLen, 4)
+		if !ok {
+			return nil, fmt.Errorf("load %s: expected I32 byte size overflows for len %d", name, expectedLen)
+		}
+		if len(raw) != wantBytes {
 			return nil, fmt.Errorf("load %s: raw size %d does not match I32 len %d", name, len(raw), expectedLen)
 		}
 		for i := range out {

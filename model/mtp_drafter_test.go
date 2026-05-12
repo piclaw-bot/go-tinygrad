@@ -180,6 +180,20 @@ func TestGemma4MTPDrafterProjectionHelpers(t *testing.T) {
 	}
 }
 
+func TestMTPDrafterHelpersRejectOverflowingProducts(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	d := &Gemma4MTPDrafter{BackboneHiddenSize: maxInt/2 + 1}
+	d.Config.HiddenSize = 1
+	if err := d.PreProjectInto(make([]float32, 1), nil, nil); err == nil {
+		t.Fatal("PreProjectInto accepted overflowing projection width")
+	}
+	d.BackboneHiddenSize = maxInt/2 + 1
+	d.Config.HiddenSize = 2
+	if err := d.PostProjectInto(nil, make([]float32, 2)); err == nil {
+		t.Fatal("PostProjectInto accepted overflowing projection size")
+	}
+}
+
 func TestMTPDrafterHelpersRejectShortBackingData(t *testing.T) {
 	d := &Gemma4MTPDrafter{}
 	d.Config.HiddenSize = 2
