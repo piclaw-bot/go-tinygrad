@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"syscall"
 
 	"github.com/rcarmo/go-pherence/runtime/memory"
@@ -141,6 +142,16 @@ func Open(path string) (*File, error) {
 	}, nil
 }
 
+func checkedAddInt64(a, b int64) (int64, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	if a > math.MaxInt64-b {
+		return 0, false
+	}
+	return a + b, true
+}
+
 func shapeNumel(shape []int) (int, bool) {
 	n := 1
 	maxInt := int(^uint(0) >> 1)
@@ -210,6 +221,7 @@ func (f *File) Names() []string {
 	for k := range f.Tensors {
 		names = append(names, k)
 	}
+	sort.Strings(names)
 	return names
 }
 
@@ -328,7 +340,11 @@ func (sf *ShardedFile) EagerLoad() (int64, error) {
 		if err != nil {
 			return total, fmt.Errorf("eager load shard %s: %w", name, err)
 		}
-		total += n
+		var ok bool
+		total, ok = checkedAddInt64(total, n)
+		if !ok {
+			return total, fmt.Errorf("eager load shard %s: byte count overflows", name)
+		}
 	}
 	return total, nil
 }
@@ -414,6 +430,7 @@ func (sf *ShardedFile) Names() []string {
 	for k := range sf.mapping {
 		names = append(names, k)
 	}
+	sort.Strings(names)
 	return names
 }
 

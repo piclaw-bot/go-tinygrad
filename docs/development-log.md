@@ -1144,3 +1144,11 @@ Hardened GPTQ dequantization output sizing:
 - GPTQ validation now rejects overflowing dequantized output dimensions before qweight/scale length checks.
 - GPTQ dequantization paths check output allocation products before allocating.
 - Added regression coverage for output-size overflow in both generic and symmetric dequant paths.
+
+## Session 129: Safetensors name/order and eager accounting audit
+
+Cleaned up safetensors helper behavior:
+
+- `File.Names` and `ShardedFile.Names` now honor their sorted-order contract directly instead of relying on callers to sort map iteration output.
+- Sharded eager-load byte accounting now checks aggregate overflow while summing shard sizes.
+- Added regression coverage for sorted names and checked eager-load byte addition.

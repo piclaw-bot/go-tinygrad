@@ -158,6 +158,23 @@ func TestOpenRejectsShapeByteMismatch(t *testing.T) {
 	}
 }
 
+func TestNamesAreSorted(t *testing.T) {
+	f := &File{Tensors: map[string]TensorInfo{"z": {}, "a": {}, "m": {}}}
+	if got := f.Names(); len(got) != 3 || got[0] != "a" || got[1] != "m" || got[2] != "z" {
+		t.Fatalf("File.Names=%v, want sorted", got)
+	}
+	sf := &ShardedFile{mapping: map[string]string{"z": "s", "a": "s", "m": "s"}}
+	if got := sf.Names(); len(got) != 3 || got[0] != "a" || got[1] != "m" || got[2] != "z" {
+		t.Fatalf("ShardedFile.Names=%v, want sorted", got)
+	}
+}
+
+func TestShardedEagerLoadOverflow(t *testing.T) {
+	if _, ok := checkedAddInt64(math.MaxInt64, 1); ok {
+		t.Fatal("checkedAddInt64 accepted overflow")
+	}
+}
+
 func TestShardedMissingShardReturnsError(t *testing.T) {
 	var nilFile *File
 	if got := nilFile.Names(); got != nil {
