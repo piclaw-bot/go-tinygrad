@@ -219,11 +219,17 @@ func (c *CompressedKVCache) GetV() []float32 {
 
 // SeqLen returns the total number of cached positions.
 func (c *CompressedKVCache) SeqLen() int {
+	if c == nil {
+		return 0
+	}
 	return c.seqLen
 }
 
 // CompressedCount returns how many positions are compressed.
 func (c *CompressedKVCache) CompressedCount() int {
+	if c == nil {
+		return 0
+	}
 	return len(c.CompressedK)
 }
 
@@ -269,17 +275,63 @@ func checkedMulInt(a, b int) (int, bool) {
 	return a * b, true
 }
 
+func checkedAddInt(a, b int) (int, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if a > maxInt-b {
+		return 0, false
+	}
+	return a + b, true
+}
+
+func maxInt64() int64 { return int64(^uint64(0) >> 1) }
+
+func saturatingAddInt64(a, b int64) int64 {
+	if a < 0 || b < 0 {
+		return 0
+	}
+	max := maxInt64()
+	if a > max-b {
+		return max
+	}
+	return a + b
+}
+
+func saturatingMulInt64(a, b int64) int64 {
+	if a < 0 || b < 0 {
+		return 0
+	}
+	max := maxInt64()
+	if b != 0 && a > max/b {
+		return max
+	}
+	return a * b
+}
+
 func (c *CompressedKVCache) MemoryBytes() int64 {
 	if c == nil {
 		return 0
 	}
-	full := int64(len(c.FullK)+len(c.FullV)) * 4
-	var compressed int64
+	fullElems, ok := checkedAddInt(len(c.FullK), len(c.FullV))
+	if !ok {
+		return maxInt64()
+	}
+	full := saturatingMulInt64(int64(fullElems), 4)
+	compressed := int64(0)
+	entryBytes := func(e compressedEntry) int64 {
+		headElems, ok := checkedAddInt(len(e.HeadVMin), len(e.HeadScale))
+		if !ok {
+			return maxInt64()
+		}
+		return saturatingAddInt64(int64(len(e.Packed)), saturatingMulInt64(int64(headElems), 4))
+	}
 	for _, e := range c.CompressedK {
-		compressed += int64(len(e.Packed)) + int64(len(e.HeadVMin)+len(e.HeadScale))*4
+		compressed = saturatingAddInt64(compressed, entryBytes(e))
 	}
 	for _, e := range c.CompressedV {
-		compressed += int64(len(e.Packed)) + int64(len(e.HeadVMin)+len(e.HeadScale))*4
+		compressed = saturatingAddInt64(compressed, entryBytes(e))
 	}
-	return full + compressed
+	return saturatingAddInt64(full, compressed)
 }

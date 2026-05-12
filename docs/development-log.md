@@ -1104,3 +1104,11 @@ Hardened compressed KV cache arithmetic:
 
 - Constructor capacity hints, full-cache slice bounds, scratch-buffer sizes, and compressed-entry packed-length checks now validate integer products before allocation or slicing.
 - Added regression coverage for overflowing KV dimensions/sequence lengths and packed-entry validation.
+
+## Session 124: Compressed KV cache accessor audit
+
+Finished another compressed KV cache edge-case pass:
+
+- `SeqLen`, `CompressedCount`, `FullCount`, and `MemoryBytes` are now nil-safe.
+- Memory accounting now uses checked/saturating arithmetic instead of direct slice-length products/sums.
+- Added regression coverage for nil accessors and saturating helper behavior.

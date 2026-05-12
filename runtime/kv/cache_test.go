@@ -6,6 +6,11 @@ import (
 )
 
 func TestCompressedKVCacheOverflowGuards(t *testing.T) {
+	var nilCache *CompressedKVCache
+	if nilCache.SeqLen() != 0 || nilCache.CompressedCount() != 0 || nilCache.FullCount() != 0 || nilCache.MemoryBytes() != 0 {
+		t.Fatal("nil compressed cache accessors should return zero values")
+	}
+
 	maxInt := int(^uint(0) >> 1)
 	c := NewCompressedKVCache(maxInt/2+1, 1, maxInt/2+1, nil, false)
 	if cap(c.FullK) != 0 || cap(c.FullV) != 0 {
@@ -17,6 +22,12 @@ func TestCompressedKVCacheOverflowGuards(t *testing.T) {
 	}
 	if compressedEntryValid(compressedEntry{Packed: []byte{1}}, maxInt/2+1, 4) {
 		t.Fatal("overflowing compressed entry validated")
+	}
+	if got := saturatingAddInt64(maxInt64()-1, 2); got != maxInt64() {
+		t.Fatalf("saturating add=%d", got)
+	}
+	if got := saturatingMulInt64(maxInt64()/2+1, 3); got != maxInt64() {
+		t.Fatalf("saturating mul=%d", got)
 	}
 }
 
