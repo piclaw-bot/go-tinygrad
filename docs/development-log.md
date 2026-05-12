@@ -530,3 +530,11 @@ Hardened scalar BF16 helper paths in `backends/simd`:
 - `BF16RMSNorm` no-ops on empty inputs or short weights instead of dividing by zero or indexing past weights.
 - `BF16VecAdd` bounds all three slices and leaves the untouched destination tail unchanged.
 - `BF16GemvNT` validates dimensions and backing slice lengths before row slicing.
+
+## Session 48: SIMD vector fallback bounds audit
+
+Hardened scalar vector fallback helpers in `backends/simd`:
+
+- F32 vector add/mul/scale/scale-add and activation fallback loops now bound all input/output slices instead of trusting `a` length.
+- F32 RMSNorm fallback no-ops on empty inputs or short weights; no-scale RMSNorm no-ops on empty input.
+- BF16 widen/narrow fallbacks bound source and destination lengths, leaving destination tails untouched.

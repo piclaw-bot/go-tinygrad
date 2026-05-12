@@ -22,31 +22,39 @@ func snrm2Go(x []float32) float32 {
 }
 
 func vecAddGo(dst, a, b []float32) {
-	for i := range a {
+	n := min3(len(dst), len(a), len(b))
+	for i := 0; i < n; i++ {
 		dst[i] = a[i] + b[i]
 	}
 }
 
 func vecMulGo(dst, a, b []float32) {
-	for i := range a {
+	n := min3(len(dst), len(a), len(b))
+	for i := 0; i < n; i++ {
 		dst[i] = a[i] * b[i]
 	}
 }
 
 func vecScaleAddGo(dst, a, b []float32, scale float32) {
-	for i := range a {
+	n := min3(len(dst), len(a), len(b))
+	for i := 0; i < n; i++ {
 		dst[i] = a[i] + scale*b[i]
 	}
 }
 
 func vecScaleGo(dst, a []float32, scale float32) {
-	for i := range a {
+	n := len(dst)
+	if len(a) < n {
+		n = len(a)
+	}
+	for i := 0; i < n; i++ {
 		dst[i] = a[i] * scale
 	}
 }
 
 func geluTanhMulGo(dst, a, b []float32) {
-	for i := range a {
+	n := min3(len(dst), len(a), len(b))
+	for i := 0; i < n; i++ {
 		x := a[i]
 		x3 := x * x * x
 		inner := float32(0.7978845608) * (x + 0.044715*x3)
@@ -57,6 +65,9 @@ func geluTanhMulGo(dst, a, b []float32) {
 
 func rmsNormGo(x, w []float32, eps float32) {
 	n := len(x)
+	if n == 0 || len(w) < n {
+		return
+	}
 	ss := float32(0)
 	for _, v := range x {
 		ss += v * v
@@ -74,6 +85,9 @@ func rmsNormBF16Go(x, w []float32, eps float32) {
 
 func rmsNormNoScaleGo(x []float32, eps float32) {
 	n := len(x)
+	if n == 0 {
+		return
+	}
 	ss := float32(0)
 	for _, v := range x {
 		ss += v * v
@@ -119,13 +133,31 @@ func unsafeSqrt(x float64) float64 {
 }
 
 func bf16WidenToF32Go(dst []float32, src []uint16) {
-	for i, v := range src {
-		dst[i] = BF16ToF32(v)
+	n := len(dst)
+	if len(src) < n {
+		n = len(src)
+	}
+	for i := 0; i < n; i++ {
+		dst[i] = BF16ToF32(src[i])
 	}
 }
 
 func bf16NarrowFromF32Go(dst []uint16, src []float32) {
-	for i, v := range src {
-		dst[i] = F32ToBF16(v)
+	n := len(dst)
+	if len(src) < n {
+		n = len(src)
 	}
+	for i := 0; i < n; i++ {
+		dst[i] = F32ToBF16(src[i])
+	}
+}
+
+func min3(a, b, c int) int {
+	if b < a {
+		a = b
+	}
+	if c < a {
+		a = c
+	}
+	return a
 }

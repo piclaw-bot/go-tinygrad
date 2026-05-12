@@ -203,3 +203,47 @@ func BenchmarkToBF16(b *testing.B) {
 		ToBF16(x)
 	}
 }
+
+func TestVecFallbacksBoundMalformedInputs(t *testing.T) {
+	old := HasVecAsm
+	HasVecAsm = false
+	defer func() { HasVecAsm = old }()
+
+	dst := []float32{99, 99}
+	VecAdd(dst, []float32{1}, []float32{2, 3})
+	if dst[0] != 3 || dst[1] != 99 {
+		t.Fatalf("VecAdd bounded result=%v", dst)
+	}
+	dst = []float32{99, 99}
+	VecMul(dst, []float32{2}, []float32{3, 4})
+	if dst[0] != 6 || dst[1] != 99 {
+		t.Fatalf("VecMul bounded result=%v", dst)
+	}
+	dst = []float32{99, 99}
+	VecScaleAdd(dst, []float32{1}, []float32{2, 3}, 10)
+	if dst[0] != 21 || dst[1] != 99 {
+		t.Fatalf("VecScaleAdd bounded result=%v", dst)
+	}
+	dst = []float32{99, 99}
+	VecScale(dst, []float32{4}, 0.5)
+	if dst[0] != 2 || dst[1] != 99 {
+		t.Fatalf("VecScale bounded result=%v", dst)
+	}
+	RMSNorm(nil, nil, 1e-6)
+	x := []float32{1, 2}
+	RMSNorm(x, []float32{1}, 1e-6)
+	if x[0] != 1 || x[1] != 2 {
+		t.Fatalf("RMSNorm short weight mutated x=%v", x)
+	}
+	RMSNormNoScale(nil, 1e-6)
+	dst = []float32{99, 99}
+	BF16WidenToF32(dst, BF16FromF32Slice([]float32{1}))
+	if dst[0] != 1 || dst[1] != 99 {
+		t.Fatalf("BF16Widen bounded result=%v", dst)
+	}
+	bdst := BF16FromF32Slice([]float32{99, 99})
+	BF16NarrowFromF32(bdst, []float32{1})
+	if BF16ToF32(bdst[0]) != 1 || BF16ToF32(bdst[1]) != 99 {
+		t.Fatalf("BF16Narrow bounded result=%v", BF16ToF32Slice(bdst))
+	}
+}
