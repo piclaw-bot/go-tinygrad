@@ -31,7 +31,12 @@ func broadcast(a, b Shape) (outDims []int, aExp, bExp Shape, err error) {
 	}
 
 	outDims = make([]int, ndim)
+	maxInt := int(^uint(0) >> 1)
+	numel := 1
 	for i := 0; i < ndim; i++ {
+		if aDims[i] < 0 || bDims[i] < 0 {
+			return nil, Shape{}, Shape{}, fmt.Errorf("broadcast: invalid dims %d: %d vs %d", i, aDims[i], bDims[i])
+		}
 		if aDims[i] == bDims[i] {
 			outDims[i] = aDims[i]
 		} else if aDims[i] == 1 {
@@ -41,6 +46,10 @@ func broadcast(a, b Shape) (outDims []int, aExp, bExp Shape, err error) {
 		} else {
 			return nil, Shape{}, Shape{}, fmt.Errorf("broadcast: incompatible dims %d: %d vs %d", i, aDims[i], bDims[i])
 		}
+		if outDims[i] != 0 && numel > maxInt/outDims[i] {
+			return nil, Shape{}, Shape{}, fmt.Errorf("broadcast: output shape overflows: %v", outDims)
+		}
+		numel *= outDims[i]
 	}
 
 	aExp = NewShape(aDims).Expand(outDims)

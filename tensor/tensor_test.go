@@ -404,6 +404,12 @@ func TestShapeValidationRejectsMalformedInputs(t *testing.T) {
 	assertPanics(t, func() { _ = s.Permute([]int{0, 2}) })
 	assertPanics(t, func() { _ = s.Expand([]int{2}) })
 	assertPanics(t, func() { _ = s.Expand([]int{2, -3}) })
+	maxInt := int(^uint(0) >> 1)
+	big := maxInt/2 + 1
+	_, _, _, err := broadcast(NewShape([]int{big, 1}), NewShape([]int{1, 3}))
+	if err == nil {
+		t.Fatal("broadcast accepted overflowing output shape")
+	}
 }
 
 func assertPanics(t *testing.T, fn func()) {

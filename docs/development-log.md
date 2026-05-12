@@ -975,3 +975,10 @@ Hardened tensor unsafe-slice helpers:
 Hardened tensor shape helpers:
 
 - `Shape.IsContiguous` now rejects malformed shapes with mismatched stride metadata, invalid dimensions, or overflowing dimension products instead of relying on incidental indexing/arithmetic behavior.
+
+## Session 106: Tensor broadcast overflow audit
+
+Hardened tensor broadcasting:
+
+- `broadcast` now validates padded dimensions and detects overflowing output shape products before constructing expanded shapes.
+- Added regression coverage for an overflowing broadcast output shape.
