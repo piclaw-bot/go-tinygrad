@@ -55,10 +55,11 @@ The public import path should remain `github.com/rcarmo/go-pherence/backends/sim
 
 Before introducing subpackages:
 
-- keep scalar fallback functions small and explicitly named;
-- ensure each public wrapper has scalar fallback coverage;
+- keep scalar fallback functions small and explicitly named (dot/SAXPY fallbacks now live in `scalar.go`);
+- ensure each public wrapper has scalar fallback coverage and precise scalar math for norm-sensitive paths;
 - keep architecture-specific build tags on all assembly-backed entrypoints;
 - avoid moving unexported assembly symbols across package boundaries until the public facade wrappers are complete;
+- keep shared guard helpers such as `checkedMulInt` in the facade package until subpackage bridge APIs are designed;
 - run at minimum:
 
 ```sh

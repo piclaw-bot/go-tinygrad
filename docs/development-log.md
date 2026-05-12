@@ -894,3 +894,11 @@ Hardened BF16 scalar GEMV fallback:
 
 - `BF16GemvNT` now checks `inDim*outDim` overflow before validating the backing F32 weight slice.
 - Added a shared `checkedMulInt` helper for SIMD package dimension products and regression coverage for overflowing BF16 GEMV dimensions.
+
+
+## Session 95: SIMD reorg documentation sweep
+
+Reviewed and refreshed docs after the Phase 6.6 SIMD cleanup/audit batch:
+
+- README and architecture docs now describe the facade-first SIMD reorg, scalar fallback split, precise scalar sqrt behavior, and BF16 GEMV overflow guard.
+- SIMD coverage and folder-reorg notes now record the safe current state and constraints for a future CPU-family subpackage split.

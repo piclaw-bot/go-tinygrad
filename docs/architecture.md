@@ -40,7 +40,7 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver` | Flags and user/server I/O only |
 | Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources; safetensors metadata and tokenizer helpers are guarded |
 | Placement policy | `backends/placement` | Backend-neutral budget manager and layer placement estimator; device memory availability is caller-supplied |
-| SIMD backend | `backends/simd` | Package name remains `simd`; import path is backend-owned; scalar fallbacks and SGEMM/GEBP wrappers are bounds-guarded |
+| SIMD backend | `backends/simd` | Package name remains `simd`; import path is backend-owned; `backends/simd` is the facade for future CPU-family subpackages; scalar fallbacks, BF16 GEMV, and SGEMM/GEBP wrappers are bounds/overflow-guarded |
 | Vulkan backend | `backends/vulkan` | Vulkan loader/device/buffer/shader dispatch scaffolding and embedded SPIR-V assets |
 | BERT/GTE | `models/bert` | Encoder path split out of the decoder package |
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers with layout and overflow guards |
@@ -60,7 +60,7 @@ The Phase 6.5 audit now treats guard behavior in shared packages as part of the 
 - Realization, broadcast, reduction, rewrite, and fusion paths validate malformed UOps, source lists, buffer lengths, and reduction metadata before indexing.
 - Embedding, matmul, linear, softmax, layernorm, GELU, and module wrappers validate dimensions and optional parameters before slicing or dispatching SIMD kernels.
 - `runtime/quant`, `runtime/kv`, `runtime/memory`, loader helpers, SIMD wrappers, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
-- SIMD scalar fallbacks bound all participating slices; SGEMM/GEBP wrappers validate dimensions, pointers, strides, and overflow before unsafe slicing or pointer arithmetic.
+- SIMD scalar fallbacks bound all participating slices; scalar RMSNorm uses precise `math.Sqrt`; BF16 GEMV validates shape-product overflow; SGEMM/GEBP wrappers validate dimensions, pointers, strides, and overflow before unsafe slicing or pointer arithmetic.
 - Safetensors validates known dtype byte sizes against declared shapes and data offsets at open time; tokenizer byte maps use one-time initialization for concurrent callers.
 - Transitional model helpers validate staged MTP acceptance, model-specific KV dimensions, embedding and LM-head backing slices, GPU prefill/chunked-LM-head entrypoints, and low-level GEMV/GQA product arithmetic before slicing or dispatch.
 - Transitional CUDA helpers validate `DevBuf` receiver/upload state, graph launches, stream kernel arguments, allocation sizes, Q4/MLX packed-weight layouts, expert-pool IDs, experimental NV helper inputs, dense SGEMM/LM-head buffers, JIT specs, BF16 buffers, and RoPE/attention tensor shapes before driver calls or kernel dispatch.
