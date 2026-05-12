@@ -743,3 +743,11 @@ Hardened remaining dense CUDA dispatch helpers:
 - `Sgemm` now validates dimensions, non-nil/non-zero buffers, size-product overflow, and backing buffer byte sizes before kernel launch.
 - `SgemmHost` validates host dimensions, slice lengths, and size-products before allocation/upload.
 - `DevLMHead` now checks `vocab*hidden` overflow before backing-buffer validation.
+
+## Session 75: GPU JIT compiler validation audit
+
+Hardened the experimental CUDA JIT compiler helpers:
+
+- `Compile` validates nil/empty kernel specs, nil nodes, out-of-range buffer indices, and nil node inputs before cache lookup or PTX generation.
+- `CompiledKernel.Launch` now rejects nil kernels, invalid launch metadata, missing buffers, zero GPU pointers, and undersized buffers before CUDA calls.
+- Added malformed-spec and no-op launch regression coverage.

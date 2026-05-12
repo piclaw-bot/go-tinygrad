@@ -108,3 +108,27 @@ func TestCompilerCache(t *testing.T) {
 	}
 	t.Log("kernel cache: OK")
 }
+
+func TestCompilerValidationRejectsMalformedSpecs(t *testing.T) {
+	if _, err := Compile(nil); err == nil {
+		t.Fatal("Compile accepted nil spec")
+	}
+	if _, err := Compile(&KernelSpec{Name: "bad", NumBufs: 1}); err == nil {
+		t.Fatal("Compile accepted spec with no nodes")
+	}
+	if _, err := Compile(&KernelSpec{Name: "bad", NumBufs: 1, Nodes: []*KNode{nil}}); err == nil {
+		t.Fatal("Compile accepted nil node")
+	}
+	if _, err := Compile(&KernelSpec{Name: "bad", NumBufs: 1, Nodes: []*KNode{{Op: KOpLoad, BufIdx: 1}}}); err == nil {
+		t.Fatal("Compile accepted out-of-range buffer index")
+	}
+	badInput := &KNode{Op: KOpAdd, Inputs: []*KNode{nil}}
+	if _, err := Compile(&KernelSpec{Name: "bad", NumBufs: 1, Nodes: []*KNode{badInput}}); err == nil {
+		t.Fatal("Compile accepted nil node input")
+	}
+	var k *CompiledKernel
+	k.Launch(1)
+	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 0, BlockSz: 256}).Launch(1, &Buffer{Ptr: 1, Size: 4})
+	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1)
+	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1, &Buffer{Ptr: 0, Size: 4})
+}

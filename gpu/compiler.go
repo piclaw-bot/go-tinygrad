@@ -77,6 +77,9 @@ var (
 
 // Compile compiles a KernelSpec into a PTX kernel and caches it.
 func Compile(spec *KernelSpec) (*CompiledKernel, error) {
+	if err := validateKernelSpec(spec); err != nil {
+		return nil, err
+	}
 	// Cache key from op sequence
 	key := specKey(spec)
 	kernelCacheMu.Lock()
@@ -119,6 +122,14 @@ func Compile(spec *KernelSpec) (*CompiledKernel, error) {
 
 // Launch executes a compiled kernel with the given buffers and element count.
 func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
+	if k == nil || k.Fn == 0 || n <= 0 || k.GridDiv <= 0 || k.BlockSz <= 0 || len(bufs) < k.NumBufs {
+		return
+	}
+	for i := 0; i < k.NumBufs; i++ {
+		if bufs[i] == nil || bufs[i].Ptr == 0 || bufs[i].Size < n*4 {
+			return
+		}
+	}
 	EnsureContext()
 	grid := uint32((n + k.GridDiv - 1) / k.GridDiv)
 	args := make([]unsafe.Pointer, len(bufs)+1)
@@ -173,6 +184,9 @@ func genPTXBody(spec *KernelSpec) (string, int, int) {
 }
 
 func genPTX(spec *KernelSpec) (string, int, int) {
+	if spec == nil {
+		return "", 0, 0
+	}
 	blockSz := 256
 	sharedMem := 0
 	if spec.HasReduce {
@@ -292,7 +306,33 @@ func genPTX(spec *KernelSpec) (string, int, int) {
 	return b.String(), blockSz, sharedMem
 }
 
+func validateKernelSpec(spec *KernelSpec) error {
+	if spec == nil {
+		return fmt.Errorf("nil kernel spec")
+	}
+	if spec.Name == "" || spec.NumBufs <= 0 || len(spec.Nodes) == 0 {
+		return fmt.Errorf("invalid kernel spec %q", spec.Name)
+	}
+	for i, n := range spec.Nodes {
+		if n == nil {
+			return fmt.Errorf("kernel spec %q has nil node %d", spec.Name, i)
+		}
+		if (n.Op == KOpLoad || n.Op == KOpStore) && (n.BufIdx < 0 || n.BufIdx >= spec.NumBufs) {
+			return fmt.Errorf("kernel spec %q node %d buffer index %d out of range", spec.Name, i, n.BufIdx)
+		}
+		for j, in := range n.Inputs {
+			if in == nil {
+				return fmt.Errorf("kernel spec %q node %d input %d is nil", spec.Name, i, j)
+			}
+		}
+	}
+	return nil
+}
+
 func specKey(spec *KernelSpec) string {
+	if spec == nil {
+		return ""
+	}
 	var parts []string
 	for _, n := range spec.Nodes {
 		parts = append(parts, fmt.Sprintf("%d:%d", n.Op, n.BufIdx))
