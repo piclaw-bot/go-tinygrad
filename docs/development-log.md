@@ -939,3 +939,10 @@ Refreshed documentation after the latest Phase 6.6 SGEMM/GEBP/gather guard audit
 
 - README and architecture docs now mention SGEMM/GEBP/gather capability gates and overflow preflights.
 - SIMD folder reorg notes now call out keeping `HasSgemmAsm` and shared arithmetic guards at the public facade boundary until subpackage bridge APIs exist.
+
+## Session 101: TurboQuant protected-layer nil audit
+
+Hardened a small TurboQuant helper edge case:
+
+- `TurboQuantState.IsProtectedLayer` is now nil-safe and rejects negative query indices before applying negative configured aliases for last layers.
+- Added regression coverage for nil state and negative layer queries.

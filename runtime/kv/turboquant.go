@@ -67,6 +67,9 @@ func NewTurboQuantState(headDim, numLayers int, cfg TurboQuantConfig) *TurboQuan
 
 // IsProtectedLayer returns true if this layer should stay at full precision.
 func (tq *TurboQuantState) IsProtectedLayer(layerIdx int) bool {
+	if tq == nil || layerIdx < 0 {
+		return false
+	}
 	for _, pl := range tq.Config.ProtectedLayers {
 		if pl < 0 {
 			pl = tq.NumLayers + pl

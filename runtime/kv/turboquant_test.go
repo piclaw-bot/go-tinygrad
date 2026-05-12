@@ -79,6 +79,10 @@ func TestTurboQuantCompressionRatio(t *testing.T) {
 }
 
 func TestTurboQuantProtectedLayers(t *testing.T) {
+	var nilTQ *TurboQuantState
+	if nilTQ.IsProtectedLayer(0) {
+		t.Fatal("nil TurboQuantState reported protected layer")
+	}
 	tq := NewTurboQuantState(128, 28, DefaultTurboQuantConfig())
 
 	// First 2 and last 2 should be protected
@@ -87,7 +91,7 @@ func TestTurboQuantProtectedLayers(t *testing.T) {
 			t.Errorf("layer %d should be protected", l)
 		}
 	}
-	for _, l := range []int{5, 14, 20} {
+	for _, l := range []int{-1, 5, 14, 20} {
 		if tq.IsProtectedLayer(l) {
 			t.Errorf("layer %d should NOT be protected", l)
 		}
