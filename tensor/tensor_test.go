@@ -585,3 +585,9 @@ func TestTensorConvenienceOpsValidateInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestNNHelpersValidateBackingData(t *testing.T) {
+	bad := &Tensor{uop: &UOp{DType: Float32, buf: &Buffer{Data: float32ToByteSlice([]float32{1}), DType: Float32, Length: 1}}, shape: NewShape([]int{1, 2})}
+	assertPanics(t, func() { _ = bad.Softmax() })
+	assertPanics(t, func() { _ = bad.LayerNorm(nil, nil, 1e-5) })
+}

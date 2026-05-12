@@ -996,3 +996,10 @@ Hardened tensor convenience helpers:
 
 - `Transpose2D`, `Clip`, `ReLU`, `Sigmoid`, and `Where` now validate nil tensors and malformed shapes before dereferencing internals.
 - `Where` now validates broadcast compatibility across condition/x/y shapes instead of assuming `x` owns the output shape.
+
+## Session 109: Tensor NN backing-data audit
+
+Hardened eager NN helpers:
+
+- `Softmax` and `LayerNorm` now validate realized backing-data length against the tensor shape before row slicing.
+- Output allocation now uses validated shape size instead of raw backing slice length.

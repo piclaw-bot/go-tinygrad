@@ -18,9 +18,13 @@ func (t *Tensor) Softmax() *Tensor {
 	if lastDim <= 0 {
 		return FromFloat32(nil, shape)
 	}
-	outerSize := t.Numel() / lastDim
+	total := shapeSize(shape)
+	if total < 0 || len(data) < total {
+		panic("softmax: invalid backing data")
+	}
+	outerSize := total / lastDim
 
-	out := make([]float32, len(data))
+	out := make([]float32, total)
 	for i := 0; i < outerSize; i++ {
 		off := i * lastDim
 		row := data[off : off+lastDim]
@@ -62,7 +66,11 @@ func (t *Tensor) LayerNorm(gamma, beta *Tensor, eps float32) *Tensor {
 	if lastDim <= 0 {
 		return FromFloat32(nil, shape)
 	}
-	outerSize := t.Numel() / lastDim
+	total := shapeSize(shape)
+	if total < 0 || len(data) < total {
+		panic("layernorm: invalid backing data")
+	}
+	outerSize := total / lastDim
 
 	var g, b []float32
 	if gamma != nil {
@@ -81,7 +89,7 @@ func (t *Tensor) LayerNorm(gamma, beta *Tensor, eps float32) *Tensor {
 		panic("layernorm: gamma and beta must both be present or nil")
 	}
 
-	out := make([]float32, len(data))
+	out := make([]float32, total)
 	for i := 0; i < outerSize; i++ {
 		off := i * lastDim
 		row := data[off : off+lastDim]
