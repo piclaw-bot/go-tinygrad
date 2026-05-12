@@ -727,3 +727,11 @@ Hardened experimental direct-NVIDIA ioctl helpers:
 - NV device helper methods are nil-safe where practical and return explicit errors for nil receivers.
 - VA allocation now rejects zero/overflowing sizes and bump-pointer overflow.
 - ioctl/RM helper wrappers validate file descriptors and nil parameter pointers before raw syscalls.
+
+## Session 73: Experimental NV query/GPFIFO audit
+
+Hardened remaining experimental direct-NVIDIA helpers:
+
+- GPFIFO/channel setup now validates nil devices, channel groups, context handles, and class info before allocating resources.
+- GPFIFO setup frees already allocated ring/notifier buffers on later setup failures.
+- NV query helpers validate nil/uninitialized devices and cap class-list sizes before allocation.

@@ -14,13 +14,13 @@ import (
 
 // GPFifo represents a GPU command submission queue.
 type GPFifo struct {
-	dev       *NVDevice
-	handle    uint32
-	ring      []uint64 // ring buffer entries (on GPU-visible memory)
-	ringBuf   *NVBuffer
-	entries   int
-	putValue  uint64
-	token     uint32 // work submit token for MMIO doorbell
+	dev      *NVDevice
+	handle   uint32
+	ring     []uint64 // ring buffer entries (on GPU-visible memory)
+	ringBuf  *NVBuffer
+	entries  int
+	putValue uint64
+	token    uint32 // work submit token for MMIO doorbell
 }
 
 // Channel group for organizing GPFifos
@@ -30,13 +30,16 @@ type ChannelGroup struct {
 
 // SetupChannelGroup creates a Kepler channel group.
 func (d *NVDevice) SetupChannelGroup() (*ChannelGroup, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil NVDevice")
+	}
 	type channelGroupParams struct {
-		HObjectError              uint32
-		HObjectEccError           uint32
-		HVASpace                  uint32
-		EngineType                uint32
+		HObjectError                uint32
+		HObjectEccError             uint32
+		HVASpace                    uint32
+		EngineType                  uint32
 		BIsCallingContextVgpuPlugin uint8
-		_pad                      [3]byte
+		_pad                        [3]byte
 	}
 	cgp := channelGroupParams{
 		EngineType: 1, // NV2080_ENGINE_TYPE_GRAPHICS
@@ -51,6 +54,9 @@ func (d *NVDevice) SetupChannelGroup() (*ChannelGroup, error) {
 
 // SetupContextShare creates a context share for a channel group.
 func (d *NVDevice) SetupContextShare(cg *ChannelGroup, vaspace uint32) (uint32, error) {
+	if d == nil || cg == nil || cg.handle == 0 {
+		return 0, fmt.Errorf("invalid context share target")
+	}
 	type ctxShareParams struct {
 		HVASpace uint32
 		Flags    uint32
@@ -71,6 +77,9 @@ func (d *NVDevice) SetupContextShare(cg *ChannelGroup, vaspace uint32) (uint32, 
 
 // SetupGPFifo creates a GPFifo for compute command submission.
 func (d *NVDevice) SetupGPFifo(cg *ChannelGroup, ctxShare uint32, gpuInfo *GPUInfo) (*GPFifo, error) {
+	if d == nil || cg == nil || cg.handle == 0 || ctxShare == 0 || gpuInfo == nil || gpuInfo.GPFifoClass == 0 {
+		return nil, fmt.Errorf("invalid GPFifo setup inputs")
+	}
 	entries := 0x10000 // 64K entries
 
 	// Allocate ring buffer memory (GPU-visible, CPU-accessible)
@@ -83,20 +92,20 @@ func (d *NVDevice) SetupGPFifo(cg *ChannelGroup, ctxShare uint32, gpuInfo *GPUIn
 	// Allocate error notifier
 	notifier, err := d.AllocHostMem(48 << 20) // 48MB for notifier
 	if err != nil {
+		ringBuf.Free()
 		return nil, fmt.Errorf("alloc notifier: %w", err)
 	}
-	_ = notifier
 
 	// NV_CHANNELGPFIFO_ALLOCATION_PARAMETERS
 	type gpfifoParams struct {
-		GPFifoOffset   uint64
-		GPFifoEntries  uint32
-		Flags          uint32
-		HContextShare  uint32
-		HVASpace       uint32
-		HObjectError   uint32
-		HObjectBuffer  uint32
-		_pad           [256]byte // rest of params
+		GPFifoOffset  uint64
+		GPFifoEntries uint32
+		Flags         uint32
+		HContextShare uint32
+		HVASpace      uint32
+		HObjectError  uint32
+		HObjectBuffer uint32
+		_pad          [256]byte // rest of params
 	}
 	gfp := gpfifoParams{
 		GPFifoOffset:  uint64(ringBuf.cpuAddr),
@@ -109,6 +118,8 @@ func (d *NVDevice) SetupGPFifo(cg *ChannelGroup, ctxShare uint32, gpuInfo *GPUIn
 	gpfifoHandle, err := d.rmAlloc(cg.handle, gpuInfo.GPFifoClass,
 		unsafe.Pointer(&gfp), uint32(unsafe.Sizeof(gfp)))
 	if err != nil {
+		ringBuf.Free()
+		notifier.Free()
 		return nil, fmt.Errorf("gpfifo alloc: %w", err)
 	}
 
@@ -119,6 +130,8 @@ func (d *NVDevice) SetupGPFifo(cg *ChannelGroup, ctxShare uint32, gpuInfo *GPUIn
 	tp := getTokenParams{WorkSubmitToken: 0xFFFFFFFF}
 	if err := d.rmControl(gpfifoHandle, 0xC36F0108, // NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN
 		unsafe.Pointer(&tp), uint32(unsafe.Sizeof(tp))); err != nil {
+		ringBuf.Free()
+		notifier.Free()
 		return nil, fmt.Errorf("get submit token: %w", err)
 	}
 

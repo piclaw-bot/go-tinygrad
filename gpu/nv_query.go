@@ -9,11 +9,11 @@ import (
 
 // GR info indices (from NV2080_CTRL_GR_INFO_INDEX_*)
 const (
-	GR_INFO_SM_VERSION      = 12
+	GR_INFO_SM_VERSION       = 12
 	GR_INFO_MAX_WARPS_PER_SM = 13
-	GR_INFO_NUM_GPCS        = 20
-	GR_INFO_NUM_TPC_PER_GPC = 23
-	GR_INFO_NUM_SM_PER_TPC  = 32
+	GR_INFO_NUM_GPCS         = 20
+	GR_INFO_NUM_TPC_PER_GPC  = 23
+	GR_INFO_NUM_SM_PER_TPC   = 32
 )
 
 // NV2080_CTRL_GR_INFO: index(4) + data(4) = 8 bytes
@@ -24,11 +24,17 @@ type grInfo struct {
 
 // QueryGRInfo queries GPU graphics info using NV2080_CTRL_CMD_GR_GET_INFO.
 func (d *NVDevice) QueryGRInfo(indices ...uint32) (map[uint32]uint32, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil NVDevice")
+	}
 	if d.subdevice == 0 {
 		return nil, fmt.Errorf("subdevice not initialized")
 	}
 
 	n := len(indices)
+	if n > int(^uint(0)>>1)/8 {
+		return nil, fmt.Errorf("too many GR info indices: %d", n)
+	}
 	if n == 0 {
 		return nil, nil
 	}
@@ -66,6 +72,12 @@ func (d *NVDevice) QueryGRInfo(indices ...uint32) (map[uint32]uint32, error) {
 
 // QueryGPUClassList queries available GPU classes.
 func (d *NVDevice) QueryGPUClassList() ([]uint32, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil NVDevice")
+	}
+	if d.device == 0 {
+		return nil, fmt.Errorf("device not initialized")
+	}
 	// First call to get count
 	type classListParams struct {
 		NumClasses uint32
@@ -84,6 +96,9 @@ func (d *NVDevice) QueryGPUClassList() ([]uint32, error) {
 	}
 
 	// Second call to get list
+	if params.NumClasses > 1<<20 {
+		return nil, fmt.Errorf("class list too large: %d", params.NumClasses)
+	}
 	classes := make([]uint32, params.NumClasses)
 	params.ClassList = uint64(uintptr(unsafe.Pointer(&classes[0])))
 	if err := d.rmControl(d.device, NV0080_CTRL_CMD_GPU_GET_CLASSLIST,
@@ -111,6 +126,9 @@ type GPUInfo struct {
 
 // QueryGPUInfo retrieves all GPU capability info.
 func (d *NVDevice) QueryGPUInfo() (*GPUInfo, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil NVDevice")
+	}
 	info := &GPUInfo{}
 
 	// Query GR info
