@@ -37,3 +37,21 @@ func TestDecodePreservesUnknownUnicodeRunes(t *testing.T) {
 		t.Fatalf("Decode unicode=%q, want snowman", got)
 	}
 }
+
+func TestTokenizerNilVocabSizeAndByteMaps(t *testing.T) {
+	var tok *Tokenizer
+	if got := tok.VocabSize(); got != 0 {
+		t.Fatalf("nil tokenizer VocabSize=%d, want 0", got)
+	}
+	enc := getByteEncoder()
+	dec := getByteDecoder()
+	if len(enc) != 256 || len(dec) != 256 {
+		t.Fatalf("byte maps sizes enc=%d dec=%d, want 256", len(enc), len(dec))
+	}
+	for b := 0; b < 256; b++ {
+		r := enc[byte(b)]
+		if got := dec[r]; got != byte(b) {
+			t.Fatalf("byte map roundtrip %d -> %U -> %d", b, r, got)
+		}
+	}
+}

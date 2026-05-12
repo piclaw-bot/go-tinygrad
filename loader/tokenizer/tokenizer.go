@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Tokenizer handles BPE tokenization for LLaMA-style models.
@@ -180,7 +181,12 @@ func (t *Tokenizer) Decode(ids []int) string {
 }
 
 // VocabSize returns the vocabulary size.
-func (t *Tokenizer) VocabSize() int { return len(t.Vocab) }
+func (t *Tokenizer) VocabSize() int {
+	if t == nil || t.Vocab == nil {
+		return 0
+	}
+	return len(t.Vocab)
+}
 
 // byteToToken converts a byte to its BPE token representation.
 func byteToToken(b byte) string {
@@ -193,51 +199,55 @@ func byteToToken(b byte) string {
 	return string(rune(b))
 }
 
-var _byteEncoder map[byte]rune
+var (
+	_byteEncoder     map[byte]rune
+	_byteEncoderOnce sync.Once
+)
 
 func getByteEncoder() map[byte]rune {
-	if _byteEncoder != nil {
-		return _byteEncoder
-	}
-	_byteEncoder = make(map[byte]rune)
-	// Standard visible ASCII + Latin-1 supplement
-	n := 0
-	bs := make([]int, 0, 256)
-	for i := int('!'); i <= int('~'); i++ {
-		bs = append(bs, i)
-	}
-	for i := int('¡'); i <= int('¬'); i++ {
-		bs = append(bs, i)
-	}
-	for i := int('®'); i <= int('ÿ'); i++ {
-		bs = append(bs, i)
-	}
-	sort.Ints(bs)
-	bsSet := map[int]bool{}
-	for _, b := range bs {
-		bsSet[b] = true
-		_byteEncoder[byte(b)] = rune(b)
-	}
-	n = 256
-	for i := 0; i < 256; i++ {
-		if !bsSet[i] {
-			_byteEncoder[byte(i)] = rune(n)
-			n++
+	_byteEncoderOnce.Do(func() {
+		_byteEncoder = make(map[byte]rune)
+		// Standard visible ASCII + Latin-1 supplement
+		n := 0
+		bs := make([]int, 0, 256)
+		for i := int('!'); i <= int('~'); i++ {
+			bs = append(bs, i)
 		}
-	}
+		for i := int('¡'); i <= int('¬'); i++ {
+			bs = append(bs, i)
+		}
+		for i := int('®'); i <= int('ÿ'); i++ {
+			bs = append(bs, i)
+		}
+		sort.Ints(bs)
+		bsSet := map[int]bool{}
+		for _, b := range bs {
+			bsSet[b] = true
+			_byteEncoder[byte(b)] = rune(b)
+		}
+		n = 256
+		for i := 0; i < 256; i++ {
+			if !bsSet[i] {
+				_byteEncoder[byte(i)] = rune(n)
+				n++
+			}
+		}
+	})
 	return _byteEncoder
 }
 
-var _byteDecoder map[rune]byte
+var (
+	_byteDecoder     map[rune]byte
+	_byteDecoderOnce sync.Once
+)
 
 func getByteDecoder() map[rune]byte {
-	if _byteDecoder != nil {
-		return _byteDecoder
-	}
-	enc := getByteEncoder()
-	_byteDecoder = make(map[rune]byte, len(enc))
-	for b, r := range enc {
-		_byteDecoder[r] = b
-	}
+	_byteDecoderOnce.Do(func() {
+		enc := getByteEncoder()
+		_byteDecoder = make(map[rune]byte, len(enc))
+		for b, r := range enc {
+			_byteDecoder[r] = b
+		}
+	})
 	return _byteDecoder
 }

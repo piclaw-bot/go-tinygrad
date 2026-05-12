@@ -590,3 +590,11 @@ Hardened safetensors metadata and sharded-file helpers:
 - Tensor metadata validation now checks shape product overflow and known dtype byte-size agreement with tensor data offsets at open time.
 - Sharded safetensors methods are nil-safe and report nil sharded files as errors for tensor lookups.
 - `OpenSharded` now uses `filepath.Dir`/`filepath.Join` instead of manual slash parsing for index-relative shard paths.
+
+## Session 56: Tokenizer helper nil/race audit
+
+Hardened tokenizer helper paths:
+
+- `Tokenizer.VocabSize` is now nil-safe.
+- Byte-level BPE encoder/decoder maps now use `sync.Once` for lazy initialization, avoiding concurrent map initialization races.
+- Added regression coverage for nil vocab size and byte-map roundtrips.
