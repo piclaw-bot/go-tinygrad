@@ -230,7 +230,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("eager load safetensors: %w", err)
 			}
-			fmt.Printf("  Eager loaded %.1f MB of mmap'd weights in %.2fs\n", float64(bytes)/(1024*1024), time.Since(t0).Seconds())
+			loaderDebugf("  Eager loaded %.1f MB of mmap'd weights in %.2fs\n", float64(bytes)/(1024*1024), time.Since(t0).Seconds())
 		}
 	}
 
@@ -245,7 +245,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 		cfg.QuantGroup = qc.GroupSize
 		cfg.QuantSym = qc.Sym
 		cfg.QuantFormat = "gptq"
-		fmt.Printf("  GPTQ: %d-bit, group=%d, sym=%v\n", qc.Bits, qc.GroupSize, qc.Sym)
+		loaderDebugf("  GPTQ: %d-bit, group=%d, sym=%v\n", qc.Bits, qc.GroupSize, qc.Sym)
 	}
 
 	// Try MLX quantization from config.json
@@ -261,7 +261,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 			cfg.QuantGroup = mlxCfg.Quantization.GroupSize
 			cfg.QuantSym = false // MLX uses bias, not symmetric
 			cfg.QuantFormat = "mlx"
-			fmt.Printf("  MLX: %d-bit, group=%d\n", cfg.QuantBits, cfg.QuantGroup)
+			loaderDebugf("  MLX: %d-bit, group=%d\n", cfg.QuantBits, cfg.QuantGroup)
 		}
 	}
 
@@ -595,19 +595,19 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 				if err == nil {
 					layer.ExpertGateW = expGate
 				} else {
-					fmt.Printf("  MoE layer %d gate_proj: %v\n", l, err)
+					loaderDebugf("  MoE layer %d gate_proj: %v\n", l, err)
 				}
 				expUp, err := LoadSwitchMLXExperts(f, moePath+".switch_mlp.up_proj", cfg.NumExperts, moeI, h, cfg.QuantGroup, cfg.QuantBits)
 				if err == nil {
 					layer.ExpertUpW = expUp
 				} else {
-					fmt.Printf("  MoE layer %d up_proj: %v\n", l, err)
+					loaderDebugf("  MoE layer %d up_proj: %v\n", l, err)
 				}
 				expDown, err := LoadSwitchMLXExperts(f, moePath+".switch_mlp.down_proj", cfg.NumExperts, h, moeI, cfg.QuantGroup, cfg.QuantBits)
 				if err == nil {
 					layer.ExpertDownW = expDown
 				} else {
-					fmt.Printf("  MoE layer %d down_proj: %v\n", l, err)
+					loaderDebugf("  MoE layer %d down_proj: %v\n", l, err)
 				}
 				// Clear the non-MoE MLP weights (they don't apply)
 				layer.GateWm = nil
@@ -1626,4 +1626,10 @@ func gemvNTParallel(out, x []float32, w []float32, inDim, outDim int) {
 		}(start, end)
 	}
 	wg.Wait()
+}
+
+func loaderDebugf(format string, args ...any) {
+	if os.Getenv("GO_PHERENCE_LOAD_DEBUG") != "" {
+		fmt.Printf(format, args...)
+	}
 }

@@ -1031,3 +1031,9 @@ Reviewed and refreshed documentation after the latest tensor hardening batch:
 Cleaned up library logging noise in batched GPU prefill:
 
 - Batched prefill progress prints are now gated behind `GO_PHERENCE_PREFILL_DEBUG` instead of writing to stdout unconditionally from model code.
+
+## Session 114: Model loader debug logging audit
+
+Cleaned up model loader stdout noise:
+
+- Quantization/eager-load/MoE loader progress messages are now gated behind `GO_PHERENCE_LOAD_DEBUG` instead of printing unconditionally from `LoadLlama`.

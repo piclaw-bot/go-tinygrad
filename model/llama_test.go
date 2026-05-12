@@ -355,3 +355,8 @@ func TestGemma4PerLayerInputGatingGPUBuffers(t *testing.T) {
 		break
 	}
 }
+
+func TestLoaderDebugfIsGated(t *testing.T) {
+	t.Setenv("GO_PHERENCE_LOAD_DEBUG", "")
+	loaderDebugf("hidden loader debug %d", 1)
+}
