@@ -40,7 +40,7 @@ Backend-neutral budget and layer-placement policy now lives in `backends/placeme
 
 - `BudgetManager` tracks resident/layer/stream/expert budgets and hit/evict counters, with nil-safe methods, invalid-category rejection, allocation-overflow rejection, and free-underflow clamping.
 - `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery; invalid dimensions are clamped, estimator arithmetic saturates, and odd INT4 packed sizes round up instead of truncating.
-- `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints with idempotent hot-byte accounting; `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
+- `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints with idempotent/saturating hot-byte accounting; malformed tracked ranges are sanitized, and `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
 - GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting and handle disabled/replacement cases explicitly.
 
 ## Budget Categories

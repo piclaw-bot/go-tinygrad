@@ -1152,3 +1152,11 @@ Cleaned up safetensors helper behavior:
 - `File.Names` and `ShardedFile.Names` now honor their sorted-order contract directly instead of relying on callers to sort map iteration output.
 - Sharded eager-load byte accounting now checks aggregate overflow while summing shard sizes.
 - Added regression coverage for sorted names and checked eager-load byte addition.
+
+
+## Session 130: Loader/runtime audit documentation sweep
+
+Refreshed documentation after the latest loader/runtime audit batch:
+
+- README, architecture, refactor, TurboQuant, and weight-budget docs now cover tokenizer merge validation, deterministic safetensors names, checked sharded eager-load totals, compressed KV cache accessor/memory-accounting guards, mmap advisor range sanitization, and MLX/GPTQ checked sizing.
+- Refactor notes now call out these loader/runtime guard semantics as part of the baseline to preserve during later model/backend package splits.
