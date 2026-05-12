@@ -194,10 +194,10 @@ Recent Phase 6.5 audit passes made malformed-input behavior explicit across the 
 
 - `tensor/` validates shapes, reductions, broadcasting, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, embeddings, matmul/linear helpers, and module wrappers.
 - `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts and no-ops or returns nil on malformed in-memory weights.
-- `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, mmap range overflow, and nil advisor receivers.
+- `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, protected-layer helper inputs, mmap range overflow, and nil advisor receivers.
 - `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, Q4/MLX weight layouts, expert IDs, experimental NV ioctl/memory/query setup, dense SGEMM/LM-head buffers, JIT kernel specs, and BF16 buffers before dispatch.
 - `backends/simd` scalar fallbacks bound all input/output slices, BF16 GEMV checks shape-product overflow, scalar RMSNorm uses precise `math.Sqrt`, and SGEMM/GEBP/gather helpers preflight dimensions, pointers, strides, CPU capability gates, and overflow before unsafe pointer arithmetic.
-- `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; sharded helpers are nil-safe, and tokenizer byte maps are initialized with `sync.Once`.
+- `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; file/sharded helpers are nil-safe, partial sharded opens clean up already-open shards, and tokenizer byte maps are initialized with `sync.Once`.
 - Transitional `model` helpers validate MTP token/KV keep counts, embedding/LM-head backing data, chunked LM-head and batched-prefill dimensions, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic.
 
 Fast refactor validation remains focused to avoid accidentally loading large local model fixtures:

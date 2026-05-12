@@ -42,7 +42,7 @@ Unit tests cover:
   `1.715` for the synthetic test vector.
 - Compression layout: 200-token cache with a 128-token residual window stores 72
   compressed and 128 full-precision entries.
-- Protected layers never compress.
+- Protected layers never compress. The protected-layer helper is nil-safe and rejects negative query indices before applying configured negative aliases such as `-1`/`-2` for last layers.
 - Short prompts under the residual window produce the same first tokens as the
   uncompressed CPU path.
 

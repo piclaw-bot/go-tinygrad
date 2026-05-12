@@ -953,3 +953,12 @@ Hardened safetensors helper edge cases:
 
 - `File.Names` is now nil-safe, matching `ShardedFile.Names` behavior.
 - `OpenSharded` now closes any shards already opened when a later shard fails, preventing partial-open mmap/file descriptor leaks.
+
+
+## Session 103: Runtime/loader audit documentation sweep
+
+Reviewed and refreshed docs after the latest runtime/loader hardening batch:
+
+- README and architecture docs now mention TurboQuant protected-layer input guards and safetensors partial-open cleanup.
+- TurboQuant docs now describe the defensive protected-layer helper behavior.
+- Refactor plan now records the expanded runtime KV and safetensors cleanup guard coverage.

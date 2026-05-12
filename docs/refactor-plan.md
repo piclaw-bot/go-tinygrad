@@ -24,13 +24,13 @@ cmd/llmserver        -> imports gpu, loader/tokenizer, model
 cmd/tinydemo         -> imports tensor
 gpu                  -> CUDA/PTX path plus GPU-resident expert pool; runtime guards hardened
 loader/config        -> config.json and quantize_config JSON helpers
-loader/safetensors   -> mmap safetensors reader and sharded reader with metadata validation
+loader/safetensors   -> mmap safetensors reader and sharded reader with metadata validation, nil helpers, and partial-open cleanup
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode; race-safe byte maps
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
                         MoE, MTP scaffold, model-specific KV sizing; helper guards hardened
 models/bert          -> GTE/BERT encoder path
-runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout guards
+runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout/protected-layer guards
 runtime/memory       -> mmap residency advice and range tracking; nil/invalid ranges are inert
 runtime/quant        -> MLX/GPTQ CPU quant formats, dequantization, Q4 GEMV helpers
 tensor               -> tensor graph/runtime; transitional direct import of backends/simd; hardened malformed-input guards
