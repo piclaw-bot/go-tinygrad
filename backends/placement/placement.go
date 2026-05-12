@@ -78,19 +78,20 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 		}
 	}
 
-	qDim := numHeads * headDim
-	kvDim := numKVHeads * headDim
+	qDim := saturatingMulInt64(numHeads, headDim)
+	kvDim := saturatingMulInt64(numKVHeads, headDim)
 
 	// Double-wide MLP for KV-shared layers
 	layerInter := inter
 	if info.HasDoubleWideMLP && info.NumKVSharedLayers > 0 {
 		firstShared := info.NumLayers - info.NumKVSharedLayers
 		if layerIdx >= firstShared {
-			layerInter = inter * 2
+			layerInter = saturatingMulInt64(inter, 2)
 		}
 	}
 
 	var bytes int64
+	add := func(v int64) { bytes = saturatingAddInt64(bytes, v) }
 
 	if info.QuantBits == 4 {
 		// INT4 quantized: packed weights + scales + biases
@@ -99,43 +100,52 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 		// Biases: outDim * numGroups * 4 bytes
 		groupSize := int64(64) // MLX default
 		pack := func(inD, outD int64) int64 {
-			numGroups := inD / groupSize
-			return inD*outD/8 + outD*numGroups*4 + outD*numGroups*4
+			if inD <= 0 || outD <= 0 {
+				return 0
+			}
+			numGroups := divCeilInt64(inD, groupSize)
+			packed := saturatingMulInt64(inD, outD) / 8
+			scales := saturatingMulInt64(saturatingMulInt64(outD, numGroups), 4)
+			biases := saturatingMulInt64(saturatingMulInt64(outD, numGroups), 4)
+			return saturatingAddInt64(packed, saturatingAddInt64(scales, biases))
 		}
-		bytes += pack(h, qDim)       // Q proj
-		bytes += pack(h, kvDim)      // K proj
-		bytes += pack(h, kvDim)      // V proj
-		bytes += pack(qDim, h)       // O proj
-		bytes += pack(h, layerInter) // Gate proj
-		bytes += pack(h, layerInter) // Up proj
-		bytes += pack(layerInter, h) // Down proj
+		add(pack(h, qDim))       // Q proj
+		add(pack(h, kvDim))      // K proj
+		add(pack(h, kvDim))      // V proj
+		add(pack(qDim, h))       // O proj
+		add(pack(h, layerInter)) // Gate proj
+		add(pack(h, layerInter)) // Up proj
+		add(pack(layerInter, h)) // Down proj
 	} else {
 		// FP32/BF16: full weight matrices
 		elemSize := int64(4) // f32; bf16 would be 2
-		bytes += h * qDim * elemSize
-		bytes += h * kvDim * elemSize
-		bytes += h * kvDim * elemSize
-		bytes += qDim * h * elemSize
-		bytes += h * layerInter * elemSize
-		bytes += h * layerInter * elemSize
-		bytes += layerInter * h * elemSize
+		matBytes := func(inD, outD int64) int64 {
+			return saturatingMulInt64(saturatingMulInt64(inD, outD), elemSize)
+		}
+		add(matBytes(h, qDim))
+		add(matBytes(h, kvDim))
+		add(matBytes(h, kvDim))
+		add(matBytes(qDim, h))
+		add(matBytes(h, layerInter))
+		add(matBytes(h, layerInter))
+		add(matBytes(layerInter, h))
 	}
 
 	// Norm weights (small)
-	bytes += h * 4 * 4       // InputNorm + PostNorm + PreFFNNorm + PostFFNNorm
-	bytes += headDim * 4 * 2 // QNorm + KNorm
+	add(saturatingMulInt64(h, 4*4))       // InputNorm + PostNorm + PreFFNNorm + PostFFNNorm
+	add(saturatingMulInt64(headDim, 4*2)) // QNorm + KNorm
 
 	// PLI weights (Gemma4)
 	if info.HiddenPerLayer > 0 {
 		hpl := nonNegativeInt64(info.HiddenPerLayer)
-		bytes += h * hpl * 4 // PLIGate
-		bytes += hpl * h * 4 // PLIProj
-		bytes += h * 4       // PLIPostNorm
+		add(saturatingMulInt64(saturatingMulInt64(h, hpl), 4)) // PLIGate
+		add(saturatingMulInt64(saturatingMulInt64(hpl, h), 4)) // PLIProj
+		add(saturatingMulInt64(h, 4))                          // PLIPostNorm
 	}
 
 	// KV cache estimate (per token, assume 1024 tokens)
-	kvPerToken := kvDim * 4 * 2 // K + V, float32
-	bytes += kvPerToken * 1024
+	kvPerToken := saturatingMulInt64(kvDim, 4*2) // K + V, float32
+	add(saturatingMulInt64(kvPerToken, 1024))
 
 	return bytes
 }
@@ -262,4 +272,33 @@ func nonNegativeInt64(v int) int64 {
 		return 0
 	}
 	return int64(v)
+}
+
+func divCeilInt64(a, b int64) int64 {
+	if a <= 0 || b <= 0 {
+		return 0
+	}
+	return 1 + (a-1)/b
+}
+
+func saturatingAddInt64(a, b int64) int64 {
+	if a < 0 || b < 0 {
+		return 0
+	}
+	maxInt64 := int64(^uint64(0) >> 1)
+	if a > maxInt64-b {
+		return maxInt64
+	}
+	return a + b
+}
+
+func saturatingMulInt64(a, b int64) int64 {
+	if a < 0 || b < 0 {
+		return 0
+	}
+	maxInt64 := int64(^uint64(0) >> 1)
+	if b != 0 && a > maxInt64/b {
+		return maxInt64
+	}
+	return a * b
 }

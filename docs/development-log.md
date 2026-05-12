@@ -1057,3 +1057,11 @@ Gated Vulkan backend discovery/progress messages:
 
 - Vulkan init failures, CPU-device rejection notices, compute readiness, and pending-SPIR-V diagnostics now use `GO_PHERENCE_VULKAN_DEBUG` instead of writing to stdout unconditionally.
 - Kept `backends/placement.Plan.PrintPlan` as an explicit caller-requested reporting API.
+
+## Session 118: Placement estimator overflow audit
+
+Hardened backend-neutral placement estimators:
+
+- Layer weight estimates now use saturating arithmetic for dimension products and byte accumulation.
+- Quantized MLX group estimates now use ceiling group counts for non-multiple-of-group-size dimensions instead of underestimating partial groups.
+- Added regression coverage for odd quantized dimensions and huge malformed size inputs.

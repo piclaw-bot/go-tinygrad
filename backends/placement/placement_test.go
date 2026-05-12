@@ -71,6 +71,11 @@ func TestPlanLayerPlacementGemma4(t *testing.T) {
 }
 
 func TestEstimateLayerWeightBytes(t *testing.T) {
+	oddGroups := ModelSizeInfo{NumLayers: 1, HiddenSize: 65, Intermediate: 65, NumHeads: 1, NumKVHeads: 1, HeadDim: 65, QuantBits: 4}
+	if got := EstimateLayerWeightBytes(oddGroups, 0); got <= 0 {
+		t.Fatalf("odd-group quantized estimate=%d, want positive", got)
+	}
+
 	// Gemma4 layer size estimates
 	info := ModelSizeInfo{
 		NumLayers:         35,
@@ -111,6 +116,10 @@ func TestPlacementHandlesInvalidAndHugeInputs(t *testing.T) {
 	}
 	if got := EstimateResidentBytes(bad); got != 0 {
 		t.Fatalf("negative resident estimate=%d, want 0", got)
+	}
+	huge := ModelSizeInfo{NumLayers: 1, HiddenSize: int(^uint(0) >> 2), Intermediate: int(^uint(0) >> 2), NumHeads: int(^uint(0) >> 4), NumKVHeads: int(^uint(0) >> 4), HeadDim: int(^uint(0) >> 4), VocabSize: int(^uint(0) >> 4)}
+	if got := EstimateLayerWeightBytes(huge, 0); got <= 0 {
+		t.Fatalf("huge layer estimate=%d, want positive saturated value", got)
 	}
 	plan := PlanLayerPlacement(bad, -1, ^uint64(0))
 	if len(plan.Layers) != 0 || plan.GPULayers != 0 || plan.MmapLayers != 0 || plan.AvailGPUMB <= 0 {
