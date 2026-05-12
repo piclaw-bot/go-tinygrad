@@ -10,6 +10,7 @@ package model
 import (
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/rcarmo/go-pherence/gpu"
 )
@@ -44,7 +45,7 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 	}
 	defaultScale := float32(1.0 / math.Sqrt(float64(headDim)))
 
-	fmt.Printf("[prefill] batch=%d tokens, %d layers\n", B, len(g.Layers))
+	prefillDebugf("[prefill] batch=%d tokens, %d layers\n", B, len(g.Layers))
 
 	// Allocate batch buffers: [B × dim]
 	bHidden := gpu.NewDevBuf(B * h)
@@ -232,6 +233,12 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 	lastHidden := make([]float32, h)
 	copy(lastHidden, hd[(B-1)*h:B*h])
 
-	fmt.Printf("[prefill] done, returning hidden[%d]\n", B-1)
+	prefillDebugf("[prefill] done, returning hidden[%d]\n", B-1)
 	return lastHidden
+}
+
+func prefillDebugf(format string, args ...any) {
+	if os.Getenv("GO_PHERENCE_PREFILL_DEBUG") != "" {
+		fmt.Printf(format, args...)
+	}
 }

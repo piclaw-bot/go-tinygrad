@@ -30,3 +30,9 @@ func TestPrefillGPURejectsMalformedInputs(t *testing.T) {
 		t.Fatal("prefillGPU accepted short embedding backing data")
 	}
 }
+
+func TestPrefillDebugfIsGated(t *testing.T) {
+	// Should be a no-op without GO_PHERENCE_PREFILL_DEBUG and should not panic.
+	t.Setenv("GO_PHERENCE_PREFILL_DEBUG", "")
+	prefillDebugf("hidden debug %d", 1)
+}

@@ -1025,3 +1025,9 @@ Reviewed and refreshed documentation after the latest tensor hardening batch:
 
 - README and architecture docs now mention unsafe float32 view validation, malformed shape sizing/contiguity/broadcast guards, NN/convenience helper backing-data checks, and matmul/linear backing-data validation.
 - Refactor plan now records the expanded tensor guard coverage that future package moves should preserve.
+
+## Session 113: GPU prefill debug logging audit
+
+Cleaned up library logging noise in batched GPU prefill:
+
+- Batched prefill progress prints are now gated behind `GO_PHERENCE_PREFILL_DEBUG` instead of writing to stdout unconditionally from model code.
