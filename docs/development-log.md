@@ -1160,3 +1160,11 @@ Refreshed documentation after the latest loader/runtime audit batch:
 
 - README, architecture, refactor, TurboQuant, and weight-budget docs now cover tokenizer merge validation, deterministic safetensors names, checked sharded eager-load totals, compressed KV cache accessor/memory-accounting guards, mmap advisor range sanitization, and MLX/GPTQ checked sizing.
 - Refactor notes now call out these loader/runtime guard semantics as part of the baseline to preserve during later model/backend package splits.
+
+## Session 131: Chunked LM-head GPU buffer audit
+
+Hardened chunked GPU LM-head setup:
+
+- Clamp reported free VRAM before converting to `int` for chunk sizing.
+- Check chunk buffer element products before allocating GPU buffers.
+- Free temporary GPU buffers on all return paths from chunked LM-head execution.

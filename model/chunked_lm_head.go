@@ -31,6 +31,9 @@ func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) 
 	}
 
 	// Calculate chunk size: leave 32MB headroom
+	if free > uint64(maxInt) {
+		free = uint64(maxInt)
+	}
 	usable := int(free) - 32*1024*1024
 	if h > maxInt/4 || usable <= 0 {
 		return false
@@ -43,16 +46,24 @@ func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) 
 		chunkRows = vocabSize
 	}
 
+	chunkElems, ok := checkedProduct(chunkRows, h)
+	if !ok {
+		return false
+	}
+
 	// Allocate GPU buffers for chunk
-	wBuf := gpu.NewDevBuf(chunkRows * h)
+	wBuf := gpu.NewDevBuf(chunkElems)
+	defer wBuf.Free()
 	if err := wBuf.ToGPU(); err != nil {
 		return false
 	}
 	outBuf := gpu.NewDevBuf(chunkRows)
+	defer outBuf.Free()
 	if err := outBuf.ToGPU(); err != nil {
 		return false
 	}
 	inBuf := gpu.NewDevBuf(h)
+	defer inBuf.Free()
 	copy(inBuf.Data(), hidden[:h])
 	inBuf.MarkDirty()
 	if err := inBuf.ToGPU(); err != nil {
