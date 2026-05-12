@@ -206,3 +206,16 @@ func TestMTPDrafterHelpersRejectShortBackingData(t *testing.T) {
 		t.Fatal("PostProjectInto accepted short projection")
 	}
 }
+
+func TestSimdDotBoundsShortInputs(t *testing.T) {
+	if got := simdDot([]float32{2, 3}, []float32{4}); got != 8 {
+		t.Fatalf("simdDot short b=%v want 8", got)
+	}
+	if got := simdDot([]float32{2}, nil); got != 0 {
+		t.Fatalf("simdDot nil b=%v want 0", got)
+	}
+	long := []float32{1, 2, 3, 4, 5, 6, 7, 8}
+	if got := simdDot(long, []float32{1}); got != 1 {
+		t.Fatalf("simdDot long mismatched=%v want 1", got)
+	}
+}

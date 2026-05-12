@@ -637,3 +637,10 @@ Hardened the batched GPU prefill fallback entrypoint:
 
 - Rejects nil GPU/CPU model state, invalid head/KV/intermediate dimensions, non-divisible head dims, overflow-prone batch products, malformed embedding tables, and invalid token IDs before GPU allocation/embedding slicing.
 - Checks the initial batch-hidden upload before continuing into the batched prefill path.
+
+## Session 62: Model dot helper bounds audit
+
+Hardened the transitional model-local `simdDot` helper:
+
+- Scalar short-vector fallback now bounds mismatched input slices instead of trusting the first slice length.
+- Added regression coverage for short, nil, and long mismatched dot inputs.
