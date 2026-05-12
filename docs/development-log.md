@@ -826,3 +826,12 @@ Hardened OpenAI-compatible server response writes:
 
 - `/v1/models` and non-streaming chat responses now log JSON encode/write failures.
 - Streaming final `[DONE]` and chunk writes now handle write errors instead of silently ignoring them.
+
+## Session 86: Refactor validation gate smoke pass
+
+Started Phase 6.5.6 validation gate after the GPU/model/cmd audit batch:
+
+- Focused model tests passed: `TestPrefillGPURejectsMalformedInputs|TestMTP|TestInference|TestKV|TestMoE|TestLoad`.
+- Fast no-run package gate passed for GPU, loader, backend, runtime, BERT, tensor, and command packages.
+- `go vet ./...` and `git diff --check` passed.
+- Loader/generation smoke runs passed for `models/smollm2-135m` and `models/gemma4-e2b-mlx4` via `cmd/llmgen`.
