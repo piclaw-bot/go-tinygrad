@@ -50,6 +50,9 @@ func BF16DotF32(x []uint16, y []float32) float32 {
 // BF16Dot computes dot(bf16_x, bf16_y) accumulating in F32.
 func BF16Dot(x, y []uint16) float32 {
 	n := len(x)
+	if len(y) < n {
+		n = len(y)
+	}
 	sum := float32(0)
 	i := 0
 	for ; i+3 < n; i += 4 {
@@ -68,6 +71,9 @@ func BF16Dot(x, y []uint16) float32 {
 // Accumulates sum-of-squares in F32, outputs BF16.
 func BF16RMSNorm(x, w []uint16, eps float32) {
 	n := len(x)
+	if n == 0 || len(w) < n {
+		return
+	}
 	// Sum of squares in F32
 	ss := float32(0)
 	for _, v := range x {
@@ -84,7 +90,14 @@ func BF16RMSNorm(x, w []uint16, eps float32) {
 
 // BF16VecAdd computes dst[i] = BF16(BF16ToF32(a[i]) + BF16ToF32(b[i]))
 func BF16VecAdd(dst, a, b []uint16) {
-	for i := range a {
+	n := len(dst)
+	if len(a) < n {
+		n = len(a)
+	}
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
 		dst[i] = F32ToBF16(BF16ToF32(a[i]) + BF16ToF32(b[i]))
 	}
 }
@@ -92,6 +105,9 @@ func BF16VecAdd(dst, a, b []uint16) {
 // BF16GemvNT computes out[j] = dot(x, w[j*inDim:(j+1)*inDim]) for BF16 x, F32 w.
 // This is the mixed-precision GEMV: BF16 activations × F32 weights → BF16 output.
 func BF16GemvNT(out []uint16, x []uint16, w []float32, inDim, outDim int) {
+	if inDim <= 0 || outDim <= 0 || len(out) < outDim || len(x) < inDim || len(w) < inDim*outDim {
+		return
+	}
 	for j := 0; j < outDim; j++ {
 		row := w[j*inDim : (j+1)*inDim]
 		sum := BF16DotF32(x, row)

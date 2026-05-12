@@ -521,3 +521,12 @@ Reviewed and refreshed documentation after the tensor/runtime/backend malformed-
 - Architecture docs now treat tensor/runtime guard behavior as an explicit package-boundary policy for later refactor moves.
 - Refactor plan now records tensor hardening as part of the Phase 6.5 baseline and fixes the stale `loader/safetensors` mmap-advisor ownership note.
 - CPU SIMD coverage notes now mention zero-length tensor matmul guard behavior before assembly dispatch.
+
+## Session 47: SIMD BF16 helper bounds audit
+
+Hardened scalar BF16 helper paths in `backends/simd`:
+
+- `BF16Dot` now bounds mismatched input lengths like `BF16DotF32`.
+- `BF16RMSNorm` no-ops on empty inputs or short weights instead of dividing by zero or indexing past weights.
+- `BF16VecAdd` bounds all three slices and leaves the untouched destination tail unchanged.
+- `BF16GemvNT` validates dimensions and backing slice lengths before row slicing.

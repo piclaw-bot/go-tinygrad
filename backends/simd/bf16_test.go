@@ -174,7 +174,10 @@ func TestBF16WidenNarrow(t *testing.T) {
 func BenchmarkBF16DotAsm(b *testing.B) {
 	x := BF16FromF32Slice(make([]float32, 3584))
 	y := BF16FromF32Slice(make([]float32, 3584))
-	for i := range x { x[i] = F32ToBF16(float32(i)*0.001); y[i] = F32ToBF16(float32(i)*0.002) }
+	for i := range x {
+		x[i] = F32ToBF16(float32(i) * 0.001)
+		y[i] = F32ToBF16(float32(i) * 0.002)
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		BF16DotAsm(x, y)
@@ -184,7 +187,10 @@ func BenchmarkBF16DotAsm(b *testing.B) {
 func BenchmarkBF16RMSNormAsm(b *testing.B) {
 	x := BF16FromF32Slice(make([]float32, 3584))
 	w := BF16FromF32Slice(make([]float32, 3584))
-	for i := range x { x[i] = F32ToBF16(float32(i)*0.001-1.0); w[i] = F32ToBF16(1.0) }
+	for i := range x {
+		x[i] = F32ToBF16(float32(i)*0.001 - 1.0)
+		w[i] = F32ToBF16(1.0)
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		BF16RMSNormAsm(x, w, 1e-6)
@@ -197,5 +203,27 @@ func BenchmarkBF16WidenToF32(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		BF16WidenToF32(dst, src)
+	}
+}
+
+func TestBF16HelpersMalformedInputs(t *testing.T) {
+	if got := BF16Dot(BF16FromF32Slice([]float32{1, 2, 3}), BF16FromF32Slice([]float32{1})); got != 1 {
+		t.Fatalf("BF16Dot mismatched=%f want 1", got)
+	}
+	BF16RMSNorm(nil, nil, 1e-6)
+	x := BF16FromF32Slice([]float32{1, 2})
+	BF16RMSNorm(x, BF16FromF32Slice([]float32{1}), 1e-6)
+	if BF16ToF32(x[0]) != 1 || BF16ToF32(x[1]) != 2 {
+		t.Fatalf("BF16RMSNorm short weight mutated x=%v", BF16ToF32Slice(x))
+	}
+	dst := BF16FromF32Slice([]float32{99, 99})
+	BF16VecAdd(dst, BF16FromF32Slice([]float32{1}), BF16FromF32Slice([]float32{2, 3}))
+	if BF16ToF32(dst[0]) != 3 || BF16ToF32(dst[1]) != 99 {
+		t.Fatalf("BF16VecAdd bounded result=%v", BF16ToF32Slice(dst))
+	}
+	out := BF16FromF32Slice([]float32{7})
+	BF16GemvNT(out, BF16FromF32Slice([]float32{1}), []float32{1}, 2, 1)
+	if BF16ToF32(out[0]) != 7 {
+		t.Fatalf("BF16GemvNT malformed mutated output=%v", BF16ToF32(out[0]))
 	}
 }
