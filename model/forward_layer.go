@@ -9,22 +9,37 @@ import (
 // This is used by the hybrid GPU/CPU forward pass for layers that don't fit in GPU VRAM.
 // kvCacheK and kvCacheV are the shared KV caches (same as used by the GPU path).
 func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvCacheK, kvCacheV [][]float32) []float32 {
+	if m == nil || layerIdx < 0 || layerIdx >= len(m.Layers) || pos < 0 {
+		return nil
+	}
 	cfg := m.Config
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
+	if h <= 0 || numHeads <= 0 || numKVHeads <= 0 || len(hidden) < h {
+		return nil
+	}
 	layer := &m.Layers[layerIdx]
+	if layer.InputNorm == nil || layer.PostNorm == nil {
+		return nil
+	}
 
 	residual := make([]float32, h)
-	copy(residual, hidden)
+	copy(residual, hidden[:h])
 
 	// Per-layer dims
 	layerHeadDim := cfg.HeadDim
 	if layer.HeadDimLocal > 0 {
 		layerHeadDim = layer.HeadDimLocal
 	}
-	qDim := numHeads * layerHeadDim
-	layerKVDim := numKVHeads * layerHeadDim
+	qDim, ok := checkedProduct(numHeads, layerHeadDim)
+	if layerHeadDim <= 0 || !ok {
+		return nil
+	}
+	layerKVDim, ok := checkedProduct(numKVHeads, layerHeadDim)
+	if !ok {
+		return nil
+	}
 
 	// RMSNorm
 	if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
@@ -118,6 +133,9 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 	kvLayer := layerIdx
 	if !layer.HasKV {
 		kvLayer = layer.KVSourceLayer
+	}
+	if kvLayer < 0 || kvLayer >= len(kvCacheK) || kvLayer >= len(kvCacheV) {
+		return nil
 	}
 	if k != nil {
 		kvCacheK[kvLayer] = append(kvCacheK[kvLayer], k...)

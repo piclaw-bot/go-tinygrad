@@ -1200,3 +1200,10 @@ Hardened transitional model inference helpers:
 
 - Token embedding, Gemma4 per-layer input, and LM-head helpers now use checked product arithmetic for offsets, projection sizes, embedding tables, and LM-head backing data sizes.
 - Added overflow regression coverage for token embedding offsets, per-layer Gemma4 input dimensions, and LM-head output dimensions.
+
+## Session 136: CPU forward-layer entrypoint audit
+
+Hardened the transitional CPU `ForwardLayer` helper:
+
+- Rejects nil models, invalid layer indices, negative positions, malformed dimensions, short hidden states, missing norm weights, product-overflowing Q/KV dimensions, and missing KV cache slots before indexing.
+- Added malformed forward-layer regression coverage.
