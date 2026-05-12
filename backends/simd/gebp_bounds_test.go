@@ -26,6 +26,10 @@ func TestGEBPValidationRejectsMalformedArgs(t *testing.T) {
 			t.Fatalf("packBNTScalar malformed wrote bp[%d]=%f", i, v)
 		}
 	}
+	maxInt := int(^uint(0) >> 1)
+	if validPackBNTArgs(make([]float32, 1), maxInt, maxInt, 2, 2, make([]float32, gebpNR)) {
+		t.Fatal("overflowing packBNT args accepted")
+	}
 }
 
 func TestSgemmNTBlockedValidationRejectsMalformedArgs(t *testing.T) {

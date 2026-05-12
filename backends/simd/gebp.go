@@ -19,7 +19,7 @@ func ensureGebpBuf(size int) []float32 {
 }
 
 func packBNT(b []float32, ldb, jj, nr, k int, bp []float32) {
-	if ldb <= 0 || jj < 0 || nr <= 0 || nr > gebpNR || k <= 0 || len(bp) < k*gebpNR || len(b) < (jj+nr-1)*ldb+k {
+	if !validPackBNTArgs(b, ldb, jj, nr, k, bp) {
 		return
 	}
 	if nr == gebpNR && (hasNeonPack || hasAvxPack) {
@@ -47,7 +47,7 @@ func packBNT(b []float32, ldb, jj, nr, k int, bp []float32) {
 }
 
 func packBNTScalar(b []float32, ldb, jj, nr, k int, bp []float32) {
-	if ldb <= 0 || jj < 0 || nr <= 0 || nr > gebpNR || k <= 0 || len(bp) < k*gebpNR || len(b) < (jj+nr-1)*ldb+k {
+	if !validPackBNTArgs(b, ldb, jj, nr, k, bp) {
 		return
 	}
 	d := 0
@@ -88,7 +88,7 @@ func packBNTScalar(b []float32, ldb, jj, nr, k int, bp []float32) {
 }
 
 func SgemmNTGebp(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) {
-	if !validGEBPArgs(m, n, k, aPtr, bPtr, cPtr, lda, ldb, ldc) {
+	if !HasSgemmAsm || !validGEBPArgs(m, n, k, aPtr, bPtr, cPtr, lda, ldb, ldc) {
 		return
 	}
 	a := unsafe.Slice((*float32)(aPtr), m*lda)
@@ -144,6 +144,20 @@ func SgemmNTGebp(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, ld
 			}
 		}
 	}
+}
+
+func validPackBNTArgs(b []float32, ldb, jj, nr, k int, bp []float32) bool {
+	if ldb <= 0 || jj < 0 || nr <= 0 || nr > gebpNR || k <= 0 {
+		return false
+	}
+	bpLen, okBP := checkedMulInt(k, gebpNR)
+	lastRow, okRow := checkedAddInt(jj, nr-1)
+	rowOff, okOff := checkedMulInt(lastRow, ldb)
+	needB, okNeed := checkedAddInt(rowOff, k)
+	if !okBP || !okRow || !okOff || !okNeed {
+		return false
+	}
+	return len(bp) >= bpLen && len(b) >= needB
 }
 
 func validGEBPArgs(m, n, k int, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) bool {

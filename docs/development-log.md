@@ -915,3 +915,11 @@ Hardened SIMD package cross-architecture builds during the audit:
 
 - `sgemm.go` now only declares assembly SGEMM entrypoints on `amd64`/`arm64`; portable fallback declarations remain in `simd_other.go`.
 - Moved the shared Go `vecSiLUMulGo` fallback out of duplicated amd64/arm64 files into `vec.go`, fixing portable fallback builds where `vec_other.go` referenced it.
+
+## Session 98: SIMD GEBP pack bounds audit
+
+Hardened GEBP packing and fallback dispatch:
+
+- `packBNT` and `packBNTScalar` now share overflow-safe argument validation instead of computing `k*gebpNR` and row offsets inline.
+- `SgemmNTGebp` now checks `HasSgemmAsm` before reaching architecture-specific microkernels, matching the blocked SGEMM guard.
+- Added regression coverage for overflowing pack arguments.
