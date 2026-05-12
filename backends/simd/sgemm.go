@@ -1,11 +1,8 @@
+//go:build amd64 || arm64
+
 package simd
 
 import "unsafe"
-
-// HasSgemmAsm reports whether SIMD-accelerated SGEMM kernels are available
-// on this runtime (amd64 AVX2+FMA, arm64 NEON). Callers must check it before
-// invoking SgemmNN/SgemmNT because fallback architectures intentionally panic.
-var HasSgemmAsm = RuntimeCapabilities().HasSGEMM
 
 // SgemmNT computes C += alpha * A * B^T.
 // A is [m,lda] row-major, B is [n,ldb] row-major, C is [m,ldc] row-major.

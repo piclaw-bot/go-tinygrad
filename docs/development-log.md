@@ -902,3 +902,16 @@ Reviewed and refreshed docs after the Phase 6.6 SIMD cleanup/audit batch:
 
 - README and architecture docs now describe the facade-first SIMD reorg, scalar fallback split, precise scalar sqrt behavior, and BF16 GEMV overflow guard.
 - SIMD coverage and folder-reorg notes now record the safe current state and constraints for a future CPU-family subpackage split.
+
+## Session 96: SIMD blocked SGEMM unsupported-arch audit
+
+Hardened blocked SGEMM dispatch:
+
+- `SgemmNTBlockedFMA` now checks `HasSgemmAsm` before reaching architecture-specific tile kernels, so unsupported architectures no-op safely instead of hitting the fallback panic path.
+
+## Session 97: SIMD cross-architecture build audit
+
+Hardened SIMD package cross-architecture builds during the audit:
+
+- `sgemm.go` now only declares assembly SGEMM entrypoints on `amd64`/`arm64`; portable fallback declarations remain in `simd_other.go`.
+- Moved the shared Go `vecSiLUMulGo` fallback out of duplicated amd64/arm64 files into `vec.go`, fixing portable fallback builds where `vec_other.go` referenced it.

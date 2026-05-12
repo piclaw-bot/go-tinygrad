@@ -24,6 +24,11 @@ type Capabilities struct {
 // HasDotAsm reports whether Sdot/Saxpy may use architecture-specific assembly.
 var HasDotAsm = RuntimeCapabilities().HasDot
 
+// HasSgemmAsm reports whether SIMD-accelerated SGEMM kernels are available
+// on this runtime (amd64 AVX2+FMA, arm64 NEON). Callers must check it before
+// invoking SgemmNN/SgemmNT because fallback architectures intentionally panic.
+var HasSgemmAsm = RuntimeCapabilities().HasSGEMM
+
 // RuntimeCapabilities returns the active SIMD capability set.
 func RuntimeCapabilities() Capabilities {
 	c := Capabilities{Arch: runtime.GOARCH}
