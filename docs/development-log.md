@@ -873,3 +873,10 @@ Continued Phase 6.6 with a facade-preserving mechanical cleanup:
 
 - Moved scalar `Sdot`/`Saxpy` fallback helpers from `backends/simd/simd.go` to `backends/simd/scalar.go`.
 - Kept the public `backends/simd` package and architecture-specific dispatch files unchanged.
+
+## Session 92: SIMD empty facade cleanup
+
+Continued Phase 6.6 cleanup after the scalar fallback split:
+
+- Removed the now-empty `backends/simd/simd.go` placeholder after moving scalar fallback helpers to `scalar.go`.
+- Kept the `backends/simd` package facade intact through the remaining implementation files.
