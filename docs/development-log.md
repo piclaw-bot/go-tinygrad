@@ -1065,3 +1065,11 @@ Hardened backend-neutral placement estimators:
 - Layer weight estimates now use saturating arithmetic for dimension products and byte accumulation.
 - Quantized MLX group estimates now use ceiling group counts for non-multiple-of-group-size dimensions instead of underestimating partial groups.
 - Added regression coverage for odd quantized dimensions and huge malformed size inputs.
+
+## Session 119: Placement resident estimator overflow audit
+
+Extended placement estimator hardening to resident tensors:
+
+- Resident embedding/LM-head/RoPE/work-buffer/PLI estimates now use the same saturating arithmetic as per-layer estimates.
+- Packed INT4 resident estimates now round up odd element counts instead of truncating partial bytes.
+- Added regression coverage for huge resident inputs and odd packed resident dimensions.

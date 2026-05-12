@@ -121,6 +121,13 @@ func TestPlacementHandlesInvalidAndHugeInputs(t *testing.T) {
 	if got := EstimateLayerWeightBytes(huge, 0); got <= 0 {
 		t.Fatalf("huge layer estimate=%d, want positive saturated value", got)
 	}
+	if got := EstimateResidentBytes(huge); got <= 0 {
+		t.Fatalf("huge resident estimate=%d, want positive saturated value", got)
+	}
+	oddResident := ModelSizeInfo{HiddenSize: 3, VocabSize: 3, QuantBits: 4}
+	if got := EstimateResidentBytes(oddResident); got < 9 {
+		t.Fatalf("odd resident estimate=%d, want at least two ceil-packed 3x3 matrices", got)
+	}
 	plan := PlanLayerPlacement(bad, -1, ^uint64(0))
 	if len(plan.Layers) != 0 || plan.GPULayers != 0 || plan.MmapLayers != 0 || plan.AvailGPUMB <= 0 {
 		t.Fatalf("unexpected plan for invalid/huge inputs: %+v", plan)

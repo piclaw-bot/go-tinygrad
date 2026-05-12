@@ -156,45 +156,54 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 	vocab := nonNegativeInt64(info.VocabSize)
 
 	var bytes int64
+	add := func(v int64) { bytes = saturatingAddInt64(bytes, v) }
+	matrixBytes := func(rows, cols, elemSize int64) int64 {
+		return saturatingMulInt64(saturatingMulInt64(rows, cols), elemSize)
+	}
 
 	// Embedding table
 	if info.QuantBits == 4 {
-		bytes += vocab * h / 2 // packed INT4
+		add(divCeilInt64(saturatingMulInt64(vocab, h), 2)) // packed INT4
 	} else {
-		bytes += vocab * h * 4 // F32
+		add(matrixBytes(vocab, h, 4)) // F32
 	}
 
 	// LM head (often same size as embedding, or quantized)
 	if info.QuantBits == 4 {
-		bytes += vocab * h / 2
+		add(divCeilInt64(saturatingMulInt64(vocab, h), 2))
 	} else {
-		bytes += vocab * h * 4
+		add(matrixBytes(vocab, h, 4))
 	}
 
 	// Final norm
-	bytes += h * 4
+	add(saturatingMulInt64(h, 4))
 
 	// RoPE tables (small)
-	bytes += 2048 * nonNegativeInt64(info.HeadDim) * 4
+	add(saturatingMulInt64(saturatingMulInt64(2048, nonNegativeInt64(info.HeadDim)), 4))
 
 	// Work buffers (hidden, residual, normed, q, k, v, attn, gate, up, down)
 	maxHeadDim := nonNegativeInt64(info.HeadDim)
 	if nonNegativeInt64(info.GlobalHeadDim) > maxHeadDim {
 		maxHeadDim = nonNegativeInt64(info.GlobalHeadDim)
 	}
-	maxQDim := nonNegativeInt64(info.NumHeads) * maxHeadDim
+	maxQDim := saturatingMulInt64(nonNegativeInt64(info.NumHeads), maxHeadDim)
 	maxInter := nonNegativeInt64(info.Intermediate)
 	if info.HasDoubleWideMLP {
-		maxInter *= 2
+		maxInter = saturatingMulInt64(maxInter, 2)
 	}
-	bytes += (h + h + h + maxQDim*2 + maxQDim + maxQDim + maxInter*2 + h) * 4
+	workElems := int64(0)
+	for _, v := range []int64{h, h, h, saturatingMulInt64(maxQDim, 2), maxQDim, maxQDim, saturatingMulInt64(maxInter, 2), h} {
+		workElems = saturatingAddInt64(workElems, v)
+	}
+	add(saturatingMulInt64(workElems, 4))
 
 	// Gemma4 PLI model-level projection
 	if info.HiddenPerLayer > 0 {
-		totalPLI := nonNegativeInt64(info.NumLayers) * nonNegativeInt64(info.HiddenPerLayer)
-		bytes += h * totalPLI * 4                          // per_layer_model_projection
-		bytes += nonNegativeInt64(info.HiddenPerLayer) * 4 // per_layer_projection_norm
-		bytes += totalPLI * 4 * 2                          // perLayerProjBuf + perLayerEmbedBuf
+		hpl := nonNegativeInt64(info.HiddenPerLayer)
+		totalPLI := saturatingMulInt64(nonNegativeInt64(info.NumLayers), hpl)
+		add(matrixBytes(h, totalPLI, 4))                            // per_layer_model_projection
+		add(saturatingMulInt64(hpl, 4))                             // per_layer_projection_norm
+		add(saturatingMulInt64(saturatingMulInt64(totalPLI, 4), 2)) // perLayerProjBuf + perLayerEmbedBuf
 	}
 
 	return bytes
