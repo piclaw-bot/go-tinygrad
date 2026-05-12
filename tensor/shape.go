@@ -30,9 +30,16 @@ func (s Shape) Ndim() int { return len(s.Dims) }
 
 // IsContiguous returns true if the tensor is stored contiguously.
 func (s Shape) IsContiguous() bool {
+	if len(s.Strides) != len(s.Dims) || shapeSize(s.Dims) < 0 {
+		return false
+	}
 	stride := 1
+	maxInt := int(^uint(0) >> 1)
 	for i := len(s.Dims) - 1; i >= 0; i-- {
 		if s.Strides[i] != stride {
+			return false
+		}
+		if s.Dims[i] != 0 && stride > maxInt/s.Dims[i] {
 			return false
 		}
 		stride *= s.Dims[i]

@@ -969,3 +969,9 @@ Hardened tensor unsafe-slice helpers:
 
 - `byteSliceToFloat32` now rejects byte slices whose length is not a multiple of four instead of silently truncating.
 - `Buffer.Float32Data` now validates non-negative element counts and exact byte/element length agreement before exposing an unsafe view.
+
+## Session 105: Tensor shape contiguity audit
+
+Hardened tensor shape helpers:
+
+- `Shape.IsContiguous` now rejects malformed shapes with mismatched stride metadata, invalid dimensions, or overflowing dimension products instead of relying on incidental indexing/arithmetic behavior.

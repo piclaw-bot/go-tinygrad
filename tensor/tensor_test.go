@@ -540,3 +540,16 @@ func TestTensorPropertiesNilSafe(t *testing.T) {
 		t.Fatalf("nil tensor properties not zero-valued")
 	}
 }
+
+func TestShapeIsContiguousRejectsMalformedShape(t *testing.T) {
+	if (Shape{Dims: []int{2, 2}, Strides: []int{2}}).IsContiguous() {
+		t.Fatal("IsContiguous accepted mismatched strides")
+	}
+	if (Shape{Dims: []int{-1}, Strides: []int{1}}).IsContiguous() {
+		t.Fatal("IsContiguous accepted invalid dims")
+	}
+	maxInt := int(^uint(0) >> 1)
+	if (Shape{Dims: []int{maxInt/2 + 1, 3}, Strides: []int{3, 1}}).IsContiguous() {
+		t.Fatal("IsContiguous accepted overflowing dims")
+	}
+}
