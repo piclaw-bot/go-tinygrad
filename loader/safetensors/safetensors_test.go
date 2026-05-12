@@ -144,19 +144,37 @@ func TestOpenRejectsInvalidTensorOffsets(t *testing.T) {
 	}
 }
 
-func TestGetFloat32RejectsMisalignedRawLength(t *testing.T) {
+func TestOpenRejectsMisalignedRawLength(t *testing.T) {
 	path := writeTestSafetensors(t, `{"bad":{"dtype":"F32","shape":[1],"data_offsets":[0,3]}}`, []byte{1, 2, 3})
-	f, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
+	if _, err := Open(path); err == nil {
+		t.Fatal("Open accepted non-multiple-of-4 F32 data")
 	}
-	defer f.Close()
-	if _, _, err := f.GetFloat32("bad"); err == nil {
-		t.Fatal("GetFloat32 accepted non-multiple-of-4 F32 data")
+}
+
+func TestOpenRejectsShapeByteMismatch(t *testing.T) {
+	path := writeTestSafetensors(t, `{"bad":{"dtype":"F32","shape":[2],"data_offsets":[0,4]}}`, []byte{1, 2, 3, 4})
+	if _, err := Open(path); err == nil {
+		t.Fatal("Open accepted shape/data byte mismatch")
 	}
 }
 
 func TestShardedMissingShardReturnsError(t *testing.T) {
+	var nilSF *ShardedFile
+	if err := nilSF.Close(); err != nil {
+		t.Fatalf("nil Close: %v", err)
+	}
+	if got := nilSF.Names(); got != nil {
+		t.Fatalf("nil Names=%v, want nil", got)
+	}
+	if _, _, err := nilSF.GetFloat32("x"); err == nil {
+		t.Fatal("GetFloat32 accepted nil sharded file")
+	}
+	if _, _, _, err := nilSF.GetRaw("x"); err == nil {
+		t.Fatal("GetRaw accepted nil sharded file")
+	}
+	if _, _, err := nilSF.GetBF16("x"); err == nil {
+		t.Fatal("GetBF16 accepted nil sharded file")
+	}
 	sf := &ShardedFile{mapping: map[string]string{"x": "missing.safetensors"}, shards: map[string]*File{}}
 	if _, _, _, err := sf.GetRaw("x"); err == nil {
 		t.Fatal("GetRaw accepted missing shard")

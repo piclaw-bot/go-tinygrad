@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -140,14 +141,47 @@ func Open(path string) (*File, error) {
 	}, nil
 }
 
+func shapeNumel(shape []int) (int, bool) {
+	n := 1
+	maxInt := int(^uint(0) >> 1)
+	for _, d := range shape {
+		if d < 0 || (d != 0 && n > maxInt/d) {
+			return 0, false
+		}
+		n *= d
+	}
+	return n, true
+}
+
+func dtypeByteSize(dtype string) int {
+	switch dtype {
+	case "F32", "I32", "U32":
+		return 4
+	case "F16", "BF16", "I16", "U16":
+		return 2
+	case "I64", "U64":
+		return 8
+	case "I8", "U8", "BOOL":
+		return 1
+	default:
+		return 0
+	}
+}
+
 func validateTensorInfo(name string, info TensorInfo, dataLen int) error {
 	start, end := info.DataOffsets[0], info.DataOffsets[1]
 	if start < 0 || end < start || end > dataLen {
 		return fmt.Errorf("safetensors: tensor %q invalid data offsets [%d,%d] for data length %d", name, start, end, dataLen)
 	}
-	for _, d := range info.Shape {
-		if d < 0 {
-			return fmt.Errorf("safetensors: tensor %q invalid shape %v", name, info.Shape)
+	numel, ok := shapeNumel(info.Shape)
+	if !ok {
+		return fmt.Errorf("safetensors: tensor %q invalid shape %v", name, info.Shape)
+	}
+	if elemSize := dtypeByteSize(info.DType); elemSize > 0 {
+		byteLen := end - start
+		maxInt := int(^uint(0) >> 1)
+		if numel > maxInt/elemSize || numel*elemSize != byteLen {
+			return fmt.Errorf("safetensors: tensor %q shape %v dtype %s expects %d bytes, got %d", name, info.Shape, info.DType, numel*elemSize, byteLen)
 		}
 	}
 	return nil
@@ -298,10 +332,19 @@ func (sf *ShardedFile) EagerLoad() (int64, error) {
 
 // Close releases all shard resources.
 func (sf *ShardedFile) Close() error {
-	for _, f := range sf.shards {
-		f.Close()
+	if sf == nil {
+		return nil
 	}
-	return nil
+	var firstErr error
+	for _, f := range sf.shards {
+		if f == nil {
+			continue
+		}
+		if err := f.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // OpenSharded loads a sharded safetensors model from an index file.
@@ -318,13 +361,7 @@ func OpenSharded(indexPath string) (*ShardedFile, error) {
 	}
 
 	// Determine directory
-	dir := indexPath
-	for i := len(dir) - 1; i >= 0; i-- {
-		if dir[i] == '/' {
-			dir = dir[:i]
-			break
-		}
-	}
+	dir := filepath.Dir(indexPath)
 
 	sf := &ShardedFile{
 		shards:  map[string]*File{},
@@ -337,7 +374,7 @@ func OpenSharded(indexPath string) (*ShardedFile, error) {
 		shardFiles[filename] = true
 	}
 	for filename := range shardFiles {
-		path := dir + "/" + filename
+		path := filepath.Join(dir, filename)
 		f, err := Open(path)
 		if err != nil {
 			return nil, fmt.Errorf("open shard %s: %w", filename, err)
@@ -350,6 +387,9 @@ func OpenSharded(indexPath string) (*ShardedFile, error) {
 
 // GetFloat32 returns a tensor's data, looking up the correct shard.
 func (sf *ShardedFile) GetFloat32(name string) ([]float32, []int, error) {
+	if sf == nil {
+		return nil, nil, fmt.Errorf("safetensors: nil sharded file")
+	}
 	filename, ok := sf.mapping[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
@@ -363,6 +403,9 @@ func (sf *ShardedFile) GetFloat32(name string) ([]float32, []int, error) {
 
 // Tensors returns all tensor names.
 func (sf *ShardedFile) Names() []string {
+	if sf == nil {
+		return nil
+	}
 	names := make([]string, 0, len(sf.mapping))
 	for k := range sf.mapping {
 		names = append(names, k)
@@ -401,6 +444,9 @@ func (f *File) GetInt32(name string) ([]int32, []int, error) {
 
 // ShardedFile GetRaw/GetInt32
 func (sf *ShardedFile) GetRaw(name string) ([]byte, string, []int, error) {
+	if sf == nil {
+		return nil, "", nil, fmt.Errorf("safetensors: nil sharded file")
+	}
 	filename, ok := sf.mapping[name]
 	if !ok {
 		return nil, "", nil, fmt.Errorf("tensor %q not in weight map", name)
@@ -413,6 +459,9 @@ func (sf *ShardedFile) GetRaw(name string) ([]byte, string, []int, error) {
 }
 
 func (sf *ShardedFile) GetInt32(name string) ([]int32, []int, error) {
+	if sf == nil {
+		return nil, nil, fmt.Errorf("safetensors: nil sharded file")
+	}
 	filename, ok := sf.mapping[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
@@ -477,12 +526,15 @@ func (f *File) GetBF16(name string) ([]uint16, []int, error) {
 
 // GetBF16 for sharded files
 func (sf *ShardedFile) GetBF16(name string) ([]uint16, []int, error) {
+	if sf == nil {
+		return nil, nil, fmt.Errorf("safetensors: nil sharded file")
+	}
 	filename, ok := sf.mapping[name]
 	if !ok {
 		return nil, nil, fmt.Errorf("tensor %q not in weight map", name)
 	}
 	shard, ok := sf.shards[filename]
-	if !ok {
+	if !ok || shard == nil {
 		return nil, nil, fmt.Errorf("shard %q not loaded", filename)
 	}
 	return shard.GetBF16(name)

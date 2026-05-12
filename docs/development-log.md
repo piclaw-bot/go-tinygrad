@@ -582,3 +582,11 @@ Hardened `runtime/memory.MmapAdvisor` method receivers:
 - Public methods now treat a nil advisor as an inert no-op and return zero stats, matching the existing invalid-range behavior.
 - Internal alignment/range helpers and total recomputation now guard nil receivers before touching advisor fields.
 - Added regression coverage for nil advisor method calls.
+
+## Session 55: Safetensors metadata validation audit
+
+Hardened safetensors metadata and sharded-file helpers:
+
+- Tensor metadata validation now checks shape product overflow and known dtype byte-size agreement with tensor data offsets at open time.
+- Sharded safetensors methods are nil-safe and report nil sharded files as errors for tensor lookups.
+- `OpenSharded` now uses `filepath.Dir`/`filepath.Join` instead of manual slash parsing for index-relative shard paths.
