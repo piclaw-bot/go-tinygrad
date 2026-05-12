@@ -23,6 +23,19 @@ func LoadSwitchMLXExperts(
 	baseName string,
 	numExperts, outDim, inDim, groupSize, bits int,
 ) ([]*quant.MLXQuantWeight, error) {
+	if f == nil {
+		return nil, fmt.Errorf("nil safetensors source")
+	}
+	if numExperts <= 0 || outDim <= 0 || inDim <= 0 || groupSize <= 0 || bits <= 0 || bits > 32 || 32%bits != 0 {
+		return nil, fmt.Errorf("invalid switch MLX dims experts=%d out=%d in=%d groupSize=%d bits=%d", numExperts, outDim, inDim, groupSize, bits)
+	}
+	if inDim%groupSize != 0 {
+		return nil, fmt.Errorf("switch MLX inDim=%d is not divisible by groupSize=%d", inDim, groupSize)
+	}
+	packFactor := 32 / bits
+	if inDim%packFactor != 0 {
+		return nil, fmt.Errorf("switch MLX inDim=%d is not divisible by packFactor=%d", inDim, packFactor)
+	}
 	// Load packed weight
 	wRaw, wDtype, wShape, err := f.GetRaw(baseName + ".weight")
 	if err != nil {
@@ -51,7 +64,6 @@ func LoadSwitchMLXExperts(
 		return nil, fmt.Errorf("%s.biases: expected [%d, ?, ?], got %v", baseName, numExperts, bShape)
 	}
 
-	packFactor := 32 / bits
 	numGroups := inDim / groupSize
 	packedPerRow := inDim / packFactor
 
@@ -62,9 +74,38 @@ func LoadSwitchMLXExperts(
 	}
 
 	// Per-expert slicing
-	wStride := outDim * packedPerRow * 4 // bytes per expert in weight
-	sStride := outDim * numGroups * 2    // bytes per expert in scales (BF16)
-	bStride := outDim * numGroups * 2    // bytes per expert in biases (BF16)
+	wElems, ok := checkedProduct(outDim, packedPerRow)
+	if !ok {
+		return nil, fmt.Errorf("%s.weight per-expert element count overflows", baseName)
+	}
+	sbElems, ok := checkedProduct(outDim, numGroups)
+	if !ok {
+		return nil, fmt.Errorf("%s scale/bias per-expert element count overflows", baseName)
+	}
+	wStride, ok := checkedProduct(wElems, 4) // bytes per expert in weight
+	if !ok {
+		return nil, fmt.Errorf("%s.weight byte stride overflows", baseName)
+	}
+	sStride, ok := checkedProduct(sbElems, 2) // bytes per expert in scales (BF16)
+	if !ok {
+		return nil, fmt.Errorf("%s.scales byte stride overflows", baseName)
+	}
+	bStride := sStride // bytes per expert in biases (BF16)
+	wantW, ok := checkedProduct(wStride, numExperts)
+	if !ok {
+		return nil, fmt.Errorf("%s.weight total byte size overflows", baseName)
+	}
+	wantS, ok := checkedProduct(sStride, numExperts)
+	if !ok {
+		return nil, fmt.Errorf("%s.scales total byte size overflows", baseName)
+	}
+	wantB, ok := checkedProduct(bStride, numExperts)
+	if !ok {
+		return nil, fmt.Errorf("%s.biases total byte size overflows", baseName)
+	}
+	if len(wRaw) < wantW || len(sRaw) < wantS || len(bRaw) < wantB {
+		return nil, fmt.Errorf("%s: raw tensor data shorter than expected expert strides", baseName)
+	}
 
 	experts := make([]*quant.MLXQuantWeight, numExperts)
 	for e := 0; e < numExperts; e++ {
@@ -116,11 +157,17 @@ func bf16ToF32(bits uint16) float32 {
 
 // moeForward runs the MoE forward pass: router → top-k → expert MLPs → weighted sum.
 func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
+	if layer == nil || len(x) == 0 || cfg.NumExperts <= 0 || cfg.MoEIntermediate <= 0 {
+		return nil
+	}
 	h := len(x)
 	numExperts := cfg.NumExperts
 	numActive := cfg.NumExpertsPerTok
 	if numActive <= 0 {
 		numActive = 8
+	}
+	if numActive > numExperts {
+		numActive = numExperts
 	}
 
 	// Router: compute logits for each expert
@@ -140,6 +187,9 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 	for i := range routerLogits {
 		routerLogits[i] = float32(math.Exp(float64(routerLogits[i] - maxLogit)))
 		expSum += routerLogits[i]
+	}
+	if expSum <= 0 || math.IsNaN(float64(expSum)) || math.IsInf(float64(expSum), 0) {
+		return nil
 	}
 	for i := range routerLogits {
 		routerLogits[i] /= expSum
@@ -200,7 +250,7 @@ func moeForward(x []float32, layer *LlamaLayer, cfg LlamaConfig) []float32 {
 	var wg sync.WaitGroup
 	for si, exp := range selected {
 		eid := exp.id
-		if eid >= len(layer.ExpertGateW) || layer.ExpertGateW[eid] == nil {
+		if eid < 0 || eid >= len(layer.ExpertGateW) || eid >= len(layer.ExpertUpW) || eid >= len(layer.ExpertDownW) || layer.ExpertGateW[eid] == nil || layer.ExpertUpW[eid] == nil || layer.ExpertDownW[eid] == nil {
 			continue
 		}
 		wg.Add(1)

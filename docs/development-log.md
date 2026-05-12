@@ -1185,3 +1185,11 @@ Hardened Gemma4 MTP drafter helper arithmetic:
 - Drafter loader checks pre-projection width overflow before constructing expected tensor shapes.
 - Integer tensor loading checks expected raw byte sizes before dtype-specific decoding.
 - Added regression coverage for overflowing drafter projection dimensions.
+
+## Session 134: MoE helper edge-case audit
+
+Hardened transitional MoE helpers:
+
+- Switch-MLX expert loader now validates nil sources, dimensions, divisibility, stride products, and raw tensor byte lengths before slicing per-expert data.
+- CPU MoE forward now rejects nil/empty/malformed configs, clamps active expert count, guards softmax normalization, and verifies all selected expert weight slices before dispatch.
+- Added malformed MoE forward regression coverage.
