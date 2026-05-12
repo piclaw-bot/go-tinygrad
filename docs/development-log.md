@@ -1017,3 +1017,11 @@ Hardened tensor linear helpers:
 
 - Deduplicated `Linear`/`LinearPreT` bias addition through a shared helper.
 - Bias addition now validates result shape, bias backing data, result backing data, and output product overflow before indexing.
+
+
+## Session 112: Tensor audit documentation sweep
+
+Reviewed and refreshed documentation after the latest tensor hardening batch:
+
+- README and architecture docs now mention unsafe float32 view validation, malformed shape sizing/contiguity/broadcast guards, NN/convenience helper backing-data checks, and matmul/linear backing-data validation.
+- Refactor plan now records the expanded tensor guard coverage that future package moves should preserve.

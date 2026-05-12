@@ -48,17 +48,17 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers |
 | Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split; helper guards now cover MTP, KV sizing, GPU prefill/LM-head, GEMV, and GQA arithmetic |
 | GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; embedded PTX source assets now live under `backends/cuda/ptx`; DevBuf/stream/Q4/MLX/expert/NV/dense/JIT/BF16 validation is hardened before the CUDA runtime split |
-| Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, realization, rewrite/fusion, NN helpers, and modules |
+| Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, unsafe views, broadcasting, realization, rewrite/fusion, NN/convenience helpers, matmul/linear, and modules |
 
 
 ## Shared Runtime Hardening Baseline
 
 The Phase 6.5 audit now treats guard behavior in shared packages as part of the architecture, not incidental cleanup:
 
-- `tensor` constructors and shape helpers reject negative or overflowing dimensions before allocation.
+- `tensor` constructors and shape helpers reject negative or overflowing dimensions before allocation; malformed shape sizing/contiguity/broadcast checks fail before indexing or allocating.
 - Tensor entrypoints are nil-safe or explicitly panic with domain errors before dereferencing internal fields.
 - Realization, broadcast, reduction, rewrite, and fusion paths validate malformed UOps, source lists, buffer lengths, and reduction metadata before indexing.
-- Embedding, matmul, linear, softmax, layernorm, GELU, and module wrappers validate dimensions and optional parameters before slicing or dispatching SIMD kernels.
+- Unsafe float32 views, embedding, matmul, linear, softmax, layernorm, GELU, convenience ops, and module wrappers validate dimensions, backing-data lengths, and optional parameters before slicing or dispatching SIMD kernels.
 - `runtime/quant`, `runtime/kv`, `runtime/memory`, loader helpers, SIMD wrappers, and CUDA dispatch wrappers follow the same policy: validate dimensions/pointers/layouts at API boundaries, then either return an error/nil/no-op or panic with a local diagnostic rather than relying on incidental index panics.
 - SIMD scalar fallbacks bound all participating slices; scalar RMSNorm uses precise `math.Sqrt`; BF16 GEMV validates shape-product overflow; SGEMM/GEBP/gather wrappers validate dimensions, pointers, strides, CPU capability gates, and overflow before unsafe slicing or pointer arithmetic.
 - Safetensors validates known dtype byte sizes against declared shapes and data offsets at open time; nil file/sharded helpers are safe, partial sharded opens clean up already-open shards, and tokenizer byte maps use one-time initialization for concurrent callers.

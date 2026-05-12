@@ -33,7 +33,7 @@ models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout/protected-layer guards
 runtime/memory       -> mmap residency advice and range tracking; nil/invalid ranges are inert
 runtime/quant        -> MLX/GPTQ CPU quant formats, dequantization, Q4 GEMV helpers
-tensor               -> tensor graph/runtime; transitional direct import of backends/simd; hardened malformed-input guards
+tensor               -> tensor graph/runtime; transitional direct import of backends/simd; hardened malformed-input guards for shapes, unsafe views, NN/convenience helpers, and matmul/linear
 ```
 
 Current import direction:

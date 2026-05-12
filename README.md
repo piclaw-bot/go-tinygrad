@@ -192,7 +192,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 
 Recent Phase 6.5 audit passes made malformed-input behavior explicit across the shared runtime layers:
 
-- `tensor/` validates shapes, reductions, broadcasting, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, embeddings, matmul/linear helpers, and module wrappers.
+- `tensor/` validates shapes, reductions, broadcasting, unsafe float32 views, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, convenience ops, embeddings, matmul/linear helpers, and module wrappers.
 - `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts and no-ops or returns nil on malformed in-memory weights.
 - `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, protected-layer helper inputs, mmap range overflow, and nil advisor receivers.
 - `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, Q4/MLX weight layouts, expert IDs, experimental NV ioctl/memory/query setup, dense SGEMM/LM-head buffers, JIT kernel specs, and BF16 buffers before dispatch.
