@@ -162,7 +162,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid ranges are inert
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, dequantization, and guarded on-the-fly Q4 GEMV helpers
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, KV, prefill, LM-head, and low-level helper guards are being hardened before moves
-- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split
+- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split; DevBuf, stream/graph, and Q4 dispatch guards are hardened
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs
@@ -195,7 +195,7 @@ Recent Phase 6.5 audit passes made malformed-input behavior explicit across the 
 - `tensor/` validates shapes, reductions, broadcasting, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, embeddings, matmul/linear helpers, and module wrappers.
 - `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts and no-ops or returns nil on malformed in-memory weights.
 - `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, mmap range overflow, and nil advisor receivers.
-- `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, and copy wrappers before dispatch.
+- `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, and Q4 weight layouts before dispatch.
 - `backends/simd` scalar fallbacks bound all input/output slices, and SGEMM/GEBP helpers preflight dimensions, pointers, strides, and overflow before unsafe pointer arithmetic.
 - `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; sharded helpers are nil-safe, and tokenizer byte maps are initialized with `sync.Once`.
 - Transitional `model` helpers validate MTP token/KV keep counts, embedding/LM-head backing data, chunked LM-head and batched-prefill dimensions, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic.

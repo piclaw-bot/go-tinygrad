@@ -22,7 +22,7 @@ cmd/llmchat          -> imports gpu, loader/tokenizer, model
 cmd/llmgen           -> imports loader/tokenizer, model
 cmd/llmserver        -> imports gpu, loader/tokenizer, model
 cmd/tinydemo         -> imports tensor
-gpu                  -> CUDA/PTX path plus GPU-resident expert pool
+gpu                  -> CUDA/PTX path plus GPU-resident expert pool; runtime guards hardened
 loader/config        -> config.json and quantize_config JSON helpers
 loader/safetensors   -> mmap safetensors reader and sharded reader with metadata validation
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode; race-safe byte maps
@@ -66,7 +66,7 @@ gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
-6. **Tensor/runtime/backend/loader guards are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata and tokenizer byte maps are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Keep these guards intact during later backend/model moves.
+6. **Tensor/runtime/backend/loader guards are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata and tokenizer byte maps are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Transitional GPU guards cover DevBuf nil/upload behavior, CUDA stream/graph launch validation, allocation overflow, and Q4 weight layout validation. Keep these guards intact during later backend/model moves.
 7. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
 8. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
@@ -173,7 +173,7 @@ Move/update directly:
 
 Move/update directly:
 
-- CUDA driver/PTX: embedded PTX source assets have moved to `backends/cuda/ptx` ✅, covering attention/RoPE, core vector/norm/activation kernels, LM head, Q4 GEMV/GEMM, SGEMM, prefetch, BF16, and MLX kernels. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers. Recent audit passes hardened `DevBuf`, stream/copy wrappers, Q4/MLX dispatch validation, and GPU pointer call sites before the larger runtime split.
+- CUDA driver/PTX: embedded PTX source assets have moved to `backends/cuda/ptx` ✅, covering attention/RoPE, core vector/norm/activation kernels, LM head, Q4 GEMV/GEMM, SGEMM, prefetch, BF16, and MLX kernels. Runtime CUDA dispatch/types remain in transitional `gpu` until `DevBuf`, upload state, quantized GPU weights, expert resources, and model orchestration can be split without compatibility wrappers. Recent audit passes hardened `DevBuf` receiver/upload behavior, stream/copy/graph wrappers, Q4/MLX dispatch validation, allocation-size checks, and GPU pointer call sites before the larger runtime split.
 - Vulkan: `gpu/vulkan*.go`, `gpu/shaders/` -> `backends/vulkan` ✅; dispatch wiring remains a Phase 3.6 implementation task
 - `simd/` -> `backends/simd` ✅; tensor/model imports now point at the backend owner directly
 - CPU backend loops now in `model/forward_layer.go`, `model/inference_helpers.go`, `model/moe.go` should move only after model packages can call backend interfaces cleanly

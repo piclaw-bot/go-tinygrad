@@ -60,3 +60,15 @@ else:
 ```
 
 The current production model path chooses CUDA when requested/available, otherwise CPU SIMD/scalar. Vulkan device/shader scaffolding is present but full forward dispatch remains a Phase 3.6 item.
+
+
+## DevBuf/dispatch guard status
+
+During the Phase 6.5 refactor audit, the transitional `gpu` package has been hardened before the eventual CUDA runtime split:
+
+- `DevBuf` receiver helpers are nil-safe and `ToGPU`/`GPUPtr` propagate upload failures instead of marking stale GPU state authoritative.
+- CUDA allocation rejects host-side byte-size overflow before driver calls.
+- Stream/graph helpers validate nil graph executables, nil kernel arguments, and invalid launch dimensions before CUDA calls.
+- Q4 quantized weight upload/dispatch validates packed-weight and scale product arithmetic, buffer byte sizes, group indices, and download errors in CPU fallback.
+
+These guards are part of the current backend baseline and should move with the CUDA runtime when `gpu` is split into `backends/cuda`.

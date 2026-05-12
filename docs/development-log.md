@@ -686,3 +686,12 @@ Hardened GPU Q4 quantized weight helpers:
 - `UploadQuantWeight` now checks packed qweight and scale layout products for integer overflow before length validation/allocation.
 - `validGPUQuantWeight` now validates dimensions, divisibility, buffer presence, backing buffer byte sizes, and size-product overflow.
 - CPU fallback now returns if Q4/scales/gIdx downloads fail instead of continuing with zero-filled placeholders.
+
+
+## Session 68: Documentation sweep after GPU runtime guard audit
+
+Reviewed and refreshed documentation after the latest GPU audit batch:
+
+- README and architecture docs now record hardened `DevBuf`, CUDA stream/graph, allocation-size, and Q4 weight-layout validation.
+- Refactor plan now marks transitional `gpu` runtime guards as part of the Phase 6.5 baseline before the CUDA runtime split.
+- GPU options docs now include a DevBuf/dispatch guard-status section so the eventual `backends/cuda` move preserves these checks.
