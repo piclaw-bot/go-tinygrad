@@ -22,8 +22,15 @@ func NewShape(dims []int) Shape {
 	return Shape{Dims: cloneShape(dims), Strides: strides}
 }
 
-// Numel returns total number of elements.
-func (s Shape) Numel() int { return shapeSize(s.Dims) }
+// Numel returns total number of elements. Malformed shapes report 0 so callers
+// that use Numel for sizing do not accidentally pass a negative size onward.
+func (s Shape) Numel() int {
+	n := shapeSize(s.Dims)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
 
 // Ndim returns the number of dimensions.
 func (s Shape) Ndim() int { return len(s.Dims) }
@@ -49,8 +56,10 @@ func (s Shape) IsContiguous() bool {
 
 // Reshape returns a new shape with different dimensions but same numel.
 func (s Shape) Reshape(newDims []int) (Shape, error) {
-	if shapeSize(newDims) != s.Numel() {
-		return Shape{}, fmt.Errorf("reshape: %v (%d) -> %v (%d)", s.Dims, s.Numel(), newDims, shapeSize(newDims))
+	oldNumel := shapeSize(s.Dims)
+	newNumel := shapeSize(newDims)
+	if oldNumel < 0 || newNumel < 0 || newNumel != oldNumel {
+		return Shape{}, fmt.Errorf("reshape: %v (%d) -> %v (%d)", s.Dims, oldNumel, newDims, newNumel)
 	}
 	return NewShape(newDims), nil
 }

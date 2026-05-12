@@ -405,6 +405,13 @@ func TestShapeValidationRejectsMalformedInputs(t *testing.T) {
 	assertPanics(t, func() { _ = s.Expand([]int{2}) })
 	assertPanics(t, func() { _ = s.Expand([]int{2, -3}) })
 	maxInt := int(^uint(0) >> 1)
+	badShape := Shape{Dims: []int{maxInt/2 + 1, 3}, Strides: []int{3, 1}}
+	if got := badShape.Numel(); got != 0 {
+		t.Fatalf("malformed Numel=%d, want 0", got)
+	}
+	if _, err := badShape.Reshape([]int{1}); err == nil {
+		t.Fatal("Reshape accepted malformed source shape")
+	}
 	big := maxInt/2 + 1
 	_, _, _, err := broadcast(NewShape([]int{big, 1}), NewShape([]int{1, 3}))
 	if err == nil {

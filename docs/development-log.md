@@ -982,3 +982,10 @@ Hardened tensor broadcasting:
 
 - `broadcast` now validates padded dimensions and detects overflowing output shape products before constructing expanded shapes.
 - Added regression coverage for an overflowing broadcast output shape.
+
+## Session 107: Tensor malformed Numel/reshape audit
+
+Hardened tensor shape sizing:
+
+- `Shape.Numel` now reports `0` for malformed shapes instead of exposing negative sentinel sizes to callers.
+- `Shape.Reshape` now checks source and destination shape products directly so malformed source shapes cannot be treated as size-compatible with zero-element targets.
