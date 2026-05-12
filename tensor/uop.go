@@ -34,6 +34,12 @@ func (b *Buffer) Float32Data() []float32 {
 	if b.DType != Float32 {
 		panic("Float32Data on non-float32 buffer")
 	}
+	if b.Length < 0 {
+		panic("Float32Data on buffer with negative length")
+	}
+	if b.Length > 0 && len(b.Data) != b.Length*4 {
+		panic("Float32Data buffer length mismatch")
+	}
 	return byteSliceToFloat32(b.Data)
 }
 

@@ -436,6 +436,7 @@ func TestTensorNilOperations(t *testing.T) {
 }
 
 func TestUnsafeSliceHelpersEmptyInputs(t *testing.T) {
+	assertPanics(t, func() { _ = byteSliceToFloat32([]byte{1, 2, 3}) })
 	if got := byteSliceToFloat32(nil); got != nil {
 		t.Fatalf("byteSliceToFloat32(nil)=%v, want nil", got)
 	}
@@ -446,6 +447,9 @@ func TestUnsafeSliceHelpersEmptyInputs(t *testing.T) {
 	if got := b.Float32Data(); got != nil {
 		t.Fatalf("nil Buffer Float32Data=%v, want nil", got)
 	}
+	assertPanics(t, func() { _ = (&Buffer{Data: []byte{1, 2, 3, 4}, DType: Float32, Length: -1}).Float32Data() })
+	assertPanics(t, func() { _ = (&Buffer{Data: []byte{1, 2, 3}, DType: Float32, Length: 1}).Float32Data() })
+	assertPanics(t, func() { _ = (&Buffer{Data: []byte{1, 2, 3, 4}, DType: Float32, Length: 2}).Float32Data() })
 	z := Zeros([]int{0})
 	if got := z.Data(); got != nil {
 		t.Fatalf("zero-size tensor Data=%v, want nil", got)

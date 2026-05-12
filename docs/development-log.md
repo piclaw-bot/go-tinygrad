@@ -962,3 +962,10 @@ Reviewed and refreshed docs after the latest runtime/loader hardening batch:
 - README and architecture docs now mention TurboQuant protected-layer input guards and safetensors partial-open cleanup.
 - TurboQuant docs now describe the defensive protected-layer helper behavior.
 - Refactor plan now records the expanded runtime KV and safetensors cleanup guard coverage.
+
+## Session 104: Tensor unsafe slice audit
+
+Hardened tensor unsafe-slice helpers:
+
+- `byteSliceToFloat32` now rejects byte slices whose length is not a multiple of four instead of silently truncating.
+- `Buffer.Float32Data` now validates non-negative element counts and exact byte/element length agreement before exposing an unsafe view.

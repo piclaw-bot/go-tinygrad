@@ -7,6 +7,9 @@ func byteSliceToFloat32(b []byte) []float32 {
 	if len(b) == 0 {
 		return nil
 	}
+	if len(b)%4 != 0 {
+		panic("byteSliceToFloat32: byte length is not a multiple of 4")
+	}
 	return unsafe.Slice((*float32)(unsafe.Pointer(&b[0])), len(b)/4)
 }
 
