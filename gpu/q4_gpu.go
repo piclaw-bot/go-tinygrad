@@ -31,7 +31,11 @@ func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim in
 	if inDim <= 0 || outDim <= 0 || inDim%8 != 0 {
 		return nil, fmt.Errorf("invalid Q4 dims inDim=%d outDim=%d", inDim, outDim)
 	}
-	wantQWeight := (inDim / 8) * outDim
+	packRows := inDim / 8
+	wantQWeight, ok := checkedMulInt(packRows, outDim)
+	if !ok {
+		return nil, fmt.Errorf("qweight size overflow for inDim=%d outDim=%d", inDim, outDim)
+	}
 	if len(qweight) < wantQWeight {
 		return nil, fmt.Errorf("qweight length=%d, want at least %d", len(qweight), wantQWeight)
 	}
@@ -42,6 +46,9 @@ func UploadQuantWeight(qweight, gIdx []int32, scales []float32, inDim, outDim in
 		return nil, fmt.Errorf("scales length=%d is not a positive multiple of outDim=%d", len(scales), outDim)
 	}
 	groups := len(scales) / outDim
+	if _, ok := checkedMulInt(groups, outDim); !ok {
+		return nil, fmt.Errorf("scales size overflow groups=%d outDim=%d", groups, outDim)
+	}
 	for i := 0; i < inDim; i++ {
 		g := int(gIdx[i])
 		if g < 0 || g >= groups {
@@ -110,7 +117,12 @@ func (w *GPUQuantWeight) Free() {
 }
 
 func validGPUQuantWeight(w *GPUQuantWeight) bool {
-	return w != nil && w.InDim > 0 && w.OutDim > 0 && w.Groups > 0 && w.QWeight != nil && w.Scales != nil && w.GIdx != nil
+	if w == nil || w.InDim <= 0 || w.OutDim <= 0 || w.Groups <= 0 || w.InDim%8 != 0 || w.QWeight == nil || w.Scales == nil || w.GIdx == nil {
+		return false
+	}
+	qw, okQ := checkedMulInt(w.InDim/8, w.OutDim)
+	sc, okS := checkedMulInt(w.Groups, w.OutDim)
+	return okQ && okS && w.QWeight.Size >= qw*4 && w.Scales.Size >= sc*4 && w.GIdx.Size >= w.InDim*4
 }
 
 // GemvQ4 computes out[outDim] = x[inDim] @ dequant(W) on GPU.
@@ -153,9 +165,15 @@ func gemvQ4CPU(out, x *DevBuf, w *GPUQuantWeight) {
 	qw := make([]int32, len(float32ToInt32Placeholder(w.QWeight.Size/4)))
 	sc := make([]float32, w.Groups*w.OutDim)
 	gi := make([]int32, w.InDim)
-	w.QWeight.Download(int32ToFloat32(qw))
-	w.Scales.Download(sc)
-	w.GIdx.Download(int32ToFloat32(gi))
+	if err := w.QWeight.Download(int32ToFloat32(qw)); err != nil {
+		return
+	}
+	if err := w.Scales.Download(sc); err != nil {
+		return
+	}
+	if err := w.GIdx.Download(int32ToFloat32(gi)); err != nil {
+		return
+	}
 
 	for j := 0; j < w.OutDim; j++ {
 		sum := float32(0)
@@ -182,5 +200,19 @@ func int32ToFloat32(data []int32) []float32 {
 }
 
 func float32ToInt32Placeholder(n int) []int32 {
+	if n <= 0 {
+		return nil
+	}
 	return make([]int32, n)
+}
+
+func checkedMulInt(a, b int) (int, bool) {
+	if a < 0 || b < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if b != 0 && a > maxInt/b {
+		return 0, false
+	}
+	return a * b, true
 }

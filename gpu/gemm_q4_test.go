@@ -173,6 +173,13 @@ func TestUploadQuantWeightValidation(t *testing.T) {
 	if _, err := UploadQuantWeight(nil, nil, nil, 0, 8); err == nil {
 		t.Fatalf("expected invalid dimension error")
 	}
+	maxInt := int(^uint(0) >> 1)
+	if _, err := UploadQuantWeight(nil, nil, make([]float32, 1), (maxInt/8+1)*8, 8); err == nil {
+		t.Fatalf("expected qweight size overflow error")
+	}
+	if validGPUQuantWeight(&GPUQuantWeight{InDim: 16, OutDim: maxInt/2 + 1, Groups: 1, QWeight: &Buffer{Size: maxInt}, Scales: &Buffer{Size: maxInt}, GIdx: &Buffer{Size: 64}}) {
+		t.Fatalf("validGPUQuantWeight accepted overflowing dimensions")
+	}
 	if !Q4Ready() {
 		t.Skip("Q4 kernel not ready; dimension validation checked before readiness")
 	}

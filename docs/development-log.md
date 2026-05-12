@@ -678,3 +678,11 @@ Hardened CUDA stream/graph helpers:
 - `CapturedGraph.Launch` now rejects nil or empty graph executables before entering CUDA driver calls.
 - `CapturedGraph.Destroy` is nil-safe.
 - `LaunchKernelOnStream` now rejects nil kernel argument pointers before constructing the CUDA argument array.
+
+## Session 67: GPU Q4 quantized weight validation audit
+
+Hardened GPU Q4 quantized weight helpers:
+
+- `UploadQuantWeight` now checks packed qweight and scale layout products for integer overflow before length validation/allocation.
+- `validGPUQuantWeight` now validates dimensions, divisibility, buffer presence, backing buffer byte sizes, and size-product overflow.
+- CPU fallback now returns if Q4/scales/gIdx downloads fail instead of continuing with zero-filled placeholders.
