@@ -202,31 +202,32 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			continue
 		}
 		if err := buf.ToGPU(); err != nil {
-			useGPU = false
-			break
+			g.Close()
+			return nil, fmt.Errorf("upload GPU work buffer: %w", err)
 		}
 	}
 
 	// Upload per-layer weights
+	var uploadErr error
+	uploadDevBuf := func(b *gpu.DevBuf) *gpu.DevBuf {
+		if useGPU && uploadErr == nil {
+			if err := b.ToGPU(); err != nil {
+				uploadErr = err
+			}
+		}
+		return b
+	}
 	wrapTensor := func(t *tensor.Tensor) *gpu.DevBuf {
 		if t == nil {
 			return nil
 		}
-		b := gpu.NewDevBufFrom(t.Data())
-		if useGPU {
-			b.ToGPU()
-		}
-		return b
+		return uploadDevBuf(gpu.NewDevBufFrom(t.Data()))
 	}
 	wrapSlice := func(x []float32) *gpu.DevBuf {
 		if x == nil {
 			return nil
 		}
-		b := gpu.NewDevBufFrom(x)
-		if useGPU {
-			b.ToGPU()
-		}
-		return b
+		return uploadDevBuf(gpu.NewDevBufFrom(x))
 	}
 
 	g.Layers = make([]gpuLayerBufs, len(m.Layers))
@@ -395,8 +396,18 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 		}
 		g.kvGPU_K[i] = gpu.NewDevBuf(maxSeq * lkv)
 		g.kvGPU_V[i] = gpu.NewDevBuf(maxSeq * lkv)
-		g.kvGPU_K[i].ToGPU()
-		g.kvGPU_V[i].ToGPU()
+		if err := g.kvGPU_K[i].ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload GPU KV key buffer layer %d: %w", i, err)
+		}
+		if err := g.kvGPU_V[i].ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload GPU KV value buffer layer %d: %w", i, err)
+		}
+	}
+	if uploadErr != nil {
+		g.Close()
+		return nil, fmt.Errorf("upload GPU layer weights: %w", uploadErr)
 	}
 
 	// Upload LM head to GPU — may need to split if VRAM is limited

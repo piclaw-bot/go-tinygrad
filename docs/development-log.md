@@ -797,3 +797,11 @@ Hardened model-side GPU boundary error handling:
 
 - Batched prefill now propagates GPU-to-GPU KV copy failures instead of ignoring `CopyDtoD` errors during cache append.
 - MoE GPU fallback setup now checks all scratch-buffer `ToGPU` uploads and cleanly falls back to CPU experts if scratch allocation/upload fails.
+
+## Session 82: GPU model loader upload-error audit
+
+Hardened `LoadGPUModel` upload error handling:
+
+- Work-buffer upload failures now abort model loading with cleanup instead of silently returning a partially CPU/GPU-backed `GPUModel`.
+- Per-layer weight upload failures are captured and reported after allocation cleanup.
+- KV cache GPU buffer uploads now propagate layer-specific errors instead of ignoring `ToGPU` failures.
