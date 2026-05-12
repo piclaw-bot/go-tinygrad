@@ -75,3 +75,8 @@ BenchmarkCPUHotGemvMLQ1536x2048         ~10.4 ms/op, 0 allocs
 3. Extend caller-owned scratch-buffer reuse to MLP, PLI, MoE, and TurboQuant decode paths.
 4. Add allocation gates for decode once broader scratch-buffer reuse lands.
 5. Runtime-verify arm64 NEON kernels on Orange Pi 6+.
+
+
+## Folder reorg note
+
+The current `backends/simd` package keeps architecture-specific files in one package with Go build tags (`*_amd64.go`, `*_arm64.go`, `*_other.go`). A literal subfolder split would create separate Go packages, so Phase 6.6 should keep `backends/simd` as the public facade and split internals only after wrapper boundaries are explicit. See `docs/simd-folder-reorg.md`.

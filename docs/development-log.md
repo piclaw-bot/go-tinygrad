@@ -857,3 +857,12 @@ Continued Phase 6.5 cleanup by splitting an oversized transitional GPU file:
 
 - Moved RoPE, partial RoPE, softmax-row, and GQA attention dispatch helpers out of `gpu/devbuf.go` into `gpu/rope_attention.go` without semantic changes.
 - Kept the recently added launch-shape guards with the moved dispatch helpers so they remain visible for the future CUDA backend split.
+
+
+## Session 90: SIMD folder reorg assessment
+
+Started Phase 6.6 SIMD folder reorg work with a layout assessment:
+
+- Documented the current `backends/simd` file split by build tags and CPU family.
+- Captured the Go package constraint: a literal `amd64/arm64/scalar` folder split is not mechanical because it creates separate packages and requires facade bridge APIs for unexported assembly entrypoints.
+- Added `docs/simd-folder-reorg.md` and linked it from the SIMD coverage notes as the safe migration path.
