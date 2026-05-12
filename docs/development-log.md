@@ -1230,3 +1230,9 @@ Hardened remaining command I/O boundaries:
 
 - `llmchat` now reports scanner/input errors instead of silently exiting on non-EOF scanner failures.
 - `llmserver` now closes request bodies, limits JSON request decoding to 1 MiB, rejects unknown JSON fields, and rejects empty chat message lists before generation.
+
+## Session 140: llmgen throughput reporting audit
+
+Hardened `llmgen` reporting math:
+
+- Generation throughput and ms/token reporting now avoid division by zero when generation completes within a sub-tick or produces an empty normalized output.

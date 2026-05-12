@@ -97,13 +97,18 @@ func main() {
 	fmt.Printf("Generated tokens: %d\n", len(generated))
 	fmt.Printf("Total time:       %.2fs\n", elapsed.Seconds())
 
-	if len(generated) > 0 {
+	if len(generated) > 0 && len(output) > 0 {
 		promptTime := elapsed.Seconds() * float64(len(ids)) / float64(len(output))
 		genTime := elapsed.Seconds() - promptTime
-		tokPerSec := float64(len(generated)) / genTime
+		tokPerSec := 0.0
+		msPerTok := 0.0
+		if genTime > 0 {
+			tokPerSec = float64(len(generated)) / genTime
+			msPerTok = genTime / float64(len(generated)) * 1000
+		}
 		fmt.Printf("Generation time:  %.2fs\n", genTime)
 		fmt.Printf("Tokens/sec:       %.1f\n", tokPerSec)
-		fmt.Printf("ms/token:         %.1f\n", genTime/float64(len(generated))*1000)
+		fmt.Printf("ms/token:         %.1f\n", msPerTok)
 	}
 	_ = genText
 }
