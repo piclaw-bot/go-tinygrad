@@ -550,3 +550,11 @@ Hardened GEBP/packed-B helper paths in `backends/simd`:
 ## Session 50: SIMD blocked SGEMM validation audit
 
 Reused the GEBP argument preflight for `SgemmNTBlockedFMA` so the blocked FMA path rejects invalid dimensions, nil pointers, short strides, and overflow-prone shape products before pointer arithmetic or tile dispatch.
+
+## Session 51: Compressed KV cache layout audit
+
+Hardened `runtime/kv.CompressedKVCache` layout handling:
+
+- Constructor now disables compression when `numKVHeads*headDim` does not match `kvDim`.
+- Compression preflight rejects inconsistent head layouts before per-head slicing.
+- `GetK`/`GetV` clamp overlong full caches to `seqLen*kvDim` when no compressed entries exist, and fall back to full-precision storage if compressed entry metadata is malformed.

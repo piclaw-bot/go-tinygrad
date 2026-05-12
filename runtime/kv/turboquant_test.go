@@ -123,3 +123,28 @@ func TestTurboQuantOrthogonality(t *testing.T) {
 		t.Errorf("rotation matrix not orthogonal: minOnDiag=%.6f maxOffDiag=%.6g", minOnDiag, maxOffDiag)
 	}
 }
+
+func TestCompressedKVCacheMalformedLayoutGuards(t *testing.T) {
+	tq := NewTurboQuantState(4, 1, TurboQuantConfig{KeyBits: 4, ValueBits: 2, ResidualWindow: 0})
+	bad := NewCompressedKVCache(4, 3, 2, tq, false)
+	bad.Append([]float32{1, 2, 3, 4}, []float32{5, 6, 7, 8})
+	if bad.CompressedCount() != 0 {
+		t.Fatalf("inconsistent head layout compressed entries: %d", bad.CompressedCount())
+	}
+
+	c := NewCompressedKVCache(4, 1, 4, tq, false)
+	c.FullK = []float32{1, 2, 3, 4, 9, 9, 9, 9}
+	c.FullV = []float32{5, 6, 7, 8, 9, 9, 9, 9}
+	c.seqLen = 1
+	if got := c.GetK(); len(got) != 4 {
+		t.Fatalf("GetK did not clamp full cache to seqLen: len=%d", len(got))
+	}
+	c.CompressedK = []compressedEntry{{Packed: []byte{1}, HeadVMin: nil, HeadScale: nil}}
+	c.CompressedV = []compressedEntry{{Packed: []byte{1}, HeadVMin: nil, HeadScale: nil}}
+	if got := c.GetK(); len(got) != len(c.FullK) {
+		t.Fatalf("malformed compressed K should fall back to FullK, len=%d", len(got))
+	}
+	if got := c.GetV(); len(got) != len(c.FullV) {
+		t.Fatalf("malformed compressed V should fall back to FullV, len=%d", len(got))
+	}
+}

@@ -44,6 +44,10 @@ func NewCompressedKVCache(kvDim, numKVHeads, headDim int, tq *TurboQuantState, i
 	if headDim < 0 {
 		headDim = 0
 	}
+	if numKVHeads == 0 || headDim == 0 || numKVHeads*headDim != kvDim {
+		numKVHeads = 0
+		headDim = 0
+	}
 	rw := 128
 	if tq != nil {
 		rw = tq.Config.ResidualWindow
@@ -81,7 +85,7 @@ func (c *CompressedKVCache) Append(k, v []float32) {
 
 // compressOldest moves the oldest full-precision entry to compressed storage.
 func (c *CompressedKVCache) compressOldest() {
-	if c == nil || c.kvDim <= 0 || c.numKVHeads <= 0 || c.headDim <= 0 || c.tq == nil {
+	if c == nil || c.kvDim <= 0 || c.numKVHeads <= 0 || c.headDim <= 0 || c.numKVHeads*c.headDim != c.kvDim || c.tq == nil {
 		return
 	}
 	// How many full-precision entries we have
@@ -133,6 +137,12 @@ func (c *CompressedKVCache) GetK() []float32 {
 		return nil
 	}
 	if len(c.CompressedK) == 0 {
+		if c.seqLen > 0 && len(c.FullK) > c.seqLen*c.kvDim {
+			return c.FullK[:c.seqLen*c.kvDim]
+		}
+		return c.FullK
+	}
+	if c.tq == nil || c.numKVHeads <= 0 || c.headDim <= 0 || c.numKVHeads*c.headDim != c.kvDim {
 		return c.FullK
 	}
 	// Decompress + concatenate into reusable scratch storage.
@@ -141,9 +151,12 @@ func (c *CompressedKVCache) GetK() []float32 {
 		c.scratchK = make([]float32, 0, need)
 	}
 	out := c.scratchK[:0]
+	bytesPerHead := (c.headDim*c.tq.Config.KeyBits + 7) / 8
 	for _, entry := range c.CompressedK {
+		if !compressedEntryValid(entry, c.numKVHeads, bytesPerHead) {
+			return c.FullK
+		}
 		for h := 0; h < c.numKVHeads; h++ {
-			bytesPerHead := (c.headDim*c.tq.Config.KeyBits + 7) / 8
 			packed := entry.Packed[h*bytesPerHead : (h+1)*bytesPerHead]
 			restored := c.tq.DequantizeVector(packed, entry.HeadVMin[h], entry.HeadScale[h], c.tq.RotationK, c.tq.Config.KeyBits, c.headDim)
 			out = append(out, restored...)
@@ -160,6 +173,12 @@ func (c *CompressedKVCache) GetV() []float32 {
 		return nil
 	}
 	if len(c.CompressedV) == 0 {
+		if c.seqLen > 0 && len(c.FullV) > c.seqLen*c.kvDim {
+			return c.FullV[:c.seqLen*c.kvDim]
+		}
+		return c.FullV
+	}
+	if c.tq == nil || c.numKVHeads <= 0 || c.headDim <= 0 || c.numKVHeads*c.headDim != c.kvDim {
 		return c.FullV
 	}
 	need := c.seqLen * c.kvDim
@@ -167,9 +186,12 @@ func (c *CompressedKVCache) GetV() []float32 {
 		c.scratchV = make([]float32, 0, need)
 	}
 	out := c.scratchV[:0]
+	bytesPerHead := (c.headDim*c.tq.Config.ValueBits + 7) / 8
 	for _, entry := range c.CompressedV {
+		if !compressedEntryValid(entry, c.numKVHeads, bytesPerHead) {
+			return c.FullV
+		}
 		for h := 0; h < c.numKVHeads; h++ {
-			bytesPerHead := (c.headDim*c.tq.Config.ValueBits + 7) / 8
 			packed := entry.Packed[h*bytesPerHead : (h+1)*bytesPerHead]
 			restored := c.tq.DequantizeVector(packed, entry.HeadVMin[h], entry.HeadScale[h], c.tq.RotationV, c.tq.Config.ValueBits, c.headDim)
 			out = append(out, restored...)
@@ -213,6 +235,13 @@ func (c *CompressedKVCache) Reset() {
 }
 
 // MemoryBytes returns approximate memory usage (compressed + full, excluding slice headers).
+func compressedEntryValid(entry compressedEntry, heads, bytesPerHead int) bool {
+	if heads <= 0 || bytesPerHead <= 0 {
+		return false
+	}
+	return len(entry.Packed) >= heads*bytesPerHead && len(entry.HeadVMin) >= heads && len(entry.HeadScale) >= heads
+}
+
 func (c *CompressedKVCache) MemoryBytes() int64 {
 	if c == nil {
 		return 0
