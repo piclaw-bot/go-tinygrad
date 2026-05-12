@@ -283,7 +283,7 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
 4. **Debug/test/logging hygiene**
    - [x] Heavy Gemma4 diagnostics are `diagnostic` build-tagged and gated by `GEMMA4_TRACE_TEST=1`.
    - [x] Library/backend normal-path progress diagnostics are quiet by default and gated by `GO_PHERENCE_*_DEBUG` env vars.
-   - [ ] Remaining non-test stdout/stderr/logging scan is clean or documented as explicit user-facing CLI/reporting behavior.
+   - [x] Remaining non-test stdout/stderr/logging scan is clean: only CLI/user-facing reporting, `backends/placement.PrintPlan`, and explicit `GO_PHERENCE_*_DEBUG` helpers remain.
 
 5. **Documentation alignment**
    - [x] README, architecture, runtime/backend notes, TurboQuant, GPU options, weight-budget docs, and development log reflect completed moves/audits through the loader/runtime batch.

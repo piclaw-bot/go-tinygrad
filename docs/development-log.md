@@ -1245,3 +1245,11 @@ Refreshed documentation after the latest transitional `model` and `cmd` audit ba
 - README and architecture docs now describe MTP drafter projection guards, MoE helper validation, inference-helper sizing, CPU forward-layer entrypoint checks, and command/request boundary hardening.
 - Refactor plan checklist now distinguishes completed `model` helper and `cmd` boundary audits from the remaining large loader/generation scan or explicit deferral decision.
 - Validation notes now record that focused model/cmd helper tests have passed for the recent audit batches.
+
+## Session 142: Final non-test logging scan
+
+Completed the Phase 6.5 non-test stdout/stderr/logging scan:
+
+- Non-test library/backend packages are quiet by default, with only `GO_PHERENCE_*_DEBUG` helper output remaining.
+- `backends/placement.PrintPlan` remains as an explicit caller-requested reporting API.
+- `cmd/*` output remains user-facing CLI/server reporting and error handling.
