@@ -558,3 +558,11 @@ Hardened `runtime/kv.CompressedKVCache` layout handling:
 - Constructor now disables compression when `numKVHeads*headDim` does not match `kvDim`.
 - Compression preflight rejects inconsistent head layouts before per-head slicing.
 - `GetK`/`GetV` clamp overlong full caches to `seqLen*kvDim` when no compressed entries exist, and fall back to full-precision storage if compressed entry metadata is malformed.
+
+## Session 52: KV staging overflow audit
+
+Hardened `runtime/kv` staging helpers:
+
+- Float KV `KeepAppended` now checks `base + keepTokens*kvDim` for integer overflow before truncating slices.
+- Compressed KV `KeepAppended` validates checkpoint/keep arithmetic, negative compressed-entry checkpoint lengths, and positive `kvDim` when retaining staged tokens.
+- Added regression coverage for overflow and malformed checkpoint cases.

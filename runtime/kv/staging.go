@@ -44,8 +44,8 @@ func (cp FloatKVCheckpoint) KeepAppended(kvCacheK, kvCacheV [][]float32, kvDims 
 		if kvDim < 0 {
 			return fmt.Errorf("layer %d K kvDim=%d must be >= 0", i, kvDim)
 		}
-		target := n + keepTokens*kvDim
-		if target < 0 || target > len(kvCacheK[i]) {
+		target, ok := checkedAppendTarget(n, keepTokens, kvDim)
+		if !ok || target > len(kvCacheK[i]) {
 			return fmt.Errorf("layer %d K target len=%d exceeds current len=%d", i, target, len(kvCacheK[i]))
 		}
 		kvCacheK[i] = kvCacheK[i][:target]
@@ -58,8 +58,8 @@ func (cp FloatKVCheckpoint) KeepAppended(kvCacheK, kvCacheV [][]float32, kvDims 
 		if kvDim < 0 {
 			return fmt.Errorf("layer %d V kvDim=%d must be >= 0", i, kvDim)
 		}
-		target := n + keepTokens*kvDim
-		if target < 0 || target > len(kvCacheV[i]) {
+		target, ok := checkedAppendTarget(n, keepTokens, kvDim)
+		if !ok || target > len(kvCacheV[i]) {
 			return fmt.Errorf("layer %d V target len=%d exceeds current len=%d", i, target, len(kvCacheV[i]))
 		}
 		kvCacheV[i] = kvCacheV[i][:target]
@@ -72,6 +72,21 @@ func kvDimAt(kvDims []int, i int) int {
 		return kvDims[i]
 	}
 	return 0
+}
+
+func checkedAppendTarget(base, keepTokens, kvDim int) (int, bool) {
+	if base < 0 || keepTokens < 0 || kvDim < 0 {
+		return 0, false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if kvDim != 0 && keepTokens > maxInt/kvDim {
+		return 0, false
+	}
+	add := keepTokens * kvDim
+	if base > maxInt-add {
+		return 0, false
+	}
+	return base + add, true
 }
 
 // CompressedKVCheckpoint records enough state to restore a compressed KV cache.
@@ -119,16 +134,32 @@ func (c *CompressedKVCache) KeepAppended(cp CompressedKVCheckpoint, keepTokens i
 	if keepTokens < 0 {
 		return fmt.Errorf("keepTokens=%d must be >= 0", keepTokens)
 	}
-	if c.seqLen < cp.seqLen+keepTokens {
-		return fmt.Errorf("compressed KV seqLen=%d shorter than checkpoint+keep=%d", c.seqLen, cp.seqLen+keepTokens)
+	targetSeq, ok := checkedAppendTarget(cp.seqLen, keepTokens, 1)
+	if !ok {
+		return fmt.Errorf("compressed KV checkpoint+keep overflows")
+	}
+	if c.seqLen < targetSeq {
+		return fmt.Errorf("compressed KV seqLen=%d shorter than checkpoint+keep=%d", c.seqLen, targetSeq)
+	}
+	if cp.compressedKLen < 0 || cp.compressedVLen < 0 {
+		return fmt.Errorf("checkpoint compressed lengths K/V=%d/%d must be >= 0", cp.compressedKLen, cp.compressedVLen)
 	}
 
 	var keepK, keepV []float32
 	if keepTokens > 0 {
+		if c.kvDim <= 0 {
+			return fmt.Errorf("compressed KV kvDim=%d must be > 0 when keeping tokens", c.kvDim)
+		}
 		allK := c.GetK()
 		allV := c.GetV()
-		start := cp.seqLen * c.kvDim
-		end := (cp.seqLen + keepTokens) * c.kvDim
+		start, ok := checkedAppendTarget(0, cp.seqLen, c.kvDim)
+		if !ok {
+			return fmt.Errorf("compressed KV keep start overflows")
+		}
+		end, ok := checkedAppendTarget(start, keepTokens, c.kvDim)
+		if !ok {
+			return fmt.Errorf("compressed KV keep end overflows")
+		}
 		if start > len(allK) || start > len(allV) || end > len(allK) || end > len(allV) {
 			return fmt.Errorf("compressed KV keep range [%d:%d] exceeds K/V lengths %d/%d", start, end, len(allK), len(allV))
 		}

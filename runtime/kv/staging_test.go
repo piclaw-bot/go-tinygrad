@@ -190,3 +190,39 @@ func closeFloat32s(a, b []float32, tol float32) bool {
 	}
 	return true
 }
+
+func TestFloatKVKeepAppendedOverflowGuards(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	cp := FloatKVCheckpoint{KLen: []int{maxInt - 1}, VLen: []int{0}}
+	k := [][]float32{{1, 2, 3}}
+	v := [][]float32{{1, 2, 3}}
+	if err := cp.KeepAppended(k, v, []int{2}, 2); err == nil {
+		t.Fatal("expected overflow error for K target")
+	}
+	cp = FloatKVCheckpoint{KLen: []int{0}, VLen: []int{maxInt - 1}}
+	if err := cp.KeepAppended(k, v, []int{2}, 2); err == nil {
+		t.Fatal("expected overflow error for V target")
+	}
+}
+
+func TestCompressedKVKeepAppendedMalformedCheckpoint(t *testing.T) {
+	c := NewCompressedKVCache(0, 0, 0, nil, false)
+	cp := CompressedKVCheckpoint{valid: true, seqLen: 0}
+	if err := c.KeepAppended(cp, 1); err == nil {
+		t.Fatal("expected kvDim error when keeping compressed tokens")
+	}
+
+	c = NewCompressedKVCache(2, 1, 2, nil, true)
+	c.Append([]float32{1, 2}, []float32{3, 4})
+	cp = c.Checkpoint()
+	cp.compressedKLen = -1
+	if err := c.KeepAppended(cp, 0); err == nil {
+		t.Fatal("expected negative compressed checkpoint length error")
+	}
+
+	cp = c.Checkpoint()
+	cp.seqLen = int(^uint(0) >> 1)
+	if err := c.KeepAppended(cp, 1); err == nil {
+		t.Fatal("expected checkpoint+keep overflow error")
+	}
+}
