@@ -9,6 +9,9 @@ const gebpNR = 16
 var gebpBuf []float32
 
 func ensureGebpBuf(size int) []float32 {
+	if size <= 0 {
+		return nil
+	}
 	if cap(gebpBuf) < size {
 		gebpBuf = make([]float32, size)
 	}
@@ -16,6 +19,9 @@ func ensureGebpBuf(size int) []float32 {
 }
 
 func packBNT(b []float32, ldb, jj, nr, k int, bp []float32) {
+	if ldb <= 0 || jj < 0 || nr <= 0 || nr > gebpNR || k <= 0 || len(bp) < k*gebpNR || len(b) < (jj+nr-1)*ldb+k {
+		return
+	}
 	if nr == gebpNR && (hasNeonPack || hasAvxPack) {
 		packBNTAsm(
 			uintptr(unsafe.Pointer(&b[(jj+0)*ldb])),
@@ -41,6 +47,9 @@ func packBNT(b []float32, ldb, jj, nr, k int, bp []float32) {
 }
 
 func packBNTScalar(b []float32, ldb, jj, nr, k int, bp []float32) {
+	if ldb <= 0 || jj < 0 || nr <= 0 || nr > gebpNR || k <= 0 || len(bp) < k*gebpNR || len(b) < (jj+nr-1)*ldb+k {
+		return
+	}
 	d := 0
 	for ; d+8 <= nr; d += 8 {
 		r0 := b[(jj+d)*ldb:]
@@ -79,7 +88,7 @@ func packBNTScalar(b []float32, ldb, jj, nr, k int, bp []float32) {
 }
 
 func SgemmNTGebp(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) {
-	if m == 0 || n == 0 || k == 0 {
+	if !validGEBPArgs(m, n, k, aPtr, bPtr, cPtr, lda, ldb, ldc) {
 		return
 	}
 	a := unsafe.Slice((*float32)(aPtr), m*lda)
@@ -135,4 +144,18 @@ func SgemmNTGebp(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, ld
 			}
 		}
 	}
+}
+
+func validGEBPArgs(m, n, k int, aPtr, bPtr, cPtr unsafe.Pointer, lda, ldb, ldc int) bool {
+	if m <= 0 || n <= 0 || k <= 0 || aPtr == nil || bPtr == nil || cPtr == nil {
+		return false
+	}
+	if lda < k || ldb < k || ldc < n {
+		return false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if m > maxInt/lda || n > maxInt/ldb || m > maxInt/ldc || k > maxInt/gebpNR {
+		return false
+	}
+	return true
 }

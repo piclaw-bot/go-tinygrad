@@ -538,3 +538,11 @@ Hardened scalar vector fallback helpers in `backends/simd`:
 - F32 vector add/mul/scale/scale-add and activation fallback loops now bound all input/output slices instead of trusting `a` length.
 - F32 RMSNorm fallback no-ops on empty inputs or short weights; no-scale RMSNorm no-ops on empty input.
 - BF16 widen/narrow fallbacks bound source and destination lengths, leaving destination tails untouched.
+
+## Session 49: SIMD GEBP argument validation audit
+
+Hardened GEBP/packed-B helper paths in `backends/simd`:
+
+- `ensureGebpBuf` now returns nil for non-positive requests instead of slicing with invalid bounds.
+- `packBNT`/`packBNTScalar` validate strides, block sizes, `k`, packed-buffer size, and B backing length before slicing or taking row pointers.
+- `SgemmNTGebp` validates dimensions, pointers, strides, and multiplication overflow before building unsafe slices.
