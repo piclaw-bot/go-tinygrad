@@ -783,3 +783,10 @@ Hardened and documented remaining GPU RoPE/attention dispatch wrappers:
 - RoPE and partial RoPE validate positions, dimensions, tensor lengths, and size-product overflow before launch.
 - Attention score, softmax-row, and fused GQA attention wrappers validate sequence bounds, head dimensions, cache lengths, and output sizes before launch.
 - Documentation refreshed so the future CUDA backend split preserves these transitional guard expectations.
+
+## Session 80: CUDA launch wrapper validation audit
+
+Hardened the raw CUDA launch wrapper:
+
+- `LaunchKernel` now returns explicit errors when the CUDA launch symbol is unavailable, the function handle is nil, or grid/block dimensions are zero.
+- Added regression coverage so malformed launches fail safely before purego calls.

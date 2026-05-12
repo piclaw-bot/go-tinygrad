@@ -302,6 +302,15 @@ func LoadPTX(ptx string, kernelName string) (CUfunction, error) {
 
 // LaunchKernel launches a CUDA kernel.
 func LaunchKernel(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, blockZ uint32, sharedMem uint32, args ...unsafe.Pointer) error {
+	if cuLaunchKernel == nil {
+		return fmt.Errorf("cuLaunchKernel unavailable")
+	}
+	if fn == 0 {
+		return fmt.Errorf("invalid CUDA function")
+	}
+	if gridX == 0 || gridY == 0 || gridZ == 0 || blockX == 0 || blockY == 0 || blockZ == 0 {
+		return fmt.Errorf("invalid CUDA launch dimensions grid=(%d,%d,%d) block=(%d,%d,%d)", gridX, gridY, gridZ, blockX, blockY, blockZ)
+	}
 	var argPtrs unsafe.Pointer
 	if len(args) > 0 {
 		argPtrs = unsafe.Pointer(&args[0])
