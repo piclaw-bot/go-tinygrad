@@ -880,3 +880,10 @@ Continued Phase 6.6 cleanup after the scalar fallback split:
 
 - Removed the now-empty `backends/simd/simd.go` placeholder after moving scalar fallback helpers to `scalar.go`.
 - Kept the `backends/simd` package facade intact through the remaining implementation files.
+
+## Session 93: SIMD sqrt fallback audit
+
+Hardened SIMD scalar norm math:
+
+- Replaced the unsafe inverse-square-root approximation used by `float32Sqrt` with `math.Sqrt` to avoid precision-sensitive RMSNorm drift in scalar fallbacks.
+- Added regression coverage for representative `float32Sqrt` inputs.

@@ -4,10 +4,7 @@ package simd
 // Public entrypoints are implemented by architecture-specific dispatch files
 // plus scalar fallback files. This file holds shared scalar helpers.
 
-import (
-	"math"
-	"unsafe"
-)
+import "math"
 
 // HasVecAsm is true if vector assembly kernels are available at runtime.
 var HasVecAsm bool
@@ -108,28 +105,8 @@ func toBF16Single(x float32) float32 {
 	return math.Float32frombits(math.Float32bits(x) & 0xFFFF0000)
 }
 
-// float32Sqrt is a fast sqrt for float32
 func float32Sqrt(x float32) float32 {
-	return float32(uSqrt(float64(x)))
-}
-
-//go:nosplit
-func uSqrt(x float64) float64 {
-	// Use Go's built-in. The assembly versions use VSQRTSS/FSQRT.
-	return unsafeSqrt(x)
-}
-
-func unsafeSqrt(x float64) float64 {
-	bits := *(*uint64)(unsafe.Pointer(&x))
-	if bits == 0 || bits == 0x8000000000000000 {
-		return x
-	}
-	// Newton's method with magic number
-	bits = 0x5fe6eb50c7b537a9 - (bits >> 1)
-	y := *(*float64)(unsafe.Pointer(&bits))
-	y = y * (1.5 - 0.5*x*y*y)
-	y = y * (1.5 - 0.5*x*y*y)
-	return x * y
+	return float32(math.Sqrt(float64(x)))
 }
 
 func bf16WidenToF32Go(dst []float32, src []uint16) {

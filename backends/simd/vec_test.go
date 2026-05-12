@@ -247,3 +247,14 @@ func TestVecFallbacksBoundMalformedInputs(t *testing.T) {
 		t.Fatalf("BF16Narrow bounded result=%v", BF16ToF32Slice(bdst))
 	}
 }
+
+func TestFloat32SqrtMatchesMath(t *testing.T) {
+	vals := []float32{0, 1e-12, 1e-6, 0.5, 1, 2, 10, 1e6}
+	for _, v := range vals {
+		got := float32Sqrt(v)
+		want := float32(math.Sqrt(float64(v)))
+		if got != want {
+			t.Fatalf("float32Sqrt(%g)=%g want %g", v, got, want)
+		}
+	}
+}
