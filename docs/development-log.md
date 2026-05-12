@@ -1037,3 +1037,9 @@ Cleaned up library logging noise in batched GPU prefill:
 Cleaned up model loader stdout noise:
 
 - Quantization/eager-load/MoE loader progress messages are now gated behind `GO_PHERENCE_LOAD_DEBUG` instead of printing unconditionally from `LoadLlama`.
+
+## Session 115: GPU loader/progress logging audit
+
+Finished gating the remaining normal-path model/GPU progress prints:
+
+- Per-layer embedding, Gemma4 RoPE, TurboQuant, GPU weight placement, LM-head placement, expert-pool, VRAM-budget, and first MLX upload error diagnostics now use `GO_PHERENCE_LOAD_DEBUG` instead of writing to stdout unconditionally.

@@ -280,7 +280,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 				um := func(qw *quant.MLXQuantWeight) *gpu.GPUMLXWeight {
 					w, err := gpu.UploadMLXWeight(qw.Weight, qw.Scales, qw.Biases, qw.InDim, qw.OutDim, qw.GroupSize, wantNativeMLX)
 					if err != nil && i == 0 {
-						fmt.Printf("[gpu] MLX upload %dx%d: %v\n", qw.OutDim, qw.InDim, err)
+						loaderDebugf("[gpu] MLX upload %dx%d: %v\n", qw.OutDim, qw.InDim, err)
 					}
 					return w
 				}
@@ -419,12 +419,12 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			copy(g.lmHeadGPU.Data(), g.lmHead)
 			g.lmHeadGPU.MarkDirty()
 			if err := g.lmHeadGPU.ToGPU(); err == nil {
-				fmt.Printf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
+				loaderDebugf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
 			} else {
 				g.lmHeadGPU = nil
 			}
 		} else {
-			fmt.Printf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
+			loaderDebugf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
 		}
 	}
 
@@ -432,7 +432,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	if useGPU {
 		device = "GPU"
 	}
-	fmt.Printf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
+	loaderDebugf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
 
 	// Initialize MoE expert pool if model has experts
 	if cfg.NumExperts > 0 {
@@ -451,14 +451,14 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 			expertSlots = cfg.NumExperts * cfg.NumLayers
 		}
 		g.Experts = gpu.NewExpertPool(expertSlots, nil)
-		fmt.Printf("[model] Expert pool: %d slots (%.0f MB budget, %.1f KB/expert)\n",
+		loaderDebugf("[model] Expert pool: %d slots (%.0f MB budget, %.1f KB/expert)\n",
 			expertSlots, float64(expertBudgetMB), float64(expertSizeBytes)/1024)
 	}
 
 	// Print budget summary
 	if cfg.NumExperts > 0 || g.GPULayers > 0 {
 		free2, total := gpu.MemInfo()
-		fmt.Printf("[budget] GPU VRAM: %.0f/%.0f MB used (%.0f MB free)\n",
+		loaderDebugf("[budget] GPU VRAM: %.0f/%.0f MB used (%.0f MB free)\n",
 			float64(total-free2)/(1024*1024), float64(total)/(1024*1024), float64(free2)/(1024*1024))
 	}
 

@@ -725,7 +725,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 		if cfg.QuantFormat == "mlx" && cfg.QuantBits > 0 {
 			if qw, err := quant.LoadMLXWeight(f, prefix+"model.embed_tokens_per_layer", vpl, totalDim, cfg.QuantGroup, cfg.QuantBits); err == nil {
 				m.EmbedPerLayer = quant.DequantMLX(qw)
-				fmt.Printf("  Loaded per-layer embedding: [%d, %d]\n", vpl, totalDim)
+				loaderDebugf("  Loaded per-layer embedding: [%d, %d]\n", vpl, totalDim)
 			}
 		} else if tryLoad("model.embed_tokens_per_layer.weight") {
 			m.EmbedPerLayer = load("model.embed_tokens_per_layer.weight", []int{vpl, totalDim}).Data()
@@ -780,7 +780,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 				m.RopeFreqsFull[off+1] = float32(math.Sin(angle))
 			}
 		}
-		fmt.Printf("  RoPE: SWA half=%d (theta=10k), Full half=%d (theta=1M, partial=0.25)\n", swaHalf, fullHalf)
+		loaderDebugf("  RoPE: SWA half=%d (theta=10k), Full half=%d (theta=1M, partial=0.25)\n", swaHalf, fullHalf)
 	}
 
 	return m, nil
@@ -918,7 +918,7 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			m.TurboQuantStates[layerHeadDim] = tq
 			return tq
 		}
-		fmt.Printf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
+		loaderDebugf("  TurboQuant: %d-bit keys, %d-bit values, window=%d\n",
 			tqCfg.KeyBits, tqCfg.ValueBits, tqCfg.ResidualWindow)
 
 		compressedKV = make([]*kv.CompressedKVCache, cfg.NumLayers)
