@@ -866,3 +866,10 @@ Started Phase 6.6 SIMD folder reorg work with a layout assessment:
 - Documented the current `backends/simd` file split by build tags and CPU family.
 - Captured the Go package constraint: a literal `amd64/arm64/scalar` folder split is not mechanical because it creates separate packages and requires facade bridge APIs for unexported assembly entrypoints.
 - Added `docs/simd-folder-reorg.md` and linked it from the SIMD coverage notes as the safe migration path.
+
+## Session 91: SIMD scalar fallback split
+
+Continued Phase 6.6 with a facade-preserving mechanical cleanup:
+
+- Moved scalar `Sdot`/`Saxpy` fallback helpers from `backends/simd/simd.go` to `backends/simd/scalar.go`.
+- Kept the public `backends/simd` package and architecture-specific dispatch files unchanged.
