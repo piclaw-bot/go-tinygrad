@@ -6,6 +6,13 @@ func TestUploadMLXWeightValidation(t *testing.T) {
 	if _, err := UploadMLXWeight(nil, nil, nil, 0, 8, 64, false); err == nil {
 		t.Fatalf("expected invalid dimension error")
 	}
+	maxInt := int(^uint(0) >> 1)
+	if _, err := UploadMLXWeight(nil, nil, nil, 16, maxInt/2+1, 8, false); err == nil {
+		t.Fatalf("expected MLX weight size overflow error")
+	}
+	if validGPUMLXWeight(&GPUMLXWeight{InDim: 16, OutDim: 8, Groups: 99, GroupSz: 8, QWeight: &Buffer{Size: 64}, Scales: &Buffer{Size: 64}, Biases: &Buffer{Size: 64}}) {
+		t.Fatalf("validGPUMLXWeight accepted inconsistent groups")
+	}
 	if !SgemmReady() {
 		t.Skip("GPU not available; dimension validation checked before readiness")
 	}

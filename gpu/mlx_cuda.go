@@ -36,11 +36,19 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	}
 	numGroups := inDim / groupSize
 	packedPerRow := inDim / 8
-	if len(weight) < outDim*packedPerRow {
-		return nil, fmt.Errorf("weight length=%d, want at least %d", len(weight), outDim*packedPerRow)
+	wantWeight, ok := checkedMulInt(outDim, packedPerRow)
+	if !ok {
+		return nil, fmt.Errorf("MLX weight size overflow outDim=%d packedPerRow=%d", outDim, packedPerRow)
 	}
-	if len(scales) < outDim*numGroups || len(biases) < outDim*numGroups {
-		return nil, fmt.Errorf("scale/bias length=%d/%d, want at least %d", len(scales), len(biases), outDim*numGroups)
+	wantScale, ok := checkedMulInt(outDim, numGroups)
+	if !ok {
+		return nil, fmt.Errorf("MLX scale size overflow outDim=%d groups=%d", outDim, numGroups)
+	}
+	if len(weight) < wantWeight {
+		return nil, fmt.Errorf("weight length=%d, want at least %d", len(weight), wantWeight)
+	}
+	if len(scales) < wantScale || len(biases) < wantScale {
+		return nil, fmt.Errorf("scale/bias length=%d/%d, want at least %d", len(scales), len(biases), wantScale)
 	}
 	if !SgemmReady() {
 		return nil, fmt.Errorf("GPU not available")
@@ -86,13 +94,13 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	}
 
 	// Transpose to GPTQ layout for fast kernel path
-	transposed := make([]int32, packedPerRow*outDim)
+	transposed := make([]int32, wantWeight)
 	for row := 0; row < outDim; row++ {
 		for col := 0; col < packedPerRow; col++ {
 			transposed[col*outDim+row] = int32(weight[row*packedPerRow+col])
 		}
 	}
-	transScales := make([]float32, numGroups*outDim)
+	transScales := make([]float32, wantScale)
 	for row := 0; row < outDim; row++ {
 		for g := 0; g < numGroups; g++ {
 			transScales[g*outDim+row] = scales[row*numGroups+g]
@@ -105,7 +113,7 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 	if gptqW, err := UploadQuantWeight(transposed, gIdx, transScales, inDim, outDim); err == nil {
 		w.AsGPTQ = gptqW
 		// Precompute bias correction: (8*scale + bias) per [outDim, numGroups]
-		correction := make([]float32, outDim*numGroups)
+		correction := make([]float32, wantScale)
 		for row := 0; row < outDim; row++ {
 			for g := 0; g < numGroups; g++ {
 				correction[row*numGroups+g] = 8*scales[row*numGroups+g] + biases[row*numGroups+g]
@@ -166,7 +174,21 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 }
 
 func validGPUMLXWeight(w *GPUMLXWeight) bool {
-	return w != nil && w.InDim > 0 && w.OutDim > 0 && w.Groups > 0 && w.GroupSz > 0 && (w.AsGPTQ != nil || (w.QWeight != nil && w.Scales != nil && w.Biases != nil))
+	if w == nil || w.InDim <= 0 || w.OutDim <= 0 || w.Groups <= 0 || w.GroupSz <= 0 || w.InDim%w.GroupSz != 0 || w.InDim%8 != 0 {
+		return false
+	}
+	if w.Groups != w.InDim/w.GroupSz {
+		return false
+	}
+	packed, okP := checkedMulInt(w.InDim/8, w.OutDim)
+	scale, okS := checkedMulInt(w.Groups, w.OutDim)
+	if !okP || !okS {
+		return false
+	}
+	if w.AsGPTQ != nil && validGPUQuantWeight(w.AsGPTQ) {
+		return true
+	}
+	return w.QWeight != nil && w.Scales != nil && w.Biases != nil && w.QWeight.Size >= packed*4 && w.Scales.Size >= scale*4 && w.Biases.Size >= scale*4
 }
 
 // Free releases GPU buffers owned by the MLX quantized weight.
@@ -267,7 +289,9 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 	if !validGPUMLXWeight(w) || input == nil || out == nil || fnMLXGemm == 0 || B <= 0 {
 		return
 	}
-	if input.n < B*w.InDim || out.n < B*w.OutDim || !tryGPU(input, out) {
+	inNeed, okIn := checkedMulInt(B, w.InDim)
+	outNeed, okOut := checkedMulInt(B, w.OutDim)
+	if !okIn || !okOut || input.n < inNeed || out.n < outNeed || !tryGPU(input, out) {
 		return
 	}
 	EnsureContext()

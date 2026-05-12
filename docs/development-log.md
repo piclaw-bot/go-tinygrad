@@ -695,3 +695,11 @@ Reviewed and refreshed documentation after the latest GPU audit batch:
 - README and architecture docs now record hardened `DevBuf`, CUDA stream/graph, allocation-size, and Q4 weight-layout validation.
 - Refactor plan now marks transitional `gpu` runtime guards as part of the Phase 6.5 baseline before the CUDA runtime split.
 - GPU options docs now include a DevBuf/dispatch guard-status section so the eventual `backends/cuda` move preserves these checks.
+
+## Session 69: GPU MLX weight validation audit
+
+Hardened GPU MLX quantized weight helpers:
+
+- `UploadMLXWeight` now checks packed weight, scale, and correction size products for integer overflow before allocation/transposition.
+- `validGPUMLXWeight` now validates group consistency, divisibility, backing buffer byte sizes, GPTQ fallback validity, and size-product overflow.
+- Batched `GemmMLX` validates `B*inDim` and `B*outDim` arithmetic before dispatch.
