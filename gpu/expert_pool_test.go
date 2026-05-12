@@ -159,3 +159,38 @@ func TestExpertPoolLRUOrder(t *testing.T) {
 		t.Fatalf("expected LRU eviction of expert 0, got %d", id)
 	}
 }
+
+func TestExpertPoolNilAndInvalidExpertSafety(t *testing.T) {
+	var pool *ExpertPool
+	if got := pool.Get(1); got != nil {
+		t.Fatalf("nil pool Get=%#v, want nil", got)
+	}
+	entry := &ExpertEntry{ExpertID: 1, SizeBytes: 10}
+	if got := pool.Put(entry); got != entry {
+		t.Fatalf("nil pool Put should return entry for release, got %#v", got)
+	}
+	if got := pool.EvictLRU(); got != nil {
+		t.Fatalf("nil pool EvictLRU=%#v, want nil", got)
+	}
+	if got := pool.Size(); got != 0 {
+		t.Fatalf("nil pool Size=%d, want 0", got)
+	}
+	if got := pool.Slots(); got != 0 {
+		t.Fatalf("nil pool Slots=%d, want 0", got)
+	}
+	if got := pool.Report(); got == "" {
+		t.Fatal("nil pool Report should be non-empty")
+	}
+
+	pool = NewExpertPool(2, nil)
+	bad := &ExpertEntry{ExpertID: -1, SizeBytes: 10}
+	if got := pool.Put(bad); got != bad {
+		t.Fatalf("invalid expert Put should return entry for release, got %#v", got)
+	}
+	if pool.Get(-1) != nil {
+		t.Fatal("negative expert ID should not hit")
+	}
+	if pool.Size() != 0 {
+		t.Fatalf("invalid expert was cached, size=%d", pool.Size())
+	}
+}

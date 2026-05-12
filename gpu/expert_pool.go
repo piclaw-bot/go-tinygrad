@@ -44,6 +44,9 @@ func NewExpertPool(slots int, budget *placement.BudgetManager) *ExpertPool {
 // Get returns the cached expert, or nil if not present (miss).
 // On hit, the expert is moved to the most-recently-used position.
 func (p *ExpertPool) Get(expertID int) *ExpertEntry {
+	if p == nil || expertID < 0 {
+		return nil
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -65,6 +68,9 @@ func (p *ExpertPool) Get(expertID int) *ExpertEntry {
 func (p *ExpertPool) Put(entry *ExpertEntry) *ExpertEntry {
 	if entry == nil {
 		return nil
+	}
+	if p == nil || entry.ExpertID < 0 {
+		return entry
 	}
 	if p.slots <= 0 {
 		// A zero-slot pool is disabled. Return the entry so callers that just
@@ -105,13 +111,16 @@ func (p *ExpertPool) Put(entry *ExpertEntry) *ExpertEntry {
 // EvictLRU explicitly evicts the least-recently-used expert.
 // Returns the evicted entry or nil if pool is empty.
 func (p *ExpertPool) EvictLRU() *ExpertEntry {
+	if p == nil {
+		return nil
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.evictLRULocked()
 }
 
 func (p *ExpertPool) evictLRULocked() *ExpertEntry {
-	if len(p.order) == 0 {
+	if p == nil || len(p.order) == 0 {
 		return nil
 	}
 	lruID := p.order[0]
@@ -129,6 +138,9 @@ func (p *ExpertPool) evictLRULocked() *ExpertEntry {
 }
 
 func (p *ExpertPool) touchLocked(expertID int) {
+	if p == nil || expertID < 0 {
+		return
+	}
 	// Move to end of LRU order
 	for i, id := range p.order {
 		if id == expertID {
@@ -141,6 +153,9 @@ func (p *ExpertPool) touchLocked(expertID int) {
 
 // Size returns the number of currently cached experts.
 func (p *ExpertPool) Size() int {
+	if p == nil {
+		return 0
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return len(p.cache)
@@ -148,11 +163,17 @@ func (p *ExpertPool) Size() int {
 
 // Slots returns the maximum number of expert slots.
 func (p *ExpertPool) Slots() int {
+	if p == nil {
+		return 0
+	}
 	return p.slots
 }
 
 // Report returns a human-readable summary.
 func (p *ExpertPool) Report() string {
+	if p == nil {
+		return "experts: 0/0 cached  hits=0 misses=0 evicts=0"
+	}
 	p.mu.Lock()
 	n := len(p.cache)
 	p.mu.Unlock()

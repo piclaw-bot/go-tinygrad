@@ -703,3 +703,11 @@ Hardened GPU MLX quantized weight helpers:
 - `UploadMLXWeight` now checks packed weight, scale, and correction size products for integer overflow before allocation/transposition.
 - `validGPUMLXWeight` now validates group consistency, divisibility, backing buffer byte sizes, GPTQ fallback validity, and size-product overflow.
 - Batched `GemmMLX` validates `B*inDim` and `B*outDim` arithmetic before dispatch.
+
+## Session 70: GPU expert pool safety audit
+
+Hardened GPU expert-pool helpers:
+
+- Expert-pool public methods are now nil-safe.
+- Negative expert IDs are rejected and returned to callers for resource release instead of being cached or looked up.
+- Added regression coverage for nil pool and invalid expert ID behavior.
