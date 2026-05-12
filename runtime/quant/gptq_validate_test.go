@@ -57,17 +57,17 @@ func TestValidateGPTQRejectsMalformedInputs(t *testing.T) {
 			ss := make([]float32, 16)
 			return ValidateGPTQ(qw, qz, bad, ss, in, out, false)
 		}, want: "qzeros"},
-		{name: "qweight overflow", fn: func() error {
+		{name: "output overflow", fn: func() error {
 			maxInt := int(^uint(0) >> 1)
 			return ValidateGPTQ(nil, nil, nil, nil, maxInt/8*8, 16, true)
-		}, want: "qweight size overflows"},
+		}, want: "output size overflows"},
 		{name: "gemv q4 negative dims", fn: func() error {
 			return ValidateGemvQ4Sym(nil, nil, nil, nil, nil, -8, out)
 		}, want: "invalid GPTQ dims"},
-		{name: "gemv q4 qweight overflow", fn: func() error {
+		{name: "gemv q4 output overflow", fn: func() error {
 			maxInt := int(^uint(0) >> 1)
 			return ValidateGemvQ4Sym(nil, nil, nil, nil, nil, maxInt/8*8, 16)
-		}, want: "qweight size overflows"},
+		}, want: "output size overflows"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,5 +86,16 @@ func TestDequantGPTQRejectsMalformedInputsWithoutPanic(t *testing.T) {
 	}
 	if got := DequantGPTQSym(qw[:1], g, s, 16, out); got != nil {
 		t.Fatalf("DequantGPTQSym malformed len=%d, want nil", len(got))
+	}
+}
+
+func TestDequantGPTQRejectsOutputOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	in, out := maxInt/8*8, 16
+	if got := DequantGPTQ(nil, nil, nil, nil, in, out, true); got != nil {
+		t.Fatalf("DequantGPTQ overflow len=%d, want nil", len(got))
+	}
+	if got := DequantGPTQSym(nil, nil, nil, in, out); got != nil {
+		t.Fatalf("DequantGPTQSym overflow len=%d, want nil", len(got))
 	}
 }

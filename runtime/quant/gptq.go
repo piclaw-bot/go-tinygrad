@@ -35,7 +35,11 @@ func DequantGPTQ(qweight, qzeros, gIdx []int32, scales []float32,
 		return nil
 	}
 
-	out := make([]float32, outFeatures*inFeatures)
+	outLen, ok := checkedMulInt(outFeatures, inFeatures)
+	if !ok {
+		return nil
+	}
+	out := make([]float32, outLen)
 
 	for i := 0; i < inFeatures; i++ {
 		g := int(gIdx[i]) // group for this input row
@@ -74,7 +78,11 @@ func DequantGPTQSym(qweight, gIdx []int32, scales []float32,
 		return nil
 	}
 
-	out := make([]float32, outFeatures*inFeatures)
+	outLen, ok := checkedMulInt(outFeatures, inFeatures)
+	if !ok {
+		return nil
+	}
+	out := make([]float32, outLen)
 	nPacks := inFeatures / 8
 
 	// Parallelize across output rows

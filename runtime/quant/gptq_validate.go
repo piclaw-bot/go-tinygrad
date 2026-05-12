@@ -13,6 +13,9 @@ func ValidateGPTQ(qweight, qzeros, gIdx []int32, scales []float32, inFeatures, o
 	if !sym && outFeatures%8 != 0 {
 		return fmt.Errorf("GPTQ outFeatures=%d is not divisible by 8 for qzeros", outFeatures)
 	}
+	if _, ok := checkedMulInt(inFeatures, outFeatures); !ok {
+		return fmt.Errorf("GPTQ output size overflows for in=%d out=%d", inFeatures, outFeatures)
+	}
 	wantQWeight, ok := checkedMulInt(inFeatures/8, outFeatures)
 	if !ok {
 		return fmt.Errorf("GPTQ qweight size overflows for in=%d out=%d", inFeatures, outFeatures)

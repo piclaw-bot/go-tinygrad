@@ -1136,3 +1136,11 @@ Hardened MLX quantized weight validation/loading:
 - MLX dequantization, weight-size, scale/bias-size, shape-derived inDim, and float tensor shape product calculations now use checked multiplication.
 - Loader now reports explicit overflow errors for malformed tensor shapes instead of relying on incidental integer wraparound.
 - Added overflow regression coverage for packed weight shapes, scale shapes, in-memory MLX weights, and dequantization.
+
+## Session 128: GPTQ dequant output-size audit
+
+Hardened GPTQ dequantization output sizing:
+
+- GPTQ validation now rejects overflowing dequantized output dimensions before qweight/scale length checks.
+- GPTQ dequantization paths check output allocation products before allocating.
+- Added regression coverage for output-size overflow in both generic and symmetric dequant paths.
