@@ -102,8 +102,8 @@ func NewAutoBudgetManager(freeBytes, totalBytes uint64, residentMB, streamMB, ex
 // Alloc tries to allocate bytes from the given budget category.
 // Returns true if the allocation fits, false if it would exceed the budget.
 func (b *BudgetManager) Alloc(cat BudgetCategory, bytes int64) bool {
-	if bytes <= 0 {
-		return bytes == 0
+	if b == nil || !validBudgetCategory(cat) || bytes <= 0 {
+		return bytes == 0 && b != nil && validBudgetCategory(cat)
 	}
 
 	b.mu.Lock()
@@ -113,27 +113,34 @@ func (b *BudgetManager) Alloc(cat BudgetCategory, bytes int64) bool {
 	if budget > 0 && bytes > budget-*used {
 		return false
 	}
+	if *used > math.MaxInt64-bytes {
+		return false
+	}
 	*used += bytes
 	return true
 }
 
 // Free returns bytes to the given budget category.
 func (b *BudgetManager) Free(cat BudgetCategory, bytes int64) {
-	if bytes <= 0 {
+	if b == nil || !validBudgetCategory(cat) || bytes <= 0 {
 		return
 	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	_, used := b.budgetAndUsed(cat)
-	*used -= bytes
-	if *used < 0 {
+	if bytes >= *used {
 		*used = 0
+		return
 	}
+	*used -= bytes
 }
 
 // Available returns remaining bytes in the given budget category.
 func (b *BudgetManager) Available(cat BudgetCategory) int64 {
+	if b == nil || !validBudgetCategory(cat) {
+		return 0
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	budget, used := b.budgetAndUsed(cat)
@@ -149,6 +156,9 @@ func (b *BudgetManager) Available(cat BudgetCategory) int64 {
 
 // Hit records a cache hit for the given category.
 func (b *BudgetManager) Hit(cat BudgetCategory) {
+	if b == nil {
+		return
+	}
 	switch cat {
 	case BudgetLayer:
 		b.LayerHits.Add(1)
@@ -161,6 +171,9 @@ func (b *BudgetManager) Hit(cat BudgetCategory) {
 
 // Evict records an eviction for the given category.
 func (b *BudgetManager) Evict(cat BudgetCategory) {
+	if b == nil {
+		return
+	}
 	switch cat {
 	case BudgetLayer:
 		b.LayerEvicts.Add(1)
@@ -173,6 +186,9 @@ func (b *BudgetManager) Evict(cat BudgetCategory) {
 
 // Report returns a human-readable budget summary.
 func (b *BudgetManager) Report() string {
+	if b == nil {
+		return "budget: <nil>"
+	}
 	b.mu.Lock()
 	rBud, rUsed := b.ResidentBudget, b.ResidentUsed
 	lBud, lUsed := b.LayerBudget, b.LayerUsed
@@ -209,6 +225,10 @@ func uint64ToInt64(v uint64) int64 {
 	return int64(v)
 }
 
+func validBudgetCategory(cat BudgetCategory) bool {
+	return cat == BudgetResident || cat == BudgetLayer || cat == BudgetStream || cat == BudgetExpert
+}
+
 func (b *BudgetManager) budgetAndUsed(cat BudgetCategory) (int64, *int64) {
 	switch cat {
 	case BudgetResident:
@@ -220,6 +240,6 @@ func (b *BudgetManager) budgetAndUsed(cat BudgetCategory) (int64, *int64) {
 	case BudgetExpert:
 		return b.ExpertBudget, &b.ExpertUsed
 	default:
-		return 0, &b.ResidentUsed
+		return 0, nil
 	}
 }

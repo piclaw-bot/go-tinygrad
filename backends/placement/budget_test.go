@@ -58,19 +58,32 @@ func TestBudgetManagerUnlimited(t *testing.T) {
 }
 
 func TestBudgetManagerRejectsNegativeAccounting(t *testing.T) {
+	var nilBudget *BudgetManager
+	if nilBudget.Alloc(BudgetResident, 1) || nilBudget.Available(BudgetResident) != 0 || nilBudget.Report() == "" {
+		t.Fatal("nil budget manager should reject alloc and report safely")
+	}
+	nilBudget.Free(BudgetResident, 1)
+	nilBudget.Hit(BudgetLayer)
+	nilBudget.Evict(BudgetLayer)
+
 	b := NewBudgetManager(100, -1, 0, 0)
 	if b.LayerBudget != 0 {
 		t.Fatalf("negative budget should clamp to unlimited/zero, got %d", b.LayerBudget)
 	}
-	if b.Alloc(BudgetResident, -1) {
-		t.Fatal("negative allocation should be rejected")
+	if b.Alloc(BudgetResident, -1) || b.Alloc(BudgetCategory(99), 1) || b.Available(BudgetCategory(99)) != 0 {
+		t.Fatal("invalid allocation/accounting inputs should be rejected")
 	}
 	if !b.Alloc(BudgetResident, 10) {
 		t.Fatal("positive allocation should work")
 	}
 	b.Free(BudgetResident, -100)
+	b.Free(BudgetCategory(99), 100)
 	if b.ResidentUsed != 10 {
-		t.Fatalf("negative free changed usage to %d", b.ResidentUsed)
+		t.Fatalf("invalid free changed usage to %d", b.ResidentUsed)
+	}
+	b.ResidentUsed = int64(^uint64(0) >> 1)
+	if b.Alloc(BudgetResident, 1) {
+		t.Fatal("allocation should reject usage overflow")
 	}
 }
 

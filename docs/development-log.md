@@ -1073,3 +1073,11 @@ Extended placement estimator hardening to resident tensors:
 - Resident embedding/LM-head/RoPE/work-buffer/PLI estimates now use the same saturating arithmetic as per-layer estimates.
 - Packed INT4 resident estimates now round up odd element counts instead of truncating partial bytes.
 - Added regression coverage for huge resident inputs and odd packed resident dimensions.
+
+## Session 120: Budget manager accounting audit
+
+Hardened backend-neutral budget accounting:
+
+- Budget manager methods now tolerate nil receivers and reject unknown budget categories instead of aliasing them to resident accounting.
+- Allocation now rejects usage overflow before mutating counters; free clamps without subtract-underflow.
+- Added regression coverage for nil managers, invalid categories, and overflow rejection.
