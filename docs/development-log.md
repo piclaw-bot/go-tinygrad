@@ -1010,3 +1010,10 @@ Hardened tensor matmul helpers:
 
 - `MatMul` and `MatMulTransposed` now validate dimensions, output shape products, and realized backing-data lengths before SIMD dispatch or scalar indexing.
 - Added a shared tensor integer product helper and regression coverage for malformed matmul backing buffers.
+
+## Session 111: Tensor linear bias audit
+
+Hardened tensor linear helpers:
+
+- Deduplicated `Linear`/`LinearPreT` bias addition through a shared helper.
+- Bias addition now validates result shape, bias backing data, result backing data, and output product overflow before indexing.

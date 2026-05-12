@@ -133,23 +133,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
 // X is [M, K], W is [N, K], bias is [N] or nil.
 func (t *Tensor) Linear(weight, bias *Tensor) *Tensor {
 	result := t.MatMulTransposed(weight)
-	if bias != nil {
-		// Broadcast add: [M, N] + [N] → need to broadcast bias
-		result.Realize()
-		bDims := bias.Shape()
-		n := result.Shape()[1]
-		if len(bDims) != 1 || bDims[0] != n {
-			panic("linear: bias shape mismatch")
-		}
-		bData := bias.Data()
-		rData := result.Data()
-		m := result.Shape()[0]
-		for i := 0; i < m; i++ {
-			for j := 0; j < n; j++ {
-				rData[i*n+j] += bData[j]
-			}
-		}
-	}
+	addLinearBias(result, bias)
 	return result
 }
 
@@ -157,21 +141,37 @@ func (t *Tensor) Linear(weight, bias *Tensor) *Tensor {
 // Used by models that pre-transpose weights at load time for SgemmNN performance.
 func (t *Tensor) LinearPreT(weightT, bias *Tensor) *Tensor {
 	result := t.MatMul(weightT)
-	if bias != nil {
-		result.Realize()
-		bDims := bias.Shape()
-		n := result.Shape()[1]
-		if len(bDims) != 1 || bDims[0] != n {
-			panic("linear: bias shape mismatch")
-		}
-		bData := bias.Data()
-		rData := result.Data()
-		m := result.Shape()[0]
-		for i := 0; i < m; i++ {
-			for j := 0; j < n; j++ {
-				rData[i*n+j] += bData[j]
-			}
+	addLinearBias(result, bias)
+	return result
+}
+
+func addLinearBias(result, bias *Tensor) {
+	if bias == nil {
+		return
+	}
+	if result == nil || result.uop == nil || bias.uop == nil {
+		panic("linear: nil tensor")
+	}
+	result.Realize()
+	bDims := bias.Shape()
+	rDims := result.Shape()
+	if len(rDims) != 2 {
+		panic("linear: result shape mismatch")
+	}
+	n := rDims[1]
+	if len(bDims) != 1 || bDims[0] != n {
+		panic("linear: bias shape mismatch")
+	}
+	bData := bias.Data()
+	rData := result.Data()
+	m := rDims[0]
+	total, ok := checkedMulInt(m, n)
+	if !ok || len(rData) < total || len(bData) < n {
+		panic("linear: invalid backing data")
+	}
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			rData[i*n+j] += bData[j]
 		}
 	}
-	return result
 }
