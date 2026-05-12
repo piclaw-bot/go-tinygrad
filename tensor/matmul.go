@@ -26,8 +26,15 @@ func (t *Tensor) MatMul(other *Tensor) *Tensor {
 	k2 := bDims[len(bDims)-2]
 	n := bDims[len(bDims)-1]
 
+	if m < 0 || n < 0 || k1 < 0 || k2 < 0 {
+		panic("matmul: invalid dimensions")
+	}
 	if k1 != k2 {
 		panic(fmt.Sprintf("matmul: inner dims mismatch: %d vs %d", k1, k2))
+	}
+	outSize, ok := checkedMulInt(m, n)
+	if !ok {
+		panic("matmul: output shape overflows")
 	}
 	k := k1
 
@@ -36,7 +43,10 @@ func (t *Tensor) MatMul(other *Tensor) *Tensor {
 
 	aData := a.Data()
 	bData := b.Data()
-	cData := make([]float32, m*n)
+	if len(aData) < shapeSize(aDims) || len(bData) < shapeSize(bDims) {
+		panic("matmul: invalid backing data")
+	}
+	cData := make([]float32, outSize)
 
 	// Use SIMD GEMM: C = A @ B is sgemm(NoTrans, NoTrans, m, n, k, 1, A, k, B, n, 0, C, n)
 	if simd.HasSgemmAsm && len(aData) > 0 && len(bData) > 0 && len(cData) > 0 {
@@ -77,8 +87,15 @@ func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
 	k := aDims[len(aDims)-1]
 	n := bDims[len(bDims)-2] // B is [N, K], so N is dim 0
 
+	if m < 0 || n < 0 || k < 0 || bDims[len(bDims)-1] < 0 {
+		panic("matmul_t: invalid dimensions")
+	}
 	if k != bDims[len(bDims)-1] {
 		panic(fmt.Sprintf("matmul_t: inner dims mismatch: %d vs %d", k, bDims[len(bDims)-1]))
+	}
+	outSize, ok := checkedMulInt(m, n)
+	if !ok {
+		panic("matmul_t: output shape overflows")
 	}
 
 	a.Realize()
@@ -86,7 +103,10 @@ func (t *Tensor) MatMulTransposed(other *Tensor) *Tensor {
 
 	aData := a.Data()
 	bData := b.Data()
-	cData := make([]float32, m*n)
+	if len(aData) < shapeSize(aDims) || len(bData) < shapeSize(bDims) {
+		panic("matmul_t: invalid backing data")
+	}
+	cData := make([]float32, outSize)
 
 	// C = A @ B^T is sgemm(NoTrans, Trans)
 	if simd.HasSgemmAsm && len(aData) > 0 && len(bData) > 0 && len(cData) > 0 {

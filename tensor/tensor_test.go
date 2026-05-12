@@ -513,6 +513,9 @@ func TestMatMulAndLinearValidation(t *testing.T) {
 	assertPanics(t, func() { _ = Ones([]int{1}).MatMulTransposed(Ones([]int{1, 1})) })
 	assertPanics(t, func() { _ = Ones([]int{1, 2}).Linear(Ones([]int{3, 2}), Ones([]int{2})) })
 	assertPanics(t, func() { _ = Ones([]int{1, 2}).LinearPreT(Ones([]int{2, 3}), Ones([]int{2})) })
+	bad := &Tensor{uop: &UOp{DType: Float32, buf: &Buffer{Data: float32ToByteSlice([]float32{1}), DType: Float32, Length: 1}}, shape: NewShape([]int{1, 2})}
+	assertPanics(t, func() { _ = bad.MatMul(Ones([]int{2, 1})) })
+	assertPanics(t, func() { _ = bad.MatMulTransposed(Ones([]int{1, 2})) })
 	got := Ones([]int{0, 2}).MatMul(Ones([]int{2, 3}))
 	if shape := got.Shape(); len(shape) != 2 || shape[0] != 0 || shape[1] != 3 {
 		t.Fatalf("zero-row matmul shape=%v", shape)

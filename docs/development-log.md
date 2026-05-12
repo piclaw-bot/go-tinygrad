@@ -1003,3 +1003,10 @@ Hardened eager NN helpers:
 
 - `Softmax` and `LayerNorm` now validate realized backing-data length against the tensor shape before row slicing.
 - Output allocation now uses validated shape size instead of raw backing slice length.
+
+## Session 110: Tensor matmul backing-data audit
+
+Hardened tensor matmul helpers:
+
+- `MatMul` and `MatMulTransposed` now validate dimensions, output shape products, and realized backing-data lengths before SIMD dispatch or scalar indexing.
+- Added a shared tensor integer product helper and regression coverage for malformed matmul backing buffers.
