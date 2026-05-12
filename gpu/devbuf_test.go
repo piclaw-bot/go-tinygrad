@@ -182,3 +182,35 @@ func TestDevBufGemvMalformedDoesNotPanic(t *testing.T) {
 	DevGemvNN(out, nil, w, 1, 1)
 	DevLMHead(out, x, nil, 1, 1)
 }
+
+func TestDevBufNilSafeMethods(t *testing.T) {
+	var b *DevBuf
+	if err := b.ToGPU(); err == nil {
+		t.Fatal("nil ToGPU returned nil error")
+	}
+	b.ToCPU()
+	if got := b.Data(); got != nil {
+		t.Fatalf("nil Data=%v, want nil", got)
+	}
+	if err := b.EnsureGPU(); err == nil {
+		t.Fatal("nil EnsureGPU returned nil error")
+	}
+	if got := b.GPUPtr(); got != nil {
+		t.Fatalf("nil GPUPtr=%v, want nil", got)
+	}
+	if got := b.Len(); got != 0 {
+		t.Fatalf("nil Len=%d want 0", got)
+	}
+	if b.OnGPU() {
+		t.Fatal("nil OnGPU=true")
+	}
+	b.MarkDirty()
+	b.MarkOnGPU()
+}
+
+func TestMallocRejectsSizeOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	if _, err := Malloc(maxInt/4 + 1); err == nil {
+		t.Fatal("Malloc accepted overflowing size")
+	}
+}

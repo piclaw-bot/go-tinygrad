@@ -661,3 +661,12 @@ Reviewed and refreshed documentation after the latest transitional `model` audit
 - README now records MTP, KV, prefill, chunked LM-head, embedding/LM-head, GEMV, and GQA helper guard coverage.
 - Architecture docs now call out model-helper guard behavior as part of the Phase 6.5 shared hardening baseline.
 - Refactor plan now marks the transitional `model` package helper guards as hardened and clarifies that focused model helper tests remain part of the validation gate.
+
+## Session 65: GPU DevBuf receiver/upload audit
+
+Hardened GPU `DevBuf` and CUDA allocation helpers:
+
+- `DevBuf` receiver methods now handle nil receivers consistently, returning nil/zero values or errors instead of dereferencing nil.
+- `ToGPU` now propagates upload failures, frees newly allocated GPU memory on upload failure, and no longer marks GPU authoritative after a failed re-upload.
+- `GPUPtr` returns nil if lazy upload fails.
+- `Malloc` rejects `n*4` size overflow before entering CUDA driver code.

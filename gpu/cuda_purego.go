@@ -199,6 +199,10 @@ func Malloc(n int) (*Buffer, error) {
 	if n <= 0 {
 		return &Buffer{}, nil
 	}
+	maxInt := int(^uint(0) >> 1)
+	if n > maxInt/4 {
+		return nil, fmt.Errorf("cuMemAlloc size overflow for %d float32s", n)
+	}
 	EnsureContext()
 	var ptr CUdeviceptr
 	size := uint64(n * 4)

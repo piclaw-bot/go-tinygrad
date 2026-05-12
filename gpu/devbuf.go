@@ -59,10 +59,15 @@ func NewDevBufFrom(data []float32) *DevBuf {
 
 // ToGPU ensures data is on GPU. No-op if already there.
 func (b *DevBuf) ToGPU() error {
+	if b == nil {
+		return fmt.Errorf("nil DevBuf")
+	}
 	if b.gpu != nil {
 		if b.dev == CPU && b.cpu != nil {
 			// CPU data was modified — re-upload
-			b.gpu.Upload(b.cpu)
+			if err := b.gpu.Upload(b.cpu); err != nil {
+				return err
+			}
 		}
 		b.dev = GPU_DEVICE
 		return nil
@@ -77,7 +82,14 @@ func (b *DevBuf) ToGPU() error {
 	}
 	b.ownGPU = true
 	if b.cpu != nil {
-		b.gpu.Upload(b.cpu)
+		if err := b.gpu.Upload(b.cpu); err != nil {
+			if b.ownGPU && b.gpu != nil {
+				b.gpu.Free()
+			}
+			b.gpu = nil
+			b.ownGPU = false
+			return err
+		}
 	}
 	b.dev = GPU_DEVICE
 	return nil
@@ -85,23 +97,32 @@ func (b *DevBuf) ToGPU() error {
 
 // ToCPU ensures data is on CPU. No-op if already there.
 func (b *DevBuf) ToCPU() {
+	if b == nil {
+		return
+	}
 	if b.cpu == nil {
 		b.cpu = make([]float32, b.n)
 	}
 	if b.gpu != nil && b.dev == GPU_DEVICE {
-		b.gpu.Download(b.cpu)
+		_ = b.gpu.Download(b.cpu)
 	}
 	b.dev = CPU
 }
 
 // Data returns CPU-side data (downloading from GPU if needed).
 func (b *DevBuf) Data() []float32 {
+	if b == nil {
+		return nil
+	}
 	b.ToCPU()
 	return b.cpu
 }
 
 // EnsureGPU ensures GPU buffer exists without uploading CPU data.
 func (b *DevBuf) EnsureGPU() error {
+	if b == nil {
+		return fmt.Errorf("nil DevBuf")
+	}
 	if b.gpu != nil {
 		return nil
 	}
@@ -110,17 +131,27 @@ func (b *DevBuf) EnsureGPU() error {
 
 // GPUPtr returns the GPU buffer, uploading if needed.
 func (b *DevBuf) GPUPtr() *Buffer {
+	if b == nil {
+		return nil
+	}
 	if b.gpu == nil {
-		b.ToGPU()
+		if err := b.ToGPU(); err != nil {
+			return nil
+		}
 	}
 	return b.gpu
 }
 
 // Len returns element count.
-func (b *DevBuf) Len() int { return b.n }
+func (b *DevBuf) Len() int {
+	if b == nil {
+		return 0
+	}
+	return b.n
+}
 
 // OnGPU returns true if data is authoritatively on GPU.
-func (b *DevBuf) OnGPU() bool { return b.dev == GPU_DEVICE && b.gpu != nil }
+func (b *DevBuf) OnGPU() bool { return b != nil && b.dev == GPU_DEVICE && b.gpu != nil }
 
 // tryGPU attempts to move buffers to GPU. Returns true if all succeeded.
 func tryGPU(bufs ...*DevBuf) bool {
@@ -418,12 +449,16 @@ func DevCopy(dst, src *DevBuf) {
 
 // MarkDirty marks CPU data as authoritative (will re-upload on next GPU access).
 func (b *DevBuf) MarkDirty() {
-	b.dev = CPU
+	if b != nil {
+		b.dev = CPU
+	}
 }
 
 // MarkOnGPU marks GPU data as authoritative after in-place GPU-side mutation.
 func (b *DevBuf) MarkOnGPU() {
-	b.dev = GPU_DEVICE
+	if b != nil {
+		b.dev = GPU_DEVICE
+	}
 }
 
 // Free releases owned GPU resources held by this buffer.
