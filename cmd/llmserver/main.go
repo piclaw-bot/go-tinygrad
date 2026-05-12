@@ -231,10 +231,12 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 	id := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 
 	// Initial chunk with role
-	writeSSE(w, flusher, StreamChunk{
+	if !writeSSE(w, flusher, StreamChunk{
 		ID: id, Object: "chat.completion.chunk", Created: time.Now().Unix(), Model: s.modelID,
 		Choices: []StreamChoice{{Index: 0, Delta: StreamDelta{Role: "assistant"}}},
-	})
+	}) {
+		return
+	}
 
 	generated := 0
 	finishReason := "stop"
@@ -245,10 +247,12 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 			return false
 		default:
 		}
-		writeSSE(w, flusher, StreamChunk{
+		if !writeSSE(w, flusher, StreamChunk{
 			ID: id, Object: "chat.completion.chunk", Created: time.Now().Unix(), Model: s.modelID,
 			Choices: []StreamChoice{{Index: 0, Delta: StreamDelta{Content: text}}},
-		})
+		}) {
+			return false
+		}
 		generated++
 		return true
 	})
@@ -257,10 +261,12 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 		finishReason = "length"
 	}
 
-	writeSSE(w, flusher, StreamChunk{
+	if !writeSSE(w, flusher, StreamChunk{
 		ID: id, Object: "chat.completion.chunk", Created: time.Now().Unix(), Model: s.modelID,
 		Choices: []StreamChoice{{Index: 0, Delta: StreamDelta{}, FinishReason: &finishReason}},
-	})
+	}) {
+		return
+	}
 
 	if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
 		log.Printf("stream done write failed: %v", err)
@@ -269,16 +275,18 @@ func (s *Server) streamResponse(w http.ResponseWriter, r *http.Request, ids []in
 	flusher.Flush()
 }
 
-func writeSSE(w io.Writer, flusher http.Flusher, chunk StreamChunk) {
+func writeSSE(w io.Writer, flusher http.Flusher, chunk StreamChunk) bool {
 	data, err := json.Marshal(chunk)
 	if err != nil {
-		return
+		log.Printf("stream chunk marshal failed: %v", err)
+		return false
 	}
 	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 		log.Printf("stream chunk write failed: %v", err)
-		return
+		return false
 	}
 	flusher.Flush()
+	return true
 }
 
 func main() {

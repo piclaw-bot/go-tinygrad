@@ -1207,3 +1207,10 @@ Hardened the transitional CPU `ForwardLayer` helper:
 
 - Rejects nil models, invalid layer indices, negative positions, malformed dimensions, short hidden states, missing norm weights, product-overflowing Q/KV dimensions, and missing KV cache slots before indexing.
 - Added malformed forward-layer regression coverage.
+
+## Session 137: Streaming server write-boundary audit
+
+Hardened the OpenAI-compatible streaming response path:
+
+- `writeSSE` now returns success/failure, logs marshal errors, and lets callers stop generation immediately on broken client writes.
+- Streaming response setup, token chunks, and final chunks now abort cleanly when SSE writes fail instead of continuing to generate after a disconnected client.
