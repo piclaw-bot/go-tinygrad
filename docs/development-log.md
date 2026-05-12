@@ -616,3 +616,10 @@ Hardened transitional `model` helper paths:
 - MTP acceptance now rejects negative drafted/verifier token IDs and invalid KV keep counts before committing staged KV.
 - Token embedding and LM-head helpers validate positive model dimensions and backing data lengths before slicing.
 - Gemma4 per-layer input helpers validate positive/overflow-safe dimensions before projection and embedding indexing.
+
+## Session 59: Chunked GPU LM-head guard audit
+
+Hardened the transitional chunked GPU LM-head helper:
+
+- Rejects nil/malformed model inputs, non-positive dimensions, short logits/hidden slices, short LM-head backing data, and overflow-prone `vocabSize*hidden` products before GPU allocation.
+- Checks all chunk/input/output GPU upload errors before dispatching chunked LM-head kernels.

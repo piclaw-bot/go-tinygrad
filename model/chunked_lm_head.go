@@ -18,6 +18,13 @@ import (
 // chunkedGPULMHead computes logits using GPU in chunks.
 // Returns true if GPU path was used.
 func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) bool {
+	if g == nil || vocabSize <= 0 || h <= 0 || len(logits) < vocabSize || len(hidden) < h {
+		return false
+	}
+	maxInt := int(^uint(0) >> 1)
+	if vocabSize > maxInt/h || len(g.lmHead) < vocabSize*h {
+		return false
+	}
 	free, _ := gpu.MemInfo()
 	if free < 64*1024*1024 { // need at least 64MB free
 		return false
@@ -25,6 +32,9 @@ func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) 
 
 	// Calculate chunk size: leave 32MB headroom
 	usable := int(free) - 32*1024*1024
+	if h > maxInt/4 || usable <= 0 {
+		return false
+	}
 	chunkRows := usable / (h * 4) // rows that fit in VRAM
 	if chunkRows < 1024 {
 		return false
@@ -39,11 +49,15 @@ func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) 
 		return false
 	}
 	outBuf := gpu.NewDevBuf(chunkRows)
-	outBuf.ToGPU()
+	if err := outBuf.ToGPU(); err != nil {
+		return false
+	}
 	inBuf := gpu.NewDevBuf(h)
-	copy(inBuf.Data(), hidden)
+	copy(inBuf.Data(), hidden[:h])
 	inBuf.MarkDirty()
-	inBuf.ToGPU()
+	if err := inBuf.ToGPU(); err != nil {
+		return false
+	}
 
 	// Process in chunks
 	for start := 0; start < vocabSize; start += chunkRows {
@@ -57,7 +71,9 @@ func (g *GPUModel) chunkedGPULMHead(logits, hidden []float32, vocabSize, h int) 
 		wData := wBuf.Data()
 		copy(wData[:rows*h], g.lmHead[start*h:end*h])
 		wBuf.MarkDirty()
-		wBuf.ToGPU()
+		if err := wBuf.ToGPU(); err != nil {
+			return false
+		}
 
 		// GPU GEMV: outBuf[rows] = wBuf[rows,h] · inBuf[h]
 		if rows == chunkRows {
