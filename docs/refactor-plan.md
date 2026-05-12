@@ -28,7 +28,7 @@ loader/safetensors   -> mmap safetensors reader and sharded reader with metadata
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode; malformed merge validation and race-safe byte maps
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
-                        MoE, MTP scaffold, model-specific KV sizing; helper guards and logging gates hardened
+                        MoE, MTP scaffold, model-specific KV sizing; MTP/MoE/inference/forward helper guards and logging gates hardened
 models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout/accessor/accounting/protected-layer guards
 runtime/memory       -> mmap residency advice and range tracking; nil/invalid ranges are inert and malformed tracked ranges are sanitized
@@ -66,7 +66,7 @@ gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
 5. **Generation APIs hide backend policy.** CLI code toggles global state such as `model.ForceOnTheFly`, then chooses CPU/GPU behavior after loading.
-6. **Tensor/runtime/backend/loader guards and quiet library logging are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata, deterministic name listing, eager-load accounting, tokenizer byte maps, and BPE merge validation are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Transitional GPU guards cover DevBuf nil/upload behavior, CUDA stream/graph launch validation, allocation overflow, Q4/MLX weight layout validation, expert-pool edge cases, experimental NV helper validation, dense SGEMM/LM-head products, JIT spec checks, BF16 dispatch buffers, and RoPE/softmax/attention tensor-shape guards. Keep these guards intact during later backend/model moves.
+6. **Tensor/runtime/backend/loader/model/cmd guards and quiet library logging are now part of the refactor baseline.** The tensor graph/runtime has explicit validation for malformed shapes, nil receivers/UOps, reduction axes, unsafe reinterpret helpers, realization internals, pooled allocation overflow, rewrite/fusion paths, embedding/matmul helpers, NN helpers, and module wrappers. SIMD fallbacks and SGEMM/GEBP wrappers are bounds/overflow guarded. Runtime KV/TurboQuant/mmap helpers validate layouts/arithmetic/nil receivers. Safetensors metadata, deterministic name listing, eager-load accounting, tokenizer byte maps, and BPE merge validation are guarded. Transitional model helper guards now cover MTP acceptance/verifier commits, MTP drafter projection sizing, MoE loader/forward edge cases, inference helper sizing, CPU forward-layer entrypoints, KV dimension overflow, chunked LM-head, batched GPU prefill, local dot/GEMV, and GQA arithmetic. Command front-ends now validate token/request boundaries and streaming writes. Transitional GPU guards cover DevBuf nil/upload behavior, CUDA stream/graph launch validation, allocation overflow, Q4/MLX weight layout validation, expert-pool edge cases, experimental NV helper validation, dense SGEMM/LM-head products, JIT spec checks, BF16 dispatch buffers, and RoPE/softmax/attention tensor-shape guards. Keep these guards intact during later backend/model moves.
 7. **Tests mix durable validation with diagnostics.** Gemma4 trace/sensitivity/generation diagnostics now carry a `diagnostic` build tag and still require `GEMMA4_TRACE_TEST=1`, but they still live beside normal unit tests until the model-package split.
 8. **Local asset assumptions leak into tests.** Tests use paths such as `../models/gemma4-e2b-mlx4`, `../models/smollm2-135m`, and `../../gte-go/models/gte-small/model.safetensors`; these need explicit fixture policy during later moves. `.gitignore` now ignores downloaded model assets under `models/*` while allowing source package folders such as `models/bert`, `models/gemma4`, and `models/qwen3`.
 
@@ -275,8 +275,10 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
    - [x] `runtime/kv`, `runtime/memory`, and `runtime/quant` arithmetic/layout/nil/malformed-input guards audited.
    - [x] `backends/placement`, `backends/simd`, and `backends/vulkan` guard/logging status audited.
    - [x] Transitional `gpu` CUDA/NV helper guard/logging baseline audited before CUDA split.
-   - [ ] Transitional `model` audit complete for loader/forward/generation helpers, including chunked LM-head, batched prefill, MTP scaffold, MoE, and remaining large forward paths.
-   - [ ] `cmd` front-end/server boundary audit complete after any final model/generation changes.
+   - [x] Transitional `model` helper audit completed for MTP drafter, MoE helpers, inference helpers, CPU forward-layer entrypoint, chunked LM-head, batched prefill, and logging gates.
+   - [ ] Remaining large `model` loader/generation paths require final scan or explicit deferral with split plan.
+   - [x] `cmd` front-end/server boundary audit completed for token limits, request decoding, scanner errors, streaming write failures, and throughput reporting.
+   - [ ] Re-run `cmd` boundary scan after any final model/generation changes.
 
 4. **Debug/test/logging hygiene**
    - [x] Heavy Gemma4 diagnostics are `diagnostic` build-tagged and gated by `GEMMA4_TRACE_TEST=1`.
@@ -291,7 +293,7 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
    - [x] Fast shared gates have passed repeatedly during audit batches.
    - [x] No-run compile gate `go test ./... -run '^$'` passes after recent batches.
    - [x] `go vet ./...` and `git diff --check` pass after recent batches.
-   - [ ] Focused model helper tests pass after remaining `model` audit.
+   - [x] Focused model/cmd helper tests passed after MTP/MoE/inference/forward/cmd audit batches.
    - [ ] Smoke runs for SmolLM2 and Gemma4 loader/generation paths pass or are explicitly skipped with reason.
    - [ ] Final full `go test ./... -count=1` passes, or any resource-related skip/failure mode is documented with the focused substitute gate.
 

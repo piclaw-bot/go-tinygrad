@@ -161,7 +161,7 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives with layout/overflow, accessor, and memory-accounting guards
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid/malformed ranges are inert or sanitized with saturating accounting
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, checked expected-size arithmetic, dequantization, and guarded on-the-fly Q4 GEMV helpers
-- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, KV, prefill, LM-head, logging gates, and low-level helper guards are being hardened before moves
+- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, MoE, inference/forward, KV, prefill, LM-head, logging gates, and low-level helper guards are being hardened before moves
 - **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, attention dispatch guards, and opt-in `GO_PHERENCE_GPU_DEBUG` diagnostics are hardened
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
@@ -198,7 +198,7 @@ Recent Phase 6.5 audit passes made malformed-input behavior explicit across the 
 - `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, Q4/MLX weight layouts, expert IDs, experimental NV ioctl/memory/query setup, dense SGEMM/LM-head buffers, JIT kernel specs, and BF16 buffers before dispatch; CUDA/NV progress diagnostics are quiet unless `GO_PHERENCE_GPU_DEBUG` is set.
 - `backends/simd` scalar fallbacks bound all input/output slices, BF16 GEMV checks shape-product overflow, scalar RMSNorm uses precise `math.Sqrt`, and SGEMM/GEBP/gather helpers preflight dimensions, pointers, strides, CPU capability gates, and overflow before unsafe pointer arithmetic.
 - `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; file/sharded helpers are nil-safe, names are sorted deterministically, partial sharded opens clean up already-open shards, sharded eager-load totals are checked, tokenizer byte maps are initialized with `sync.Once`, and malformed tokenizer BPE merges are rejected.
-- Transitional `model` helpers validate MTP token/KV keep counts, embedding/LM-head backing data, chunked LM-head and batched-prefill dimensions, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic; loader/prefill/GPU placement diagnostics are quiet unless `GO_PHERENCE_LOAD_DEBUG` or `GO_PHERENCE_PREFILL_DEBUG` is set.
+- Transitional `model` helpers validate MTP token/KV keep counts, MTP drafter projection sizing, MoE edge cases, embedding/LM-head/per-layer input backing data, chunked LM-head and batched-prefill dimensions, CPU forward-layer entrypoints, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic; loader/prefill/GPU placement diagnostics are quiet unless `GO_PHERENCE_LOAD_DEBUG` or `GO_PHERENCE_PREFILL_DEBUG` is set.
 
 Fast refactor validation remains focused to avoid accidentally loading large local model fixtures:
 

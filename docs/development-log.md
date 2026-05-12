@@ -1236,3 +1236,12 @@ Hardened remaining command I/O boundaries:
 Hardened `llmgen` reporting math:
 
 - Generation throughput and ms/token reporting now avoid division by zero when generation completes within a sub-tick or produces an empty normalized output.
+
+
+## Session 141: Model and command audit documentation sweep
+
+Refreshed documentation after the latest transitional `model` and `cmd` audit batch:
+
+- README and architecture docs now describe MTP drafter projection guards, MoE helper validation, inference-helper sizing, CPU forward-layer entrypoint checks, and command/request boundary hardening.
+- Refactor plan checklist now distinguishes completed `model` helper and `cmd` boundary audits from the remaining large loader/generation scan or explicit deferral decision.
+- Validation notes now record that focused model/cmd helper tests have passed for the recent audit batches.
