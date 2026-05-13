@@ -1626,3 +1626,11 @@ Implemented the first q-only drafter execution slice:
 - `RunMTPDrafterStepWithExternalKV` now runs validated q-only drafter layers instead of stopping after projection validation.
 - The synthetic path performs input norm, q projection, q norm, external GQA attention over the read-only main-model KV view, output projection, residual/post norm, MLP, post projection, and main LM-head logits.
 - Updated drafter-loop tests so the one-layer synthetic fixture executes successfully while malformed external-KV cases still fail validation.
+
+## Session 187: Internal MTP speculative step
+
+Added the first end-to-end internal speculative iteration without any public CLI exposure:
+
+- `RunMTPSpeculativeStep` runs one drafter step, builds the verifier plan, runs verifier forward, and records speculation stats.
+- The result returns the draft result, verifier plan/result, and updated stats; callers still own staged KV commit/restore decisions.
+- Added projection-only integration tests covering drafter -> verifier -> stats and validation failures.
