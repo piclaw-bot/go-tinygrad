@@ -306,7 +306,7 @@ These larger moves are deliberately deferred out of Phase 6.5 into follow-up ref
 
 5. **Documentation alignment**
    - [x] README, architecture, runtime/backend notes, TurboQuant, GPU options, weight-budget docs, and development log reflect completed moves/audits through the loader/runtime batch.
-   - [ ] Final documentation sweep after recording these explicit deferrals and validation results.
+   - [x] Final documentation sweep after recording these explicit deferrals and validation results.
 
 6. **Validation gate**
    - [x] Fast shared gates have passed repeatedly during audit batches.
@@ -317,6 +317,17 @@ These larger moves are deliberately deferred out of Phase 6.5 into follow-up ref
    - [x] Final full `go test ./... -count=1` passes, or any resource-related skip/failure mode is documented with the focused substitute gate.
 
 7. **Final closeout**
-   - [ ] All Phase 6.5 commits are pushed.
-   - [ ] Plan sidebar is updated to mark complete/deferred items accurately.
-   - [ ] A final Phase 6.5 closeout note states whether MTP/verifier/drafter work may resume.
+   - [x] All Phase 6.5 commits are pushed.
+   - [x] Plan sidebar is updated to mark complete/deferred items accurately.
+   - [x] A final Phase 6.5 closeout note states whether MTP/verifier/drafter work may resume.
+
+### Final Phase 6.5 closeout note
+
+Phase 6.5 is closed as a source-tree ownership/audit phase. The repository now has documented loader/runtime/backend ownership boundaries, explicit deferred split phases for CUDA/model/generation extraction, quiet-by-default diagnostics, focused guard coverage across shared packages and transitional helpers, passing SmolLM2/Gemma4 CPU smoke runs, and a passing full `go test ./... -count=1` gate.
+
+MTP/verifier/drafter work may resume, but new functionality should follow the documented constraints:
+
+- Do not expand transitional package scope unnecessarily; keep new MTP implementation steps small and covered by focused tests.
+- Preserve existing MTP acceptance/KV commit semantics, drafter projection guards, loader/runtime guard behavior, and diagnostic build tags.
+- Keep CUDA runtime split, model package split, and generation runtime extraction as Phase 6.7/6.8/6.9 follow-up refactors rather than reopening Phase 6.5.
+- Re-run the relevant focused gates and smoke tests after any generation/MTP changes.

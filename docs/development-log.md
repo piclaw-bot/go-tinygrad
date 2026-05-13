@@ -1281,3 +1281,11 @@ Completed the Phase 6.5 final validation gate:
 - Gemma4 E2B MLX4 CPU loader/generation smoke passed: `go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2`.
 - Full test gate passed: `go test ./... -count=1`.
 - `go vet ./...` and `git diff --check` passed.
+
+## Session 146: Phase 6.5 closeout
+
+Closed Phase 6.5 as a source-tree ownership/audit phase:
+
+- All Phase 6.5 closeout commits are pushed and the plan sidebar is aligned with completed/deferred items.
+- Final note in `docs/refactor-plan.md` states that MTP/verifier/drafter work may resume under the documented constraints.
+- Deferred package splits remain assigned to follow-up phases: CUDA runtime in Phase 6.7, model packages in Phase 6.8, and generation runtime in Phase 6.9.
