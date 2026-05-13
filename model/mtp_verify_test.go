@@ -104,6 +104,63 @@ func TestMTPVerifierResultCommitFloatKV(t *testing.T) {
 	}
 }
 
+func TestMTPVerifierResultForModelAcceptanceAndFloatKVCommit(t *testing.T) {
+	m := &LlamaModel{Config: LlamaConfig{VocabSize: 5, HiddenSize: 2, NumKVHeads: 1, HeadDim: 2}, Layers: []LlamaLayer{{HasKV: true}}}
+	result, err := NewMTPVerifierResultForModel(m, 0, []int{1, 2}, [][]float32{
+		{0, 9, 0, 0, 0}, // accepts draft 1
+		{0, 0, 0, 8, 0}, // rejects draft 2, emits verifier bonus 3
+		{0, 0, 0, 0, 7}, // unused after mismatch, but still required row
+	}, []float32{0.25, 0.5})
+	if err != nil {
+		t.Fatalf("NewMTPVerifierResultForModel: %v", err)
+	}
+	if result.Acceptance.AcceptedPrefixLen != 1 || result.Acceptance.BonusToken != 3 {
+		t.Fatalf("acceptance=%+v, want accepted prefix 1 bonus 3", result.Acceptance)
+	}
+	if err := result.Acceptance.Validate(); err != nil {
+		t.Fatalf("acceptance validation: %v", err)
+	}
+	k := [][]float32{{1, 2, 10, 11, 12, 13, 14, 15}}
+	v := [][]float32{{3, 4, 20, 21, 22, 23, 24, 25}}
+	cp := kv.FloatKVCheckpoint{KLen: []int{2}, VLen: []int{2}}
+	if err := result.CommitFloatKV(m, k, v, cp); err != nil {
+		t.Fatalf("CommitFloatKV: %v", err)
+	}
+	if want := []float32{1, 2, 10, 11, 12, 13}; !sameFloat32s(k[0], want) {
+		t.Fatalf("K=%v want %v", k[0], want)
+	}
+	if want := []float32{3, 4, 20, 21, 22, 23}; !sameFloat32s(v[0], want) {
+		t.Fatalf("V=%v want %v", v[0], want)
+	}
+}
+
+func TestMTPVerifierResultForModelAcceptanceAndCompressedKVCommit(t *testing.T) {
+	m := &LlamaModel{Config: LlamaConfig{VocabSize: 5, HiddenSize: 2}}
+	result, err := NewMTPVerifierResultForModel(m, 0, []int{1, 2}, [][]float32{
+		{0, 9, 0, 0, 0},
+		{0, 0, 0, 8, 0},
+		{0, 0, 0, 0, 7},
+	}, []float32{0.25, 0.5})
+	if err != nil {
+		t.Fatalf("NewMTPVerifierResultForModel: %v", err)
+	}
+	cache := kv.NewCompressedKVCache(2, 1, 2, nil, true)
+	cache.Append([]float32{1, 2}, []float32{10, 20})
+	cp := kv.CheckpointCompressedKV([]*kv.CompressedKVCache{cache})
+	cache.Append([]float32{3, 4}, []float32{30, 40})
+	cache.Append([]float32{5, 6}, []float32{50, 60})
+	cache.Append([]float32{7, 8}, []float32{70, 80})
+	if err := result.CommitCompressedKV([]*kv.CompressedKVCache{cache}, cp); err != nil {
+		t.Fatalf("CommitCompressedKV: %v", err)
+	}
+	if got, want := cache.SeqLen(), 3; got != want {
+		t.Fatalf("seq len=%d want %d", got, want)
+	}
+	if want := []float32{1, 2, 3, 4, 5, 6}; !sameFloat32s(cache.GetK(), want) {
+		t.Fatalf("K=%v want %v", cache.GetK(), want)
+	}
+}
+
 func TestMTPVerifierResultCommitCompressedKV(t *testing.T) {
 	cache := kv.NewCompressedKVCache(2, 1, 2, nil, true)
 	cache.Append([]float32{1, 2}, []float32{10, 20})

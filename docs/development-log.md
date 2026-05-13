@@ -1402,3 +1402,11 @@ Completed the GPU/hybrid runtime smoke matrix on the current host:
 - SmolLM2 hybrid smoke passed: `go run ./cmd/llmgen -model models/smollm2-135m -gpu -gpu-layers 4 -prompt 'Hello' -tokens 2`.
 - Gemma4 E2B MLX4 GPU decode smoke passed with a one-token budget: `go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -gpu -prompt 'Hello' -tokens 1`.
 - Normal-path GPU diagnostics remained quiet without `GO_PHERENCE_GPU_DEBUG` during a SmolLM2 GPU smoke.
+
+## Session 160: MTP verifier result runtime chain tests
+
+Continued MTP/speculative runtime validation:
+
+- Added focused tests chaining `NewMTPVerifierResultForModel` → acceptance validation → float KV commit.
+- Added the same model-aware verifier/acceptance chain for compressed/TurboQuant-backed KV commit.
+- Verified the chain keeps the accepted prefix plus verifier bonus token and discards rejected candidate KV suffixes.
