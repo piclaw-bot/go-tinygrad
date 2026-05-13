@@ -1410,3 +1410,11 @@ Continued MTP/speculative runtime validation:
 - Added focused tests chaining `NewMTPVerifierResultForModel` → acceptance validation → float KV commit.
 - Added the same model-aware verifier/acceptance chain for compressed/TurboQuant-backed KV commit.
 - Verified the chain keeps the accepted prefix plus verifier bonus token and discards rejected candidate KV suffixes.
+
+## Session 161: MTP verifier-forward scaffold tests
+
+Added the verifier-forward scaffold before wiring generation:
+
+- `RunMTPVerifierForward` now defines the future main-model verifier entrypoint and validates plan/model/KV-cache shape before returning an explicit not-implemented error.
+- Added tests that the scaffold accepts a well-formed plan up to the not-implemented boundary and rejects nil models, empty/mismatched plans, non-contiguous positions, and malformed KV cache layer counts.
+- Public speculative generation remains disabled until the verifier forward and drafter loop have runtime smoke coverage.
