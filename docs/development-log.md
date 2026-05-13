@@ -1372,3 +1372,12 @@ Continued the aggressive runtime validation plan:
 - Passed shared race gate: `go test -race ./runtime/... ./loader/... ./tensor ./backends/simd -count=1`.
 - Broad model race regex `go test -race ./model -run 'MTP|KV|ForwardLayer|InferenceHelpers|Moe' -count=1` was killed after ~255s, likely because the regex still selected resource-heavy model diagnostics.
 - Passed focused safe substitute: `go test -race ./model -run 'TestMTP|TestNewMTP|TestAcceptMTP|TestCommitAccepted|TestLayerKVDim|TestLayerKVDims|TestTokenEmbeddingHelpers|TestGemma4PerLayerInputs|TestLMHeadLogitsInto|TestArgmaxLogits|TestInferenceHelpers|TestForwardLayerRejectsMalformedInputs|TestMoeForwardRejectsMalformedInputs' -count=1`.
+
+## Session 157: Cross-arch compile gates
+
+Continued the aggressive runtime validation plan with cross-architecture gates:
+
+- `GOARCH=arm64 go test -c ./backends/simd` passed.
+- `GOARCH=riscv64 go test -c ./backends/simd` passed.
+- Plain `GOARCH=arm64 go test ./... -run '^$'` compiled test binaries but failed to execute them on the amd64 host with `exec format error`.
+- Compile-focused substitute passed with `GOARCH=arm64 go test -exec /bin/true ./... -run '^$'`.
