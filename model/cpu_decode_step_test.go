@@ -48,6 +48,15 @@ func TestFinishCPUDecodeStepValidation(t *testing.T) {
 	if _, _, _, err := m.finishCPUDecodeStep([]float32{1}); err == nil {
 		t.Fatal("accepted short hidden")
 	}
+	m.Norm = tensor.FromFloat32([]float32{1}, []int{1})
+	hidden := []float32{1, 2}
+	if _, _, _, err := m.finishCPUDecodeStep(hidden); err == nil {
+		t.Fatal("accepted short final norm")
+	}
+	if !sameFloat32s(hidden, []float32{1, 2}) {
+		t.Fatalf("short final norm mutated hidden=%v", hidden)
+	}
+	m.Norm = tensor.Ones([]int{2})
 	m.LMHead = tensor.FromFloat32([]float32{1}, []int{1})
 	if _, _, _, err := m.finishCPUDecodeStep([]float32{1, 2}); err == nil {
 		t.Fatal("accepted malformed LM head")

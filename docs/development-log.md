@@ -1502,3 +1502,10 @@ Started the MTP verifier-forward implementation plan with a small behavior-prese
 - Added `finishCPUDecodeStep`, which applies final decode norm, computes LM-head logits, returns greedy argmax, and copies the final activation for verifier/MTP callers.
 - Rewired `Generate` to use the helper only at the existing generation/logits point, preserving public generation behavior.
 - Added focused tests for helper output, final-activation copy semantics, malformed inputs, and a SmolLM generation regression slice.
+
+## Session 172: CPU decode finish helper audit
+
+Audited the newly extracted `finishCPUDecodeStep` helper:
+
+- Added explicit final-norm backing length validation before mutating the hidden state.
+- Added regression coverage that a short final norm is rejected and does not modify caller-owned hidden scratch.

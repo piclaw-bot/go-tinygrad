@@ -24,10 +24,14 @@ func (m *LlamaModel) finishCPUDecodeStep(hidden []float32) (finalActivation []fl
 	if m.Norm == nil {
 		return nil, nil, 0, fmt.Errorf("model final norm is not loaded")
 	}
+	norm := m.Norm.Data()
+	if len(norm) < cfg.HiddenSize {
+		return nil, nil, 0, fmt.Errorf("final norm len=%d, want at least %d", len(norm), cfg.HiddenSize)
+	}
 	if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
-		simd.RMSNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+		simd.RMSNormBF16(hidden, norm, float32(cfg.RMSNormEps))
 	} else {
-		rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
+		rmsNormInPlace(hidden, norm, float32(cfg.RMSNormEps))
 	}
 	logits = make([]float32, cfg.VocabSize)
 	if err := m.LMHeadLogitsInto(logits, hidden); err != nil {
