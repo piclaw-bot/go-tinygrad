@@ -13,6 +13,20 @@ type MTPSpeculationStats struct {
 	OutputTokens   int
 }
 
+// ValidateOneStepCapacity checks counters that would make a one-step speculative
+// wrapper fail regardless of verifier output. It lets callers reject obviously
+// bad stats before mutating staged verifier KV.
+func (s MTPSpeculationStats) ValidateOneStepCapacity() error {
+	maxInt := int(^uint(0) >> 1)
+	if s.Steps < 0 || s.DraftedTokens < 0 || s.VerifiedTokens < 0 || s.BonusTokens < 0 || s.OutputTokens < 0 {
+		return fmt.Errorf("invalid MTP stats counters: %+v", s)
+	}
+	if s.Steps == maxInt || s.DraftedTokens == maxInt || s.VerifiedTokens == maxInt || s.BonusTokens == maxInt || s.OutputTokens == maxInt {
+		return fmt.Errorf("MTP stats counters cannot record another step: %+v", s)
+	}
+	return nil
+}
+
 // Record adds one verifier acceptance result to the accounting totals.
 func (s *MTPSpeculationStats) Record(a MTPAcceptance) error {
 	if s == nil {

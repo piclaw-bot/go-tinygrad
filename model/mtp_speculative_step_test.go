@@ -55,6 +55,9 @@ func TestRunMTPSpeculativeStepValidation(t *testing.T) {
 	if _, err := m.RunMTPSpeculativeStep(d, state, nil, 0, kvCacheK, kvCacheV, badStats); err == nil {
 		t.Fatal("accepted overflowing stats")
 	}
+	if len(kvCacheK[0]) != 0 || len(kvCacheV[0]) != 0 {
+		t.Fatalf("overflowing stats mutated verifier KV K/V=%d/%d", len(kvCacheK[0]), len(kvCacheV[0]))
+	}
 }
 
 func validProjectionOnlyDrafterForModel(m *LlamaModel) *Gemma4MTPDrafter {

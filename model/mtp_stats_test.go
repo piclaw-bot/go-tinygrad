@@ -26,6 +26,18 @@ func TestMTPSpeculationStatsRecord(t *testing.T) {
 	}
 }
 
+func TestMTPSpeculationStatsValidateOneStepCapacity(t *testing.T) {
+	if err := (MTPSpeculationStats{}).ValidateOneStepCapacity(); err != nil {
+		t.Fatalf("ValidateOneStepCapacity empty: %v", err)
+	}
+	if err := (MTPSpeculationStats{Steps: -1}).ValidateOneStepCapacity(); err == nil {
+		t.Fatal("accepted negative stats counter")
+	}
+	if err := (MTPSpeculationStats{Steps: int(^uint(0) >> 1)}).ValidateOneStepCapacity(); err == nil {
+		t.Fatal("accepted saturated stats counter")
+	}
+}
+
 func TestMTPSpeculationStatsValidation(t *testing.T) {
 	if err := (*MTPSpeculationStats)(nil).Record(MTPAcceptance{}); err == nil {
 		t.Fatal("accepted nil stats")

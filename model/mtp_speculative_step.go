@@ -19,6 +19,9 @@ func (m *LlamaModel) RunMTPSpeculativeStep(d *Gemma4MTPDrafter, state MTPDrafter
 	if m == nil {
 		return MTPSpeculativeStepResult{}, fmt.Errorf("nil model")
 	}
+	if err := stats.ValidateOneStepCapacity(); err != nil {
+		return MTPSpeculativeStepResult{}, fmt.Errorf("MTP stats: %w", err)
+	}
 	draft, err := m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
 	if err != nil {
 		return MTPSpeculativeStepResult{}, fmt.Errorf("MTP drafter step: %w", err)

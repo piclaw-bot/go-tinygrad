@@ -1643,3 +1643,11 @@ Audited the recent MTP drafter/speculative-step code for logic errors:
 - Fixed `RunMTPDrafterStepWithExternalKV` to apply `d.Norm` after q-only layers and before post-projection.
 - Required loaded/sufficient final norm for q-only drafter execution while preserving projection-only zero-layer fixtures.
 - Added regression coverage proving the final norm changes the next activation and malformed q-only drafter state rejects missing final norm.
+
+## Session 189: MTP audit — speculative stats preflight
+
+Continued the MTP code-smell/logic audit:
+
+- Found that `RunMTPSpeculativeStep` detected saturated stats only after verifier forward had already staged candidate KV.
+- Added `MTPSpeculationStats.ValidateOneStepCapacity` and preflight it before drafter/verifier execution.
+- Added tests for stats preflight and for ensuring saturated stats do not mutate staged verifier KV.
