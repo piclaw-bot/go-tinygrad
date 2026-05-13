@@ -23,3 +23,11 @@ func checkedAddInt(a, b int) (int, bool) {
 	}
 	return a + b, true
 }
+
+func checkedFloat32ByteOffset(index int) (uintptr, bool) {
+	off, ok := checkedMulInt(index, 4)
+	if !ok {
+		return 0, false
+	}
+	return uintptr(off), true
+}

@@ -39,10 +39,15 @@ func SgemmNTGather(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, 
 				mr = m - ii
 			}
 			if nr == NR {
+				bBaseIndex, okBase := checkedMulInt(jj, ldb)
+				bBaseByteOff, okBaseByte := checkedFloat32ByteOffset(bBaseIndex)
+				if !okBase || !okBaseByte {
+					return
+				}
 				if mr == MR {
 					gatherMicroKernel6x8(k, alpha,
 						unsafe.Pointer(&a[ii*lda]), lda,
-						unsafe.Add(unsafe.Pointer(b), 4*jj*ldb),
+						unsafe.Add(unsafe.Pointer(b), bBaseByteOff),
 						unsafe.Pointer(&indices[0]),
 						unsafe.Pointer(&c[ii*ldc+jj]), ldc)
 				} else {
@@ -53,7 +58,7 @@ func SgemmNTGather(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, 
 					}
 					gatherMicroKernel6x8(k, alpha,
 						unsafe.Pointer(&a[ii*lda]), lda,
-						unsafe.Add(unsafe.Pointer(b), 4*jj*ldb),
+						unsafe.Add(unsafe.Pointer(b), bBaseByteOff),
 						unsafe.Pointer(&indices[0]),
 						unsafe.Pointer(&tmp[0]), NR)
 					for i := 0; i < mr; i++ {
@@ -65,7 +70,13 @@ func SgemmNTGather(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, 
 				for i := 0; i < mr; i++ {
 					for d := 0; d < nr; d++ {
 						sum := float32(0)
-						bRow := unsafe.Slice((*float32)(unsafe.Add(unsafe.Pointer(b), 4*(jj+d)*ldb)), k)
+						row, okRow := checkedAddInt(jj, d)
+						rowOff, okOff := checkedMulInt(row, ldb)
+						rowByteOff, okByte := checkedFloat32ByteOffset(rowOff)
+						if !okRow || !okOff || !okByte {
+							return
+						}
+						bRow := unsafe.Slice((*float32)(unsafe.Add(unsafe.Pointer(b), rowByteOff)), k)
 						for p := 0; p < k; p++ {
 							sum += a[(ii+i)*lda+p] * bRow[p]
 						}

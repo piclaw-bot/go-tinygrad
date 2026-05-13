@@ -1315,3 +1315,12 @@ Continued the `backends/simd` dispatch audit:
 - Guarded assembly dispatch wrappers so zero-length vector/BF16 operations route through scalar fallbacks instead of passing empty slices to assembly stubs.
 - Added regression coverage for empty public vector and BF16 entrypoints.
 - Native SIMD tests, no-run package gate, vet, and diff checks passed.
+
+## Session 150: SIMD SGEMM offset audit
+
+Continued the SIMD SGEMM/GEBP/gather audit:
+
+- Added a checked float32 byte-offset helper for unsafe pointer arithmetic.
+- Hardened blocked SGEMM and gather SGEMM pointer offsets so `jj*ldb`, row offsets, and float32 byte scaling are checked before `unsafe.Add`.
+- Added regression coverage for byte-offset overflow rejection.
+- Re-ran native SIMD tests, non-amd64 compile-only check, no-run package gate, vet, and diff checks.

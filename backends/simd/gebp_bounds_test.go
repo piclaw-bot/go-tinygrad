@@ -5,6 +5,16 @@ import (
 	"unsafe"
 )
 
+func TestCheckedFloat32ByteOffsetRejectsOverflow(t *testing.T) {
+	if off, ok := checkedFloat32ByteOffset(3); !ok || off != 12 {
+		t.Fatalf("checkedFloat32ByteOffset(3)=(%d,%v), want (12,true)", off, ok)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if _, ok := checkedFloat32ByteOffset(maxInt/4 + 1); ok {
+		t.Fatal("overflowing float32 byte offset accepted")
+	}
+}
+
 func TestGEBPValidationRejectsMalformedArgs(t *testing.T) {
 	if makeGebpBuf(-1) != nil || makeGebpBuf(0) != nil {
 		t.Fatal("makeGebpBuf should return nil for non-positive sizes")
