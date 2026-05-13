@@ -39,9 +39,38 @@ type MTPVerifierResult struct {
 // NewMTPVerifierResult validates verifier outputs, derives greedy acceptance,
 // and copies slice headers/data that callers commonly mutate after verification.
 func NewMTPVerifierResult(inputToken int, drafted []int, logits [][]float32, finalActivation []float32) (MTPVerifierResult, error) {
+	return newMTPVerifierResult(inputToken, drafted, logits, finalActivation, 0, 0)
+}
+
+// NewMTPVerifierResultForModel validates verifier outputs against model-owned
+// dimensions. It is intended for the real verifier path; tests and low-level
+// helpers may keep using NewMTPVerifierResult when no model is available.
+func NewMTPVerifierResultForModel(m *LlamaModel, inputToken int, drafted []int, logits [][]float32, finalActivation []float32) (MTPVerifierResult, error) {
+	if m == nil {
+		return MTPVerifierResult{}, fmt.Errorf("nil model")
+	}
+	vocab := m.Config.VocabSize
+	hidden := m.Config.HiddenSize
+	if vocab <= 0 || hidden <= 0 {
+		return MTPVerifierResult{}, fmt.Errorf("invalid verifier model dims vocab=%d hidden=%d", vocab, hidden)
+	}
+	return newMTPVerifierResult(inputToken, drafted, logits, finalActivation, vocab, hidden)
+}
+
+func newMTPVerifierResult(inputToken int, drafted []int, logits [][]float32, finalActivation []float32, vocab, hidden int) (MTPVerifierResult, error) {
 	verifierTokens, err := MTPVerifierTokens(inputToken, drafted)
 	if err != nil {
 		return MTPVerifierResult{}, err
+	}
+	if vocab > 0 {
+		for i, tok := range verifierTokens {
+			if tok >= vocab {
+				return MTPVerifierResult{}, fmt.Errorf("verifier token %d at index %d out of range [0,%d)", tok, i, vocab)
+			}
+		}
+	}
+	if hidden > 0 && len(finalActivation) != hidden {
+		return MTPVerifierResult{}, fmt.Errorf("final activation len=%d, want %d", len(finalActivation), hidden)
 	}
 	if len(logits) != len(drafted)+1 {
 		return MTPVerifierResult{}, fmt.Errorf("verifier logits rows=%d, want drafted+1=%d", len(logits), len(drafted)+1)
@@ -50,6 +79,9 @@ func NewMTPVerifierResult(inputToken int, drafted []int, logits [][]float32, fin
 	for i, row := range logits {
 		if len(row) == 0 {
 			return MTPVerifierResult{}, fmt.Errorf("verifier logits row %d is empty", i)
+		}
+		if vocab > 0 && len(row) != vocab {
+			return MTPVerifierResult{}, fmt.Errorf("verifier logits row %d len=%d, want vocab=%d", i, len(row), vocab)
 		}
 		copiedLogits[i] = append([]float32(nil), row...)
 	}

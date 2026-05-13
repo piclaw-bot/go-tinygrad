@@ -1324,3 +1324,11 @@ Continued the SIMD SGEMM/GEBP/gather audit:
 - Hardened blocked SGEMM and gather SGEMM pointer offsets so `jj*ldb`, row offsets, and float32 byte scaling are checked before `unsafe.Add`.
 - Added regression coverage for byte-offset overflow rejection.
 - Re-ran native SIMD tests, non-amd64 compile-only check, no-run package gate, vet, and diff checks.
+
+## Session 151: Resume MTP verifier scaffold
+
+Resumed MTP/speculative work after Phase 6.5 closeout with a small verifier-scaffold hardening step:
+
+- Added `NewMTPVerifierResultForModel`, a model-aware verifier result constructor that validates verifier token IDs against vocab size, logits row width against vocab size, and final activation width against hidden size.
+- Kept the existing low-level `NewMTPVerifierResult` for tests/helpers that do not have a model instance.
+- Added regression coverage for nil/invalid model dims, token bounds, logits width, final activation width, and a valid model-aware acceptance path.

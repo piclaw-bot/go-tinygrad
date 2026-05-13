@@ -58,6 +58,35 @@ func TestNewMTPVerifierResultValidation(t *testing.T) {
 	}
 }
 
+func TestNewMTPVerifierResultForModelValidation(t *testing.T) {
+	m := &LlamaModel{Config: LlamaConfig{VocabSize: 4, HiddenSize: 2}}
+	if _, err := NewMTPVerifierResultForModel(nil, 1, nil, [][]float32{{0, 1, 2, 3}}, []float32{1, 2}); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted nil model")
+	}
+	if _, err := NewMTPVerifierResultForModel(&LlamaModel{}, 1, nil, [][]float32{{0}}, nil); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted invalid model dims")
+	}
+	if _, err := NewMTPVerifierResultForModel(m, 4, nil, [][]float32{{0, 1, 2, 3}}, []float32{1, 2}); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted input token outside vocab")
+	}
+	if _, err := NewMTPVerifierResultForModel(m, 1, []int{4}, [][]float32{{0, 1, 2, 3}, {0, 1, 2, 3}}, []float32{1, 2}); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted drafted token outside vocab")
+	}
+	if _, err := NewMTPVerifierResultForModel(m, 1, nil, [][]float32{{0, 1, 2}}, []float32{1, 2}); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted short logits row")
+	}
+	if _, err := NewMTPVerifierResultForModel(m, 1, nil, [][]float32{{0, 1, 2, 3}}, []float32{1}); err == nil {
+		t.Fatal("NewMTPVerifierResultForModel accepted wrong final activation width")
+	}
+	got, err := NewMTPVerifierResultForModel(m, 1, []int{2}, [][]float32{{0, 0, 9, 0}, {0, 0, 0, 8}}, []float32{3, 4})
+	if err != nil {
+		t.Fatalf("NewMTPVerifierResultForModel: %v", err)
+	}
+	if !sameInts(got.Acceptance.OutputTokens, []int{2, 3}) {
+		t.Fatalf("OutputTokens=%v want [2 3]", got.Acceptance.OutputTokens)
+	}
+}
+
 func TestMTPVerifierResultCommitFloatKV(t *testing.T) {
 	m := &LlamaModel{Config: LlamaConfig{NumKVHeads: 1, HeadDim: 2}, Layers: []LlamaLayer{{HasKV: true}}}
 	result, err := NewMTPVerifierResult(9, []int{1, 2}, [][]float32{{0, 9, 0}, {0, 8, 0}, {0, 0, 7}}, nil)
