@@ -1471,3 +1471,11 @@ Continued the MTP scaffold audit:
 - Added regression coverage for max-int accepted-prefix acceptance state.
 - Made drafter `PreProjectInto` and `PostProjectInto` alias-safe by computing into temporary output buffers before copying into caller-provided destinations.
 - Added projection alias-safety tests for overlapping destination/input slices.
+
+## Session 168: Forward-layer malformed norm audit
+
+Continued the model-path audit beyond MTP scaffolding:
+
+- Found a malformed-state panic in `ForwardLayer`: layers with `QNorm` and K/V output assumed `KNorm` was also present before dereferencing it.
+- Hardened the forward-layer entrypoint to reject missing `KNorm` instead of panicking.
+- Extended malformed forward-layer regression coverage for the QNorm-without-KNorm case.

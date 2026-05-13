@@ -98,6 +98,9 @@ func (m *LlamaModel) ForwardLayer(hidden []float32, layerIdx, step, pos int, kvC
 			normFn(q[head*layerHeadDim:(head+1)*layerHeadDim], qNorm, float32(cfg.RMSNormEps))
 		}
 		if k != nil {
+			if layer.KNorm == nil {
+				return nil
+			}
 			kNorm := layer.KNorm.Data()
 			for head := 0; head < numKVHeads; head++ {
 				normFn(k[head*layerHeadDim:(head+1)*layerHeadDim], kNorm, float32(cfg.RMSNormEps))

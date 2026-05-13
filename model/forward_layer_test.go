@@ -29,4 +29,11 @@ func TestForwardLayerRejectsMalformedInputs(t *testing.T) {
 	if got := m.ForwardLayer([]float32{1, 2}, 0, 0, 0, make([][]float32, 1), make([][]float32, 1)); got != nil {
 		t.Fatalf("overflowing qDim output=%v, want nil", got)
 	}
+	m.Config.NumHeads = 1
+	m.Layers[0].HasKV = true
+	m.Layers[0].QNorm = tensor.Ones([]int{2})
+	m.Layers[0].KNorm = nil
+	if got := m.ForwardLayer([]float32{1, 2}, 0, 0, 0, make([][]float32, 1), make([][]float32, 1)); got != nil {
+		t.Fatalf("missing KNorm output=%v, want nil", got)
+	}
 }
