@@ -1394,25 +1394,14 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 		}
 
-		// Final norm (BF16 for Gemma3)
-		if cfg.ModelType == "gemma3_text" || cfg.ModelType == "gemma4_text" {
-			simd.RMSNormBF16(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
-		} else {
-			rmsNormInPlace(hidden, m.Norm.Data(), float32(cfg.RMSNormEps))
-		}
-
-		// LM head: logits = hidden @ lm_head^T (greedy: take argmax)
+		// LM head: logits = final_norm(hidden) @ lm_head^T (greedy: take argmax)
 		if step >= len(tokenIDs)-1 {
-			logits := make([]float32, cfg.VocabSize)
-			if err := m.LMHeadLogitsInto(logits, hidden); err != nil {
-				panic(err)
-			}
-			maxIdx, _, err := ArgmaxLogits(logits)
+			finalActivation, logits, maxIdx, err := m.finishCPUDecodeStep(hidden)
 			if err != nil {
 				panic(err)
 			}
 			if debugLogitsHook != nil {
-				debugLogitsHook("cpu", step, hidden, logits)
+				debugLogitsHook("cpu", step, finalActivation, logits)
 			}
 			output = append(output, maxIdx)
 		}

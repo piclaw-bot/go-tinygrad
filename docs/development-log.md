@@ -1494,3 +1494,11 @@ Continued the CPU generation-path audit:
 
 - Hardened `Generate` against malformed public inputs/config before KV-cache allocation: negative `maxTokens`, overflowing output capacity, negative/short layer counts, invalid core dimensions, and overflowing per-layer KV/cache capacity now return the current prompt instead of risking panic or huge allocation.
 - Added synthetic malformed-config regression tests covering negative token budgets, short layer slices, invalid dimensions, and KV dimension overflow.
+
+## Session 171: CPU decode finish helper extraction
+
+Started the MTP verifier-forward implementation plan with a small behavior-preserving CPU decode extraction:
+
+- Added `finishCPUDecodeStep`, which applies final decode norm, computes LM-head logits, returns greedy argmax, and copies the final activation for verifier/MTP callers.
+- Rewired `Generate` to use the helper only at the existing generation/logits point, preserving public generation behavior.
+- Added focused tests for helper output, final-activation copy semantics, malformed inputs, and a SmolLM generation regression slice.
