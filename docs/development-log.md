@@ -1568,3 +1568,12 @@ Continued the drafter-loop implementation plan:
 - Implemented the projection/LM-head shell for zero-layer synthetic drafter fixtures: token embedding + previous verifier activation → `PreProjectInto` → `PostProjectInto` → main-model LM-head logits/argmax → next drafter state.
 - Real q-only drafter layers still return an explicit not-implemented error until external/main-model KV attention is wired.
 - Added tests for projection-only output, next-state copy semantics, dimension mismatches, missing projections, and q-only not-implemented behavior.
+
+## Session 180: MTP acceptance-rate stats scaffold
+
+Completed the current drafter-loop scaffold items:
+
+- Added `MTPSpeculationStats` to accumulate LiteRT-style accounting without any public CLI exposure.
+- `Record` validates `MTPAcceptance`, counts drafted tokens, accepted/verified draft-prefix tokens, verifier bonus tokens, output tokens, and rejects counter overflow.
+- `AcceptanceRate` reports accepted draft tokens divided by drafted tokens, deliberately excluding bonus tokens.
+- Focused stats/acceptance tests, no-run all-package gate, vet, and diff checks passed.
