@@ -5,6 +5,11 @@ import "fmt"
 // RunMTPVerifierForward runs a CPU verifier pass over plan.VerifierTokens at
 // plan.Positions, writing candidate K/V into the provided staged float caches
 // and returning per-position logits plus the final verifier activation.
+//
+// Current contract: float KV only. kvCacheK/V must already contain exactly
+// plan.StartPos prompt/history tokens for every layer that appends K/V. Gemma4
+// per-layer-input gating is rejected until the verifier loop can share the full
+// Generate per-layer-input semantics.
 func (m *LlamaModel) RunMTPVerifierForward(plan MTPVerifierPlan, kvCacheK, kvCacheV [][]float32) (MTPVerifierResult, error) {
 	if err := m.validateMTPVerifierForwardInputs(plan, kvCacheK, kvCacheV); err != nil {
 		return MTPVerifierResult{}, err
@@ -72,8 +77,27 @@ func (m *LlamaModel) validateMTPVerifierForwardInputs(plan MTPVerifierPlan, kvCa
 			return fmt.Errorf("verifier plan position %d=%d, want %d", i, pos, wantPositions[i])
 		}
 	}
+	if m.PerLayerModelProj != nil || m.Config.HiddenPerLayer > 0 || m.EmbedPerLayer != nil {
+		return fmt.Errorf("MTP verifier forward does not yet support Gemma4 per-layer input gating")
+	}
 	if len(kvCacheK) != m.Config.NumLayers || len(kvCacheV) != m.Config.NumLayers {
 		return fmt.Errorf("KV cache layers K/V=%d/%d, want %d", len(kvCacheK), len(kvCacheV), m.Config.NumLayers)
+	}
+	for l := 0; l < m.Config.NumLayers; l++ {
+		kvDim, err := m.LayerKVDim(l)
+		if err != nil {
+			return err
+		}
+		if kvDim == 0 {
+			continue
+		}
+		want, ok := checkedProduct(plan.StartPos, kvDim)
+		if !ok {
+			return fmt.Errorf("verifier KV history length overflows for layer %d start=%d kvDim=%d", l, plan.StartPos, kvDim)
+		}
+		if len(kvCacheK[l]) != want || len(kvCacheV[l]) != want {
+			return fmt.Errorf("layer %d KV history K/V=%d/%d, want %d for start position %d", l, len(kvCacheK[l]), len(kvCacheV[l]), want, plan.StartPos)
+		}
 	}
 	return nil
 }

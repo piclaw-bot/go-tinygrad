@@ -87,6 +87,39 @@ func TestRunMTPVerifierForwardFloatKVCommitKeepsAcceptedPrefix(t *testing.T) {
 	}
 }
 
+func TestRunMTPVerifierForwardRequiresPromptHistoryKV(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	kvDim, err := m.LayerKVDim(0)
+	if err != nil {
+		t.Fatalf("LayerKVDim: %v", err)
+	}
+	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 1)
+	if _, err := m.RunMTPVerifierForward(plan, make([][]float32, len(m.Layers)), make([][]float32, len(m.Layers))); err == nil {
+		t.Fatal("accepted missing prompt/history KV for non-zero start position")
+	}
+	kvCacheK := [][]float32{make([]float32, kvDim)}
+	kvCacheV := [][]float32{make([]float32, kvDim)}
+	result, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
+	if err != nil {
+		t.Fatalf("RunMTPVerifierForward with history: %v", err)
+	}
+	if got, want := len(kvCacheK[0]), (plan.StartPos+len(plan.VerifierTokens))*kvDim; got != want {
+		t.Fatalf("staged history K len=%d want %d", got, want)
+	}
+	if result.InputToken != 0 {
+		t.Fatalf("result input token=%d want 0", result.InputToken)
+	}
+}
+
+func TestRunMTPVerifierForwardRejectsGemma4PLIUntilSupported(t *testing.T) {
+	m := newZeroLayerVerifierModel()
+	m.Config.HiddenPerLayer = 2
+	plan := mustMTPVerifierPlan(t, m, 1, nil, 0)
+	if _, err := m.RunMTPVerifierForward(plan, nil, nil); err == nil {
+		t.Fatal("accepted Gemma4 per-layer input gating")
+	}
+}
+
 func TestRunMTPVerifierForwardCompressedKVCommitKeepsAcceptedPrefix(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 0)

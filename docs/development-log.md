@@ -1585,3 +1585,12 @@ Ran the validation policy gate after the recent verifier/drafter behavior change
 - Full suite passed: `go test ./... -count=1`.
 - CPU generation smokes passed for SmolLM2 and Gemma4 E2B MLX4 with short token budgets.
 - GPU smoke passed for SmolLM2 with a one-token budget.
+
+## Session 182: MTP verifier Generate-semantics audit
+
+Audited `RunMTPVerifierForward` against the full CPU `Generate` semantics for real layers:
+
+- Made the current verifier contract explicit: float KV only; `kvCacheK/V` must already contain exactly `plan.StartPos` prompt/history tokens for every layer that appends K/V.
+- Added prompt/history KV length validation before the verifier appends staged candidate K/V.
+- Added an explicit rejection for Gemma4 per-layer input gating/PLI until the verifier loop can share the full `Generate` PLI semantics.
+- Added tests for non-zero start-position history KV requirements and PLI rejection.
