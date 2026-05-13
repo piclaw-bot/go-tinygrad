@@ -1659,3 +1659,11 @@ Continued the MTP code-smell/logic audit:
 - Found that `RunMTPVerifierForward` did not explicitly validate shared-KV layer source mappings before entering `ForwardLayer`.
 - Added validation that q/shared layers point at a real KV-appending source layer and do not carry their own staged K/V entries.
 - Added malformed shared-KV verifier tests for invalid source, shared-to-shared source, and stray per-layer cache entries.
+
+## Session 191: MTP audit — drafter q-only FFN norms
+
+Continued the MTP code-smell/logic audit:
+
+- Found that the q-only drafter layer path skipped `PreFFNNorm`/`PostFFNNorm` even though real Gemma assistant layers load those tensors.
+- Aligned the synthetic q-only path with `ForwardLayer` semantics for post-attention residual, pre-FFN norm, post-FFN norm, and layer scalar handling.
+- Tightened q-only validation to require the loaded FFN norm tensors.

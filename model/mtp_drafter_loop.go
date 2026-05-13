@@ -164,24 +164,40 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 	}
 	oOut := make([]float32, h)
 	gemvNT(oOut, attnOut, layer.OW, qDim, h)
-	for i := 0; i < h; i++ {
-		hidden[i] = residual[i] + oOut[i]
+	if layer.PreFFNNorm != nil {
+		rmsNormInPlace(oOut, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
+		for i := 0; i < h; i++ {
+			hidden[i] = residual[i] + oOut[i]
+		}
+		copy(residual, hidden)
+	} else {
+		for i := 0; i < h; i++ {
+			hidden[i] = residual[i] + oOut[i]
+		}
+		copy(residual, hidden)
+		rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
 	}
-	copy(residual, hidden)
-	rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
+	mlpInput := hidden
+	if layer.PreFFNNorm != nil {
+		mlpInput = append([]float32(nil), hidden...)
+		rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(d.Config.RMSNormEps))
+	}
 	gate := make([]float32, d.Config.Intermediate)
 	up := make([]float32, d.Config.Intermediate)
-	gemvNT(gate, hidden, layer.GateW, h, d.Config.Intermediate)
-	gemvNT(up, hidden, layer.UpW, h, d.Config.Intermediate)
+	gemvNT(gate, mlpInput, layer.GateW, h, d.Config.Intermediate)
+	gemvNT(up, mlpInput, layer.UpW, h, d.Config.Intermediate)
 	for i := range gate {
 		gate[i] = geluTanh(gate[i]) * up[i]
 	}
 	down := make([]float32, h)
 	gemvNT(down, gate, layer.DownW, d.Config.Intermediate, h)
+	if layer.PostFFNNorm != nil {
+		rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(d.Config.RMSNormEps))
+	}
 	for i := 0; i < h; i++ {
 		hidden[i] = residual[i] + down[i]
 	}
-	if layer.LayerScalar != 0 && layer.LayerScalar != 1 {
+	if layer.LayerScalar != 1 {
 		for i := range hidden {
 			hidden[i] *= layer.LayerScalar
 		}
@@ -230,10 +246,10 @@ func validateMTPDrafterExternalKV(d *Gemma4MTPDrafter, externalKV *MTPDrafterExt
 		if len(externalKV.K[source]) != wantKV || len(externalKV.V[source]) != wantKV {
 			return fmt.Errorf("drafter layer %d external KV K/V=%d/%d, want %d", i, len(externalKV.K[source]), len(externalKV.V[source]), wantKV)
 		}
-		if layer.InputNorm == nil || layer.PostNorm == nil || layer.QNorm == nil {
+		if layer.InputNorm == nil || layer.PostNorm == nil || layer.PreFFNNorm == nil || layer.PostFFNNorm == nil || layer.QNorm == nil {
 			return fmt.Errorf("drafter layer %d missing q-only norms", i)
 		}
-		if len(layer.InputNorm.Data()) < d.Config.HiddenSize || len(layer.PostNorm.Data()) < d.Config.HiddenSize || len(layer.QNorm.Data()) < headDim {
+		if len(layer.InputNorm.Data()) < d.Config.HiddenSize || len(layer.PostNorm.Data()) < d.Config.HiddenSize || len(layer.PreFFNNorm.Data()) < d.Config.HiddenSize || len(layer.PostFFNNorm.Data()) < d.Config.HiddenSize || len(layer.QNorm.Data()) < headDim {
 			return fmt.Errorf("drafter layer %d norm dims are too small", i)
 		}
 		if len(layer.QW) != qDim*d.Config.HiddenSize || len(layer.OW) != d.Config.HiddenSize*qDim {

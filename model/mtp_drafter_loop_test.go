@@ -224,7 +224,10 @@ func validDrafterStepScaffold() *Gemma4MTPDrafter {
 	d.Layers = []Gemma4MTPDrafterLayer{{
 		InputNorm:     tensor.Ones([]int{2}),
 		PostNorm:      tensor.Ones([]int{2}),
+		PreFFNNorm:    tensor.Ones([]int{2}),
+		PostFFNNorm:   tensor.Ones([]int{2}),
 		QNorm:         tensor.Ones([]int{2}),
+		LayerScalar:   1,
 		KVSourceLayer: -1,
 		QW:            []float32{1, 0, 0, 1},
 		OW:            []float32{1, 0, 0, 1},
