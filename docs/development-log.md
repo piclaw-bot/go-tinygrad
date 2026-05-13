@@ -1509,3 +1509,12 @@ Audited the newly extracted `finishCPUDecodeStep` helper:
 
 - Added explicit final-norm backing length validation before mutating the hidden state.
 - Added regression coverage that a short final norm is rejected and does not modify caller-owned hidden scratch.
+
+
+## Session 173: Documentation refresh after decode/MTP audits
+
+Reviewed and refreshed docs after the latest MTP and CPU generation audits:
+
+- README and architecture docs now mention MTP verifier plan/forward scaffolding, alias-safe drafter projections, CPU decode finish/final-norm validation, and CPU generation allocation guards.
+- MTP speculative docs now describe `RunMTPVerifierForward` as a contract-validating not-implemented scaffold and note that the CPU decode finish helper returns copied final activations for verifier use.
+- Development log remains the detailed record of aggressive runtime validation, scaffold hardening, and follow-up implementation constraints.
