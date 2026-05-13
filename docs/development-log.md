@@ -1594,3 +1594,10 @@ Audited `RunMTPVerifierForward` against the full CPU `Generate` semantics for re
 - Added prompt/history KV length validation before the verifier appends staged candidate K/V.
 - Added an explicit rejection for Gemma4 per-layer input gating/PLI until the verifier loop can share the full `Generate` PLI semantics.
 - Added tests for non-zero start-position history KV requirements and PLI rejection.
+
+## Session 183: Deterministic one-layer verifier acceptance
+
+Continued the next MTP integration slice:
+
+- Added an explicit one-layer `RunMTPVerifierForward` test that exercises `ForwardLayer`, produces deterministic all-accepted draft behavior, verifies output tokens, stages KV, and checks final activation width.
+- Focused verifier tests, no-run all-package gate, vet, and diff checks passed.

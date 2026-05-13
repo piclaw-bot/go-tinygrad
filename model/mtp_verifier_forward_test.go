@@ -58,6 +58,33 @@ func TestRunMTPVerifierForwardFirstTokenRejectionZeroLayer(t *testing.T) {
 	}
 }
 
+func TestRunMTPVerifierForwardOneLayerDeterministicAcceptance(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	plan := mustMTPVerifierPlan(t, m, 0, []int{0}, 0)
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	result, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
+	if err != nil {
+		t.Fatalf("RunMTPVerifierForward: %v", err)
+	}
+	if !result.Acceptance.AllDraftsAccepted || result.Acceptance.AcceptedPrefixLen != 1 {
+		t.Fatalf("acceptance=%+v, want deterministic all-accepted one-token draft", result.Acceptance)
+	}
+	if !sameInts(result.Acceptance.OutputTokens, []int{0, 0}) {
+		t.Fatalf("OutputTokens=%v want [0 0]", result.Acceptance.OutputTokens)
+	}
+	kvDim, err := m.LayerKVDim(0)
+	if err != nil {
+		t.Fatalf("LayerKVDim: %v", err)
+	}
+	if got, want := len(kvCacheK[0]), len(plan.VerifierTokens)*kvDim; got != want {
+		t.Fatalf("staged K len=%d want %d", got, want)
+	}
+	if len(result.FinalActivation) != m.Config.HiddenSize {
+		t.Fatalf("FinalActivation len=%d want %d", len(result.FinalActivation), m.Config.HiddenSize)
+	}
+}
+
 func TestRunMTPVerifierForwardFloatKVCommitKeepsAcceptedPrefix(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 0)
