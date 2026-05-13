@@ -1392,3 +1392,13 @@ Completed the CPU generation smoke matrix with short budgets:
 - Eager-load small model smoke: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2 -eager-load` passed.
 - TurboQuant CPU smoke: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2 -turbo-quant` passed.
 - Qwen3 MoE loader/short-generation smoke: `go run ./cmd/llmgen -model models/qwen3-30b-a3b-mlx4 -prompt 'Hi' -tokens 0` passed within the current resource budget.
+
+## Session 159: GPU and hybrid runtime smoke matrix
+
+Completed the GPU/hybrid runtime smoke matrix on the current host:
+
+- CUDA availability probe passed (`nvidia-smi` reports a CUDA-capable NVIDIA driver/device).
+- SmolLM2 GPU smoke passed: `go run ./cmd/llmgen -model models/smollm2-135m -gpu -prompt 'Hello' -tokens 2`.
+- SmolLM2 hybrid smoke passed: `go run ./cmd/llmgen -model models/smollm2-135m -gpu -gpu-layers 4 -prompt 'Hello' -tokens 2`.
+- Gemma4 E2B MLX4 GPU decode smoke passed with a one-token budget: `go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -gpu -prompt 'Hello' -tokens 1`.
+- Normal-path GPU diagnostics remained quiet without `GO_PHERENCE_GPU_DEBUG` during a SmolLM2 GPU smoke.
