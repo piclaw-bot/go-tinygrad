@@ -1340,3 +1340,11 @@ Audited MTP acceptance and KV commit semantics:
 - Added `MTPAcceptance.Validate` so manually assembled accept/reject results are checked before committing staged verifier KV.
 - Float and compressed KV commit helpers now reject inconsistent accepted/verified counts, accepted-token/output-token mismatches, invalid bonus tokens, and inconsistent all-accepted/rejected state before mutating caches.
 - Updated KV commit tests to use constructor-produced acceptance values and added malformed-state regression cases.
+
+## Session 153: Documentation refresh after SIMD and MTP audits
+
+Reviewed and refreshed project documentation after the latest audit fixes:
+
+- README and architecture docs now mention the Phase 6.6 SIMD guard baseline: empty vector/BF16 calls route to scalar fallbacks, GEBP scratch is per-call, and SGEMM/GEBP/gather byte offsets are checked before unsafe pointer arithmetic.
+- MTP docs now state that work resumed after Phase 6.5 closeout and document model-aware verifier validation plus acceptance consistency checks before KV commit.
+- Refactor and SIMD reorg notes now preserve the updated follow-up constraints for Phase 6.8 model splitting and future SIMD provider/subpackage splits.

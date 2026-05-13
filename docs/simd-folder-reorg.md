@@ -156,3 +156,13 @@ The facade should select one provider at init/runtime capability time:
 5. Only after all providers are split, remove transitional package-level assembly declarations from the facade.
 
 This design keeps `github.com/rcarmo/go-pherence/backends/simd` as the only public import path while giving future subpackages a clear implementation-only contract.
+
+
+## Recent facade guard baseline
+
+Recent Phase 6.6 audit fixes now also require provider APIs to preserve these facade behaviors:
+
+- Public vector/BF16 entrypoints route zero-length slices through scalar fallbacks rather than assembly stubs.
+- GEBP packing scratch is per-call, not package-global, so concurrent calls cannot alias packed B tiles.
+- Unsupported-architecture public SGEMM entrypoints are safe no-ops behind `HasSgemmAsm`; private provider stubs may still panic if reached incorrectly.
+- Blocked/GEBP/gather SGEMM pointer offsets use checked products and checked float32 byte offsets before `unsafe.Add`.
