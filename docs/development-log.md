@@ -1559,3 +1559,12 @@ Started the drafter-loop section after verifier-forward coverage:
 - Added `MTPDrafterState` for previous token plus copied main-model activation carry.
 - Added `RunMTPDrafterStep` as the future q-only assistant forward entrypoint; it validates drafter dimensions, previous-token bounds, activation/embedding widths, projection weights, norm, and layer count before returning an explicit not-implemented error.
 - Added focused validation/copy-semantics tests for drafter state and drafter-step contract checks.
+
+## Session 179: Projection-only MTP drafter step
+
+Continued the drafter-loop implementation plan:
+
+- Changed `RunMTPDrafterStep` into a main-model method so it can use backbone token embeddings and the main LM head.
+- Implemented the projection/LM-head shell for zero-layer synthetic drafter fixtures: token embedding + previous verifier activation → `PreProjectInto` → `PostProjectInto` → main-model LM-head logits/argmax → next drafter state.
+- Real q-only drafter layers still return an explicit not-implemented error until external/main-model KV attention is wired.
+- Added tests for projection-only output, next-state copy semantics, dimension mismatches, missing projections, and q-only not-implemented behavior.

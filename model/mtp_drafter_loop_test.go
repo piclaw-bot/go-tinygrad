@@ -39,8 +39,35 @@ func TestNewMTPDrafterStateValidation(t *testing.T) {
 	}
 }
 
+func TestRunMTPDrafterStepProjectionOnly(t *testing.T) {
+	m := validDrafterStepBackboneModel()
+	d := validProjectionOnlyDrafter()
+	state, err := NewMTPDrafterState(1, []float32{0.5, 0.25}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	got, err := m.RunMTPDrafterStep(d, state)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterStep: %v", err)
+	}
+	if got.Token != 1 {
+		t.Fatalf("Token=%d want 1 logits=%v", got.Token, got.Logits)
+	}
+	if !sameFloat32s(got.NextActivation, []float32{0, 0.5}) {
+		t.Fatalf("NextActivation=%v want [0 0.5]", got.NextActivation)
+	}
+	got.NextActivation[0] = 99
+	if got.NextState.Activation[0] == 99 {
+		t.Fatal("NextState activation aliases result activation")
+	}
+}
+
 func TestRunMTPDrafterStepContractValidation(t *testing.T) {
-	if _, _, err := (*Gemma4MTPDrafter)(nil).RunMTPDrafterStep(MTPDrafterState{}, nil); err == nil {
+	m := validDrafterStepBackboneModel()
+	if _, err := (*LlamaModel)(nil).RunMTPDrafterStep(validProjectionOnlyDrafter(), MTPDrafterState{}); err == nil {
+		t.Fatal("accepted nil model")
+	}
+	if _, err := m.RunMTPDrafterStep(nil, MTPDrafterState{}); err == nil {
 		t.Fatal("accepted nil drafter")
 	}
 	d := validDrafterStepScaffold()
@@ -48,49 +75,71 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMTPDrafterState: %v", err)
 	}
-	_, _, err = d.RunMTPDrafterStep(state, []float32{1, 0})
-	if err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("RunMTPDrafterStep err=%v, want not implemented", err)
+	_, err = m.RunMTPDrafterStep(d, state)
+	if err == nil || !strings.Contains(err.Error(), "q-only layer forward not implemented") {
+		t.Fatalf("RunMTPDrafterStep err=%v, want q-only not implemented", err)
 	}
 
 	bad := *d
 	bad.Config.VocabSize = 0
-	if _, _, err := bad.RunMTPDrafterStep(state, []float32{1, 0}); err == nil {
+	if _, err := m.RunMTPDrafterStep(&bad, state); err == nil {
 		t.Fatal("accepted invalid drafter dims")
 	}
-	if _, _, err := d.RunMTPDrafterStep(MTPDrafterState{PreviousToken: 99, Activation: []float32{1, 2}}, []float32{1, 0}); err == nil {
+	bad = *d
+	bad.BackboneHiddenSize = 3
+	if _, err := m.RunMTPDrafterStep(&bad, MTPDrafterState{PreviousToken: 1, Activation: []float32{1, 2, 3}}); err == nil {
+		t.Fatal("accepted model/drafter dimension mismatch")
+	}
+	if _, err := m.RunMTPDrafterStep(d, MTPDrafterState{PreviousToken: 99, Activation: []float32{1, 2}}); err == nil {
 		t.Fatal("accepted previous token outside vocab")
 	}
-	if _, _, err := d.RunMTPDrafterStep(MTPDrafterState{PreviousToken: 1, Activation: []float32{1}}, []float32{1, 0}); err == nil {
+	if _, err := m.RunMTPDrafterStep(d, MTPDrafterState{PreviousToken: 1, Activation: []float32{1}}); err == nil {
 		t.Fatal("accepted wrong state activation width")
-	}
-	if _, _, err := d.RunMTPDrafterStep(state, []float32{1}); err == nil {
-		t.Fatal("accepted wrong backbone embedding width")
 	}
 	bad = *d
 	bad.PreProjection = nil
-	if _, _, err := bad.RunMTPDrafterStep(state, []float32{1, 0}); err == nil {
+	if _, err := m.RunMTPDrafterStep(&bad, state); err == nil {
 		t.Fatal("accepted missing projection weights")
 	}
-	bad = *d
-	bad.Norm = nil
-	if _, _, err := bad.RunMTPDrafterStep(state, []float32{1, 0}); err == nil {
-		t.Fatal("accepted missing norm")
+}
+
+func validDrafterStepBackboneModel() *LlamaModel {
+	return &LlamaModel{
+		Config: LlamaConfig{VocabSize: 4, HiddenSize: 2},
+		EmbedTokens: tensor.FromFloat32([]float32{
+			1, 0,
+			0, 1,
+			1, 1,
+			-1, 0,
+		}, []int{4, 2}),
+		LMHead: tensor.FromFloat32([]float32{
+			1, 0,
+			0, 1,
+			1, 1,
+			-1, 0,
+		}, []int{4, 2}),
 	}
-	bad = *d
-	bad.Layers = nil
-	if _, _, err := bad.RunMTPDrafterStep(state, []float32{1, 0}); err == nil {
-		t.Fatal("accepted missing layers")
+}
+
+func validProjectionOnlyDrafter() *Gemma4MTPDrafter {
+	return &Gemma4MTPDrafter{
+		Config:             LlamaConfig{VocabSize: 4, HiddenSize: 2, NumLayers: 0},
+		BackboneHiddenSize: 2,
+		PreProjection: []float32{
+			1, 0, 0, 0,
+			0, 0, 1, 0,
+		},
+		PostProjection: []float32{
+			1, 0,
+			0, 1,
+		},
 	}
 }
 
 func validDrafterStepScaffold() *Gemma4MTPDrafter {
-	return &Gemma4MTPDrafter{
-		Config:             LlamaConfig{VocabSize: 4, HiddenSize: 2, NumLayers: 1},
-		BackboneHiddenSize: 2,
-		PreProjection:      make([]float32, 2*4),
-		PostProjection:     make([]float32, 2*2),
-		Norm:               tensor.Ones([]int{2}),
-		Layers:             []Gemma4MTPDrafterLayer{{KVSourceLayer: -1}},
-	}
+	d := validProjectionOnlyDrafter()
+	d.Config.NumLayers = 1
+	d.Norm = tensor.Ones([]int{2})
+	d.Layers = []Gemma4MTPDrafterLayer{{KVSourceLayer: -1}}
+	return d
 }
