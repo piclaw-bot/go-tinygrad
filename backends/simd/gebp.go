@@ -6,16 +6,11 @@ import (
 
 const gebpNR = 16
 
-var gebpBuf []float32
-
-func ensureGebpBuf(size int) []float32 {
+func makeGebpBuf(size int) []float32 {
 	if size <= 0 {
 		return nil
 	}
-	if cap(gebpBuf) < size {
-		gebpBuf = make([]float32, size)
-	}
-	return gebpBuf[:size]
+	return make([]float32, size)
 }
 
 func packBNT(b []float32, ldb, jj, nr, k int, bp []float32) {
@@ -94,7 +89,7 @@ func SgemmNTGebp(m, n, k int, alpha float32, aPtr, bPtr, cPtr unsafe.Pointer, ld
 	a := unsafe.Slice((*float32)(aPtr), m*lda)
 	b := unsafe.Slice((*float32)(bPtr), n*ldb)
 	c := unsafe.Slice((*float32)(cPtr), m*ldc)
-	bp := ensureGebpBuf(k * gebpNR)
+	bp := makeGebpBuf(k * gebpNR)
 
 	for jj := 0; jj < n; jj += gebpNR {
 		nr := gebpNR

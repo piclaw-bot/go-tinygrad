@@ -6,8 +6,8 @@ import (
 )
 
 func TestGEBPValidationRejectsMalformedArgs(t *testing.T) {
-	if ensureGebpBuf(-1) != nil || ensureGebpBuf(0) != nil {
-		t.Fatal("ensureGebpBuf should return nil for non-positive sizes")
+	if makeGebpBuf(-1) != nil || makeGebpBuf(0) != nil {
+		t.Fatal("makeGebpBuf should return nil for non-positive sizes")
 	}
 	if validGEBPArgs(1, 1, 1, nil, unsafe.Pointer(&[]float32{1}[0]), unsafe.Pointer(&[]float32{1}[0]), 1, 1, 1) {
 		t.Fatal("nil pointer args accepted")
@@ -29,6 +29,18 @@ func TestGEBPValidationRejectsMalformedArgs(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)
 	if validPackBNTArgs(make([]float32, 1), maxInt, maxInt, 2, 2, make([]float32, gebpNR)) {
 		t.Fatal("overflowing packBNT args accepted")
+	}
+}
+
+func TestMakeGebpBufReturnsIndependentScratch(t *testing.T) {
+	a := makeGebpBuf(gebpNR)
+	b := makeGebpBuf(gebpNR)
+	if len(a) != gebpNR || len(b) != gebpNR {
+		t.Fatalf("unexpected scratch lengths: %d %d", len(a), len(b))
+	}
+	a[0] = 123
+	if b[0] != 0 {
+		t.Fatalf("scratch buffers alias: b[0]=%f", b[0])
 	}
 }
 

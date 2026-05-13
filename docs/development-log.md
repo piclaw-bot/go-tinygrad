@@ -1298,3 +1298,12 @@ Designed the Phase 6.6 SIMD bridge API before any literal subpackage split:
 - Future `scalar`, `amd64`, and `arm64` packages should expose provider-style kernel groups rather than direct public functions consumed by model code.
 - Assembly symbols remain provider-local after the split; the facade calls prevalidated kernels and preserves public malformed-input/no-op behavior.
 - Migration order is facade-internal provider structs first, then scalar split, then amd64/arm64 splits one family at a time.
+
+## Session 148: SIMD code-smell audit fixes
+
+Audited `backends/simd` for facade and subpackage-split hazards:
+
+- Replaced the shared package-level GEBP scratch buffer with per-call scratch allocation so concurrent `SgemmNTGebp` calls cannot race or alias packed-B tiles.
+- Added a regression check that GEBP scratch allocations are independent.
+- Changed unsupported-architecture `SgemmNT`/`SgemmNN` fallbacks from panics to safe no-ops, preserving the `backends/simd` facade policy that public entrypoints remain defensive even when callers should check `HasSgemmAsm`.
+- Verified native SIMD tests and a non-amd64 compile-only check (`GOARCH=riscv64 go test -c ./backends/simd`).
