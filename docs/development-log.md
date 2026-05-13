@@ -1551,3 +1551,11 @@ Completed the remaining verifier-forward KV keep-prefix test coverage:
 - Added a resource-safe compressed/TurboQuant-backed KV commit test using the verifier result from `RunMTPVerifierForward`.
 - The test stages compressed KV entries for all verifier positions, commits via `MTPVerifierResult.CommitCompressedKV`, and verifies the final sequence/K lengths match `accepted_prefix_len + 1`.
 - Focused verifier tests, no-run all-package gate, vet, and diff checks passed. Public speculative CLI exposure remains disabled until the drafter loop and end-to-end smokes are implemented.
+
+## Session 178: MTP drafter state and forward contract
+
+Started the drafter-loop section after verifier-forward coverage:
+
+- Added `MTPDrafterState` for previous token plus copied main-model activation carry.
+- Added `RunMTPDrafterStep` as the future q-only assistant forward entrypoint; it validates drafter dimensions, previous-token bounds, activation/embedding widths, projection weights, norm, and layer count before returning an explicit not-implemented error.
+- Added focused validation/copy-semantics tests for drafter state and drafter-step contract checks.
