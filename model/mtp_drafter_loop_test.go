@@ -80,9 +80,12 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 		t.Fatalf("RunMTPDrafterStep err=%v, want missing external KV", err)
 	}
 	externalKV := &MTPDrafterExternalKV{K: [][]float32{{1, 0}}, V: [][]float32{{0, 1}}, SourceLayers: []int{0}, SeqLen: 1}
-	_, err = m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
-	if err == nil || !strings.Contains(err.Error(), "q-only layer forward not implemented") {
-		t.Fatalf("RunMTPDrafterStep err=%v, want q-only not implemented", err)
+	got, err := m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterStepWithExternalKV: %v", err)
+	}
+	if len(got.Logits) != m.Config.VocabSize || len(got.NextActivation) != d.BackboneHiddenSize {
+		t.Fatalf("result logits/activation len=%d/%d", len(got.Logits), len(got.NextActivation))
 	}
 
 	bad := *d

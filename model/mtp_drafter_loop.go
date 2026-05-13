@@ -70,8 +70,12 @@ func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state 
 	if err := d.PreProjectInto(assistantHidden, backboneEmbedding, state.Activation); err != nil {
 		return MTPDrafterStepResult{}, err
 	}
-	if d.Config.NumLayers != 0 || len(d.Layers) != 0 {
-		return MTPDrafterStepResult{}, fmt.Errorf("MTP drafter q-only layer forward not implemented")
+	for l := 0; l < d.Config.NumLayers; l++ {
+		var err error
+		assistantHidden, err = runMTPDrafterQOnlyLayer(d, assistantHidden, l, externalKV)
+		if err != nil {
+			return MTPDrafterStepResult{}, err
+		}
 	}
 	nextActivation := make([]float32, d.BackboneHiddenSize)
 	if err := d.PostProjectInto(nextActivation, assistantHidden); err != nil {
@@ -121,6 +125,58 @@ func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPD
 		return nil
 	}
 	return validateMTPDrafterExternalKV(d, externalKV)
+}
+
+func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int, externalKV *MTPDrafterExternalKV) ([]float32, error) {
+	if d == nil || layerIdx < 0 || layerIdx >= len(d.Layers) {
+		return nil, fmt.Errorf("invalid drafter layer %d", layerIdx)
+	}
+	layer := &d.Layers[layerIdx]
+	h := d.Config.HiddenSize
+	headDim := d.Config.HeadDim
+	if layer.HeadDimLocal > 0 {
+		headDim = layer.HeadDimLocal
+	}
+	qDim := d.Config.NumHeads * headDim
+	source := externalKV.SourceLayers[layerIdx]
+	residual := append([]float32(nil), hidden...)
+	normed := append([]float32(nil), hidden...)
+	rmsNormInPlace(normed, layer.InputNorm.Data(), float32(d.Config.RMSNormEps))
+	q := make([]float32, qDim)
+	gemvNT(q, normed, layer.QW, h, qDim)
+	qNorm := layer.QNorm.Data()
+	for head := 0; head < d.Config.NumHeads; head++ {
+		rmsNormInPlace(q[head*headDim:(head+1)*headDim], qNorm, float32(d.Config.RMSNormEps))
+	}
+	attnOut := gqaAttention(q, externalKV.K[source], externalKV.V[source], externalKV.SeqLen, d.Config.NumHeads, d.Config.NumKVHeads, headDim)
+	if attnOut == nil {
+		return nil, fmt.Errorf("drafter layer %d external attention failed", layerIdx)
+	}
+	oOut := make([]float32, h)
+	gemvNT(oOut, attnOut, layer.OW, qDim, h)
+	for i := 0; i < h; i++ {
+		hidden[i] = residual[i] + oOut[i]
+	}
+	copy(residual, hidden)
+	rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
+	gate := make([]float32, d.Config.Intermediate)
+	up := make([]float32, d.Config.Intermediate)
+	gemvNT(gate, hidden, layer.GateW, h, d.Config.Intermediate)
+	gemvNT(up, hidden, layer.UpW, h, d.Config.Intermediate)
+	for i := range gate {
+		gate[i] = geluTanh(gate[i]) * up[i]
+	}
+	down := make([]float32, h)
+	gemvNT(down, gate, layer.DownW, d.Config.Intermediate, h)
+	for i := 0; i < h; i++ {
+		hidden[i] = residual[i] + down[i]
+	}
+	if layer.LayerScalar != 0 && layer.LayerScalar != 1 {
+		for i := range hidden {
+			hidden[i] *= layer.LayerScalar
+		}
+	}
+	return hidden, nil
 }
 
 func validateMTPDrafterExternalKV(d *Gemma4MTPDrafter, externalKV *MTPDrafterExternalKV) error {

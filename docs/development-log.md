@@ -1618,3 +1618,11 @@ Started extending the drafter step beyond projection-only:
 - Added `RunMTPDrafterStepWithExternalKV` so q-only execution has a clear external-KV contract while the projection-only wrapper remains unchanged.
 - Validated q-only layer count, source mapping, source KV lengths, attention/MLP weight dimensions, and required norms before returning the existing q-only not-implemented error.
 - Added malformed external-KV and q-only dimension tests.
+
+## Session 186: Synthetic q-only MTP drafter layer
+
+Implemented the first q-only drafter execution slice:
+
+- `RunMTPDrafterStepWithExternalKV` now runs validated q-only drafter layers instead of stopping after projection validation.
+- The synthetic path performs input norm, q projection, q norm, external GQA attention over the read-only main-model KV view, output projection, residual/post norm, MLP, post projection, and main LM-head logits.
+- Updated drafter-loop tests so the one-layer synthetic fixture executes successfully while malformed external-KV cases still fail validation.
