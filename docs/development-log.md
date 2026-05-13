@@ -1272,3 +1272,12 @@ Completed the final Phase 6.5 documentation sweep after recording mechanical spl
 - README and architecture docs now state that CUDA runtime, model package, and generation runtime splits are deferred follow-up phases rather than Phase 6.5 blockers.
 - GPU and MTP docs now point at the deferred Phase 6.7/6.8/6.9 split plan and keep MTP/speculative decoding paused until validation closeout is recorded.
 - The remaining closeout work is validation/smoke testing and the final Phase 6.5 closeout note.
+
+## Session 145: Phase 6.5 final validation gate
+
+Completed the Phase 6.5 final validation gate:
+
+- SmolLM2 CPU loader/generation smoke passed: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2`.
+- Gemma4 E2B MLX4 CPU loader/generation smoke passed: `go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2`.
+- Full test gate passed: `go test ./... -count=1`.
+- `go vet ./...` and `git diff --check` passed.

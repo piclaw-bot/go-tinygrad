@@ -313,8 +313,8 @@ These larger moves are deliberately deferred out of Phase 6.5 into follow-up ref
    - [x] No-run compile gate `go test ./... -run '^$'` passes after recent batches.
    - [x] `go vet ./...` and `git diff --check` pass after recent batches.
    - [x] Focused model/cmd helper tests passed after MTP/MoE/inference/forward/cmd audit batches.
-   - [ ] Smoke runs for SmolLM2 and Gemma4 loader/generation paths pass or are explicitly skipped with reason.
-   - [ ] Final full `go test ./... -count=1` passes, or any resource-related skip/failure mode is documented with the focused substitute gate.
+   - [x] Smoke runs for SmolLM2 and Gemma4 loader/generation paths pass or are explicitly skipped with reason.
+   - [x] Final full `go test ./... -count=1` passes, or any resource-related skip/failure mode is documented with the focused substitute gate.
 
 7. **Final closeout**
    - [ ] All Phase 6.5 commits are pushed.
