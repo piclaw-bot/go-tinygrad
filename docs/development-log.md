@@ -1526,3 +1526,12 @@ Continued the MTP verifier-forward plan:
 - Added a synthetic regression test comparing `finishCPUDecodeStep` against the token appended by `Generate` on a zero-layer model.
 - The test exercises the shared embedding → final norm → LM-head → argmax path without requiring a large local fixture.
 - Focused model tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 175: Initial MTP verifier forward loop
+
+Continued the MTP verifier-forward implementation plan:
+
+- Replaced the explicit not-implemented scaffold with an initial CPU verifier loop over `MTPVerifierPlan.VerifierTokens`.
+- The loop embeds each verifier token, runs configured CPU layers through `ForwardLayer` against staged float KV caches, finishes decode via `finishCPUDecodeStep`, and returns per-position logits plus final activation via `NewMTPVerifierResultForModel`.
+- Kept the verifier contract validation factored in `validateMTPVerifierForwardInputs`.
+- Added zero-layer verifier-forward tests for zero-draft ordinary verification, one accepted draft plus bonus token, and first-token rejection.
