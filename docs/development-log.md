@@ -1487,3 +1487,10 @@ Continued the model forward-path audit:
 - Found the same malformed QNorm-without-KNorm assumption in the main CPU `Generate` loop.
 - Hardened `Generate` to stop and return the current output instead of dereferencing a nil `KNorm` when K/V is produced.
 - Added a synthetic malformed-model regression test that verifies `Generate` does not panic and returns the original prompt when `KNorm` is missing.
+
+## Session 170: Generate allocation guard audit
+
+Continued the CPU generation-path audit:
+
+- Hardened `Generate` against malformed public inputs/config before KV-cache allocation: negative `maxTokens`, overflowing output capacity, negative/short layer counts, invalid core dimensions, and overflowing per-layer KV/cache capacity now return the current prompt instead of risking panic or huge allocation.
+- Added synthetic malformed-config regression tests covering negative token budgets, short layer slices, invalid dimensions, and KV dimension overflow.

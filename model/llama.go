@@ -895,11 +895,25 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 	}
 
+	if maxTokens < 0 {
+		return append([]int(nil), tokenIDs...)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if maxTokens > maxInt-len(tokenIDs) || cfg.NumLayers < 0 || len(m.Layers) < cfg.NumLayers {
+		return append([]int(nil), tokenIDs...)
+	}
+	outCap := len(tokenIDs) + maxTokens
+	output := make([]int, len(tokenIDs), outCap)
+	copy(output, tokenIDs)
+
 	h := cfg.HiddenSize
 	numHeads := cfg.NumHeads
 	numKVHeads := cfg.NumKVHeads
 	headDim := cfg.HeadDim
 	inter := cfg.Intermediate
+	if h <= 0 || numHeads <= 0 || numKVHeads <= 0 || headDim <= 0 || inter < 0 {
+		return output
+	}
 
 	// Allocate KV cache (with optional TurboQuant compression)
 	kvCacheK := make([][]float32, cfg.NumLayers) // [layers][seqLen * layerKVDim]
@@ -927,7 +941,10 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if m.Layers[l].HeadDimLocal > 0 {
 				layerHD = m.Layers[l].HeadDimLocal
 			}
-			layerKVDim := numKVHeads * layerHD
+			layerKVDim, ok := checkedProduct(numKVHeads, layerHD)
+			if layerHD <= 0 || !ok {
+				return output
+			}
 			tq := getTQ(layerHD)
 			compressedKV[l] = kv.NewCompressedKVCache(layerKVDim, numKVHeads, layerHD, tq, tq.IsProtectedLayer(l))
 		}
@@ -937,14 +954,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if m.Layers[l].HeadDimLocal > 0 {
 				layerHD = m.Layers[l].HeadDimLocal
 			}
-			layerKVDim := numKVHeads * layerHD
-			kvCacheK[l] = make([]float32, 0, 2048*layerKVDim)
-			kvCacheV[l] = make([]float32, 0, 2048*layerKVDim)
+			layerKVDim, ok := checkedProduct(numKVHeads, layerHD)
+			cacheCap, okCap := checkedProduct(2048, layerKVDim)
+			if layerHD <= 0 || !ok || !okCap {
+				return output
+			}
+			kvCacheK[l] = make([]float32, 0, cacheCap)
+			kvCacheV[l] = make([]float32, 0, cacheCap)
 		}
 	}
-
-	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
-	copy(output, tokenIDs)
 
 	// Reusable CPU decode scratch for GQA attention.
 	maxHeadDim := headDim
