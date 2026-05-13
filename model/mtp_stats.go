@@ -21,7 +21,7 @@ func (s MTPSpeculationStats) ValidateOneStepCapacity() error {
 	if s.Steps < 0 || s.DraftedTokens < 0 || s.VerifiedTokens < 0 || s.BonusTokens < 0 || s.OutputTokens < 0 {
 		return fmt.Errorf("invalid MTP stats counters: %+v", s)
 	}
-	if s.Steps == maxInt || s.DraftedTokens == maxInt || s.VerifiedTokens == maxInt || s.BonusTokens == maxInt || s.OutputTokens == maxInt {
+	if s.Steps == maxInt || s.DraftedTokens == maxInt || s.BonusTokens == maxInt || s.OutputTokens == maxInt {
 		return fmt.Errorf("MTP stats counters cannot record another step: %+v", s)
 	}
 	return nil

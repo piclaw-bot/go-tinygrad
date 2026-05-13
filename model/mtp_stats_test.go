@@ -36,6 +36,9 @@ func TestMTPSpeculationStatsValidateOneStepCapacity(t *testing.T) {
 	if err := (MTPSpeculationStats{Steps: int(^uint(0) >> 1)}).ValidateOneStepCapacity(); err == nil {
 		t.Fatal("accepted saturated stats counter")
 	}
+	if err := (MTPSpeculationStats{VerifiedTokens: int(^uint(0) >> 1)}).ValidateOneStepCapacity(); err != nil {
+		t.Fatalf("rejected saturated verified counter before acceptance is known: %v", err)
+	}
 }
 
 func TestMTPSpeculationStatsValidation(t *testing.T) {

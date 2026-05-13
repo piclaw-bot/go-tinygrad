@@ -1,6 +1,10 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rcarmo/go-pherence/runtime/kv"
+)
 
 // MTPSpeculativeStepResult is one internal speculative iteration: one drafter
 // step, one verifier pass, and updated stats. The caller owns committing or
@@ -30,11 +34,15 @@ func (m *LlamaModel) RunMTPSpeculativeStep(d *Gemma4MTPDrafter, state MTPDrafter
 	if err != nil {
 		return MTPSpeculativeStepResult{}, fmt.Errorf("MTP verifier plan: %w", err)
 	}
+	cp := kv.CheckpointFloatKV(kvCacheK, kvCacheV)
 	verifier, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
 	if err != nil {
 		return MTPSpeculativeStepResult{}, fmt.Errorf("MTP verifier forward: %w", err)
 	}
 	if err := stats.Record(verifier.Acceptance); err != nil {
+		if restoreErr := cp.Restore(kvCacheK, kvCacheV); restoreErr != nil {
+			return MTPSpeculativeStepResult{}, fmt.Errorf("MTP stats: %w; restore staged verifier KV: %v", err, restoreErr)
+		}
 		return MTPSpeculativeStepResult{}, fmt.Errorf("MTP stats: %w", err)
 	}
 	return MTPSpeculativeStepResult{Draft: draft, Plan: plan, Verifier: verifier, Stats: stats}, nil

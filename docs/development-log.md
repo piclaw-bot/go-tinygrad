@@ -1667,3 +1667,11 @@ Continued the MTP code-smell/logic audit:
 - Found that the q-only drafter layer path skipped `PreFFNNorm`/`PostFFNNorm` even though real Gemma assistant layers load those tensors.
 - Aligned the synthetic q-only path with `ForwardLayer` semantics for post-attention residual, pre-FFN norm, post-FFN norm, and layer scalar handling.
 - Tightened q-only validation to require the loaded FFN norm tensors.
+
+## Session 192: MTP audit — restore KV on post-verifier errors
+
+Continued speculative-step error-path auditing:
+
+- Found that some stats failures are only knowable after verifier acceptance (for example, accepted-token counter overflow), after verifier forward has already staged candidate KV.
+- `RunMTPSpeculativeStep` now checkpoints float KV immediately before verifier forward and restores it if post-verifier stats accounting fails.
+- Relaxed stats preflight so saturated `VerifiedTokens` is not rejected before acceptance is known, and added coverage for restoring staged KV on post-verifier stats failure.

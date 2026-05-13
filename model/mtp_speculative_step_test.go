@@ -36,6 +36,25 @@ func TestRunMTPSpeculativeStepProjectionOnly(t *testing.T) {
 	}
 }
 
+func TestRunMTPSpeculativeStepRestoresKVOnPostVerifierStatsFailure(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	d := validProjectionOnlyDrafterForModel(m)
+	d.PostProjection = []float32{0, 10, 10, 0}
+	state, err := NewMTPDrafterState(0, []float32{0, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	stats := MTPSpeculationStats{VerifiedTokens: int(^uint(0) >> 1)}
+	if _, err := m.RunMTPSpeculativeStep(d, state, nil, 0, kvCacheK, kvCacheV, stats); err == nil {
+		t.Fatal("accepted post-verifier stats overflow")
+	}
+	if len(kvCacheK[0]) != 0 || len(kvCacheV[0]) != 0 {
+		t.Fatalf("post-verifier stats failure left staged KV K/V=%d/%d", len(kvCacheK[0]), len(kvCacheV[0]))
+	}
+}
+
 func TestRunMTPSpeculativeStepValidation(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	d := validProjectionOnlyDrafterForModel(m)
