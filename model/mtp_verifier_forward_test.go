@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/rcarmo/go-pherence/runtime/kv"
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
@@ -54,6 +55,35 @@ func TestRunMTPVerifierForwardFirstTokenRejectionZeroLayer(t *testing.T) {
 	}
 	if !sameInts(result.Acceptance.OutputTokens, []int{1}) {
 		t.Fatalf("OutputTokens=%v want [1]", result.Acceptance.OutputTokens)
+	}
+}
+
+func TestRunMTPVerifierForwardFloatKVCommitKeepsAcceptedPrefix(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 0)
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	cp := kv.CheckpointFloatKV(kvCacheK, kvCacheV)
+	result, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
+	if err != nil {
+		t.Fatalf("RunMTPVerifierForward: %v", err)
+	}
+	kvDim, err := m.LayerKVDim(0)
+	if err != nil {
+		t.Fatalf("LayerKVDim: %v", err)
+	}
+	if got, want := len(kvCacheK[0]), len(plan.VerifierTokens)*kvDim; got != want {
+		t.Fatalf("staged K len=%d want %d", got, want)
+	}
+	keep := result.Acceptance.KVKeepTokens()
+	if err := result.CommitFloatKV(m, kvCacheK, kvCacheV, cp); err != nil {
+		t.Fatalf("CommitFloatKV: %v", err)
+	}
+	if got, want := len(kvCacheK[0]), keep*kvDim; got != want {
+		t.Fatalf("committed K len=%d want %d acceptance=%+v", got, want, result.Acceptance)
+	}
+	if got, want := len(kvCacheV[0]), keep*kvDim; got != want {
+		t.Fatalf("committed V len=%d want %d acceptance=%+v", got, want, result.Acceptance)
 	}
 }
 
@@ -125,6 +155,26 @@ func newZeroLayerVerifierModel() *LlamaModel {
 			1, 0,
 		}, []int{3, 2}),
 	}
+}
+
+func newSingleLayerVerifierModel() *LlamaModel {
+	m := newZeroLayerVerifierModel()
+	m.Config.NumLayers = 1
+	m.Config.Intermediate = 2
+	identity := []float32{1, 0, 0, 1}
+	m.Layers = []LlamaLayer{{
+		InputNorm: tensor.Ones([]int{2}),
+		PostNorm:  tensor.Ones([]int{2}),
+		HasKV:     true,
+		QW:        tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		KW:        tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		VW:        tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		OW:        tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		GateW:     tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		UpW:       tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+		DownW:     tensor.FromFloat32(append([]float32(nil), identity...), []int{2, 2}),
+	}}
+	return m
 }
 
 func mustMTPVerifierPlan(t *testing.T, m *LlamaModel, inputToken int, drafted []int, startPos int) MTPVerifierPlan {

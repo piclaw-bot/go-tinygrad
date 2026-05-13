@@ -1535,3 +1535,11 @@ Continued the MTP verifier-forward implementation plan:
 - The loop embeds each verifier token, runs configured CPU layers through `ForwardLayer` against staged float KV caches, finishes decode via `finishCPUDecodeStep`, and returns per-position logits plus final activation via `NewMTPVerifierResultForModel`.
 - Kept the verifier contract validation factored in `validateMTPVerifierForwardInputs`.
 - Added zero-layer verifier-forward tests for zero-draft ordinary verification, one accepted draft plus bonus token, and first-token rejection.
+
+## Session 176: MTP verifier float KV keep-prefix test
+
+Continued the MTP verifier-forward implementation plan:
+
+- Added a single-layer verifier-forward test that stages float KV entries through `RunMTPVerifierForward` and then commits the result.
+- The test verifies staged KV length for all verifier positions and post-commit K/V lengths of `accepted_prefix_len + 1`, covering rollback/keep-prefix behavior independent of whether the synthetic draft is accepted or rejected.
+- Focused verifier tests, no-run all-package gate, vet, and diff checks passed.
