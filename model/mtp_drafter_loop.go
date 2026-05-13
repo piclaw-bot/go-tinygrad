@@ -82,7 +82,7 @@ func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state 
 		if len(norm) < d.Config.HiddenSize {
 			return MTPDrafterStepResult{}, fmt.Errorf("drafter final norm len=%d, want at least %d", len(norm), d.Config.HiddenSize)
 		}
-		rmsNormInPlace(assistantHidden, norm, float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, assistantHidden, norm)
 	}
 	nextActivation := make([]float32, d.BackboneHiddenSize)
 	if err := d.PostProjectInto(nextActivation, assistantHidden); err != nil {
@@ -151,12 +151,12 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 	source := externalKV.SourceLayers[layerIdx]
 	residual := append([]float32(nil), hidden...)
 	normed := append([]float32(nil), hidden...)
-	rmsNormInPlace(normed, layer.InputNorm.Data(), float32(d.Config.RMSNormEps))
+	drafterRMSNormInPlace(d, normed, layer.InputNorm.Data())
 	q := make([]float32, qDim)
 	gemvNT(q, normed, layer.QW, h, qDim)
 	qNorm := layer.QNorm.Data()
 	for head := 0; head < d.Config.NumHeads; head++ {
-		rmsNormInPlace(q[head*headDim:(head+1)*headDim], qNorm, float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, q[head*headDim:(head+1)*headDim], qNorm)
 	}
 	attnOut := gqaAttention(q, externalKV.K[source], externalKV.V[source], externalKV.SeqLen, d.Config.NumHeads, d.Config.NumKVHeads, headDim)
 	if attnOut == nil {
@@ -165,7 +165,7 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 	oOut := make([]float32, h)
 	gemvNT(oOut, attnOut, layer.OW, qDim, h)
 	if layer.PreFFNNorm != nil {
-		rmsNormInPlace(oOut, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, oOut, layer.PostNorm.Data())
 		for i := 0; i < h; i++ {
 			hidden[i] = residual[i] + oOut[i]
 		}
@@ -175,12 +175,12 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 			hidden[i] = residual[i] + oOut[i]
 		}
 		copy(residual, hidden)
-		rmsNormInPlace(hidden, layer.PostNorm.Data(), float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, hidden, layer.PostNorm.Data())
 	}
 	mlpInput := hidden
 	if layer.PreFFNNorm != nil {
 		mlpInput = append([]float32(nil), hidden...)
-		rmsNormInPlace(mlpInput, layer.PreFFNNorm.Data(), float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, mlpInput, layer.PreFFNNorm.Data())
 	}
 	gate := make([]float32, d.Config.Intermediate)
 	up := make([]float32, d.Config.Intermediate)
@@ -192,7 +192,7 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 	down := make([]float32, h)
 	gemvNT(down, gate, layer.DownW, d.Config.Intermediate, h)
 	if layer.PostFFNNorm != nil {
-		rmsNormInPlace(down, layer.PostFFNNorm.Data(), float32(d.Config.RMSNormEps))
+		drafterRMSNormInPlace(d, down, layer.PostFFNNorm.Data())
 	}
 	for i := 0; i < h; i++ {
 		hidden[i] = residual[i] + down[i]
@@ -203,6 +203,14 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 		}
 	}
 	return hidden, nil
+}
+
+func drafterRMSNormInPlace(d *Gemma4MTPDrafter, x, weight []float32) {
+	if d != nil && (d.Config.ModelType == "gemma3_text" || d.Config.ModelType == "gemma4_text") {
+		rmsNormBF16(x, weight, float32(d.Config.RMSNormEps))
+		return
+	}
+	rmsNormInPlace(x, weight, float32(d.Config.RMSNormEps))
 }
 
 func validateMTPDrafterExternalKV(d *Gemma4MTPDrafter, externalKV *MTPDrafterExternalKV) error {

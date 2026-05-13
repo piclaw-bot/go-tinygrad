@@ -111,6 +111,18 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 	}
 }
 
+func TestMTPDrafterRMSNormUsesGemmaBF16Path(t *testing.T) {
+	d := validDrafterStepScaffold()
+	d.Config.ModelType = "gemma4_text"
+	x := []float32{1.0001, 2.0001}
+	want := append([]float32(nil), x...)
+	rmsNormBF16(want, []float32{1, 1}, float32(d.Config.RMSNormEps))
+	drafterRMSNormInPlace(d, x, []float32{1, 1})
+	if !sameFloat32s(x, want) {
+		t.Fatalf("drafter norm=%v want BF16 path %v", x, want)
+	}
+}
+
 func TestRunMTPDrafterStepAppliesFinalNormBeforePostProjection(t *testing.T) {
 	m := validDrafterStepBackboneModel()
 	d := validDrafterStepScaffold()

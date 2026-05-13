@@ -1675,3 +1675,11 @@ Continued speculative-step error-path auditing:
 - Found that some stats failures are only knowable after verifier acceptance (for example, accepted-token counter overflow), after verifier forward has already staged candidate KV.
 - `RunMTPSpeculativeStep` now checkpoints float KV immediately before verifier forward and restores it if post-verifier stats accounting fails.
 - Relaxed stats preflight so saturated `VerifiedTokens` is not rejected before acceptance is known, and added coverage for restoring staged KV on post-verifier stats failure.
+
+## Session 193: MTP audit — drafter Gemma norm precision
+
+Continued the MTP audit over q-only drafter math:
+
+- Found that q-only drafter execution always used the generic FP32 RMSNorm helper, diverging from Gemma3/Gemma4 CPU layer semantics.
+- Added a drafter norm helper that selects the BF16 RMSNorm path for Gemma-style drafter configs and uses it for input, q, post-attention, pre/post-FFN, and final drafter norms.
+- Added focused coverage that verifies Gemma4 drafter norm selection follows the BF16 path.
