@@ -1356,3 +1356,11 @@ Reset the sidebar plan around aggressive runtime validation and added the next s
 - `MTPVerifierPlan` prepares `[input_token]+drafted` verifier tokens plus absolute verifier positions for the future batched main-model verifier pass.
 - The plan validates nil model, vocab size, negative/out-of-vocab tokens, negative start positions, and position overflow.
 - Added tests for token/position construction, copy semantics, and malformed plan inputs.
+
+## Session 155: Full runtime unit gate
+
+Started the aggressive runtime validation plan:
+
+- Initial `go test ./... -count=1` exposed one stale MTP KV staging test that still used a manually assembled `MTPAcceptance` rejected by the new consistency validator.
+- Updated the test to use constructor-produced acceptance state via `AcceptMTPDraft`.
+- Full `go test ./... -count=1`, `go vet ./...`, and `git diff --check` now pass.

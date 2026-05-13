@@ -37,7 +37,10 @@ func TestLayerKVDimsAndModelCommitAcceptedFloatKV(t *testing.T) {
 		v[1][i] = float32(i + 300)
 	}
 	cp := kv.FloatKVCheckpoint{KLen: []int{8, 0, 0}, VLen: []int{8, 0, 0}}
-	acceptance := MTPAcceptance{AcceptedPrefixLen: 1} // keep two verifier positions
+	acceptance, err := AcceptMTPDraft([]int{10, 11}, []int{10, 12, 13}) // keep two verifier positions
+	if err != nil {
+		t.Fatalf("AcceptMTPDraft: %v", err)
+	}
 	if err := m.CommitAcceptedFloatKV(k, v, cp, acceptance); err != nil {
 		t.Fatalf("CommitAcceptedFloatKV: %v", err)
 	}
