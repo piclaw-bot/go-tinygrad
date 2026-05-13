@@ -1364,3 +1364,11 @@ Started the aggressive runtime validation plan:
 - Initial `go test ./... -count=1` exposed one stale MTP KV staging test that still used a manually assembled `MTPAcceptance` rejected by the new consistency validator.
 - Updated the test to use constructor-produced acceptance state via `AcceptMTPDraft`.
 - Full `go test ./... -count=1`, `go vet ./...`, and `git diff --check` now pass.
+
+## Session 156: Race-focused runtime gates
+
+Continued the aggressive runtime validation plan:
+
+- Passed shared race gate: `go test -race ./runtime/... ./loader/... ./tensor ./backends/simd -count=1`.
+- Broad model race regex `go test -race ./model -run 'MTP|KV|ForwardLayer|InferenceHelpers|Moe' -count=1` was killed after ~255s, likely because the regex still selected resource-heavy model diagnostics.
+- Passed focused safe substitute: `go test -race ./model -run 'TestMTP|TestNewMTP|TestAcceptMTP|TestCommitAccepted|TestLayerKVDim|TestLayerKVDims|TestTokenEmbeddingHelpers|TestGemma4PerLayerInputs|TestLMHeadLogitsInto|TestArgmaxLogits|TestInferenceHelpers|TestForwardLayerRejectsMalformedInputs|TestMoeForwardRejectsMalformedInputs' -count=1`.
