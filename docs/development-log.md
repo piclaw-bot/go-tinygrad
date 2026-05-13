@@ -1609,3 +1609,12 @@ Closed the verifier helper-boundary decision for the current slice:
 - Keep `RunMTPVerifierForward` on the existing `ForwardLayer` + `finishCPUDecodeStep` split for now.
 - Do not extract a fuller shared CPU decode-step helper yet; that boundary should wait until Gemma4 PLI and batched verifier semantics can be represented without diverging from `Generate`.
 - Refreshed `docs/mtp-speculative.md` to describe the current implemented CPU verifier loop instead of the older not-implemented scaffold.
+
+## Session 185: MTP drafter external-KV contract
+
+Started extending the drafter step beyond projection-only:
+
+- Added `MTPDrafterExternalKV`, an explicit read-only main-model KV view for q-only drafter layers.
+- Added `RunMTPDrafterStepWithExternalKV` so q-only execution has a clear external-KV contract while the projection-only wrapper remains unchanged.
+- Validated q-only layer count, source mapping, source KV lengths, attention/MLP weight dimensions, and required norms before returning the existing q-only not-implemented error.
+- Added malformed external-KV and q-only dimension tests.

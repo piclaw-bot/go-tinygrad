@@ -76,6 +76,11 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 		t.Fatalf("NewMTPDrafterState: %v", err)
 	}
 	_, err = m.RunMTPDrafterStep(d, state)
+	if err == nil || !strings.Contains(err.Error(), "external KV is required") {
+		t.Fatalf("RunMTPDrafterStep err=%v, want missing external KV", err)
+	}
+	externalKV := &MTPDrafterExternalKV{K: [][]float32{{1, 0}}, V: [][]float32{{0, 1}}, SourceLayers: []int{0}, SeqLen: 1}
+	_, err = m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
 	if err == nil || !strings.Contains(err.Error(), "q-only layer forward not implemented") {
 		t.Fatalf("RunMTPDrafterStep err=%v, want q-only not implemented", err)
 	}
@@ -100,6 +105,48 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 	bad.PreProjection = nil
 	if _, err := m.RunMTPDrafterStep(&bad, state); err == nil {
 		t.Fatal("accepted missing projection weights")
+	}
+}
+
+func TestRunMTPDrafterStepExternalKVValidation(t *testing.T) {
+	m := validDrafterStepBackboneModel()
+	d := validDrafterStepScaffold()
+	state, err := NewMTPDrafterState(1, []float32{0.5, 0.25}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	validKV := &MTPDrafterExternalKV{K: [][]float32{{1, 0}}, V: [][]float32{{0, 1}}, SourceLayers: []int{0}, SeqLen: 1}
+	badKV := *validKV
+	badKV.SeqLen = 0
+	if _, err := m.RunMTPDrafterStepWithExternalKV(d, state, &badKV); err == nil {
+		t.Fatal("accepted invalid external KV seq len")
+	}
+	badKV = *validKV
+	badKV.SourceLayers = nil
+	if _, err := m.RunMTPDrafterStepWithExternalKV(d, state, &badKV); err == nil {
+		t.Fatal("accepted missing external KV source mapping")
+	}
+	badKV = *validKV
+	badKV.SourceLayers = []int{1}
+	if _, err := m.RunMTPDrafterStepWithExternalKV(d, state, &badKV); err == nil {
+		t.Fatal("accepted out-of-range external KV source")
+	}
+	badKV = *validKV
+	badKV.K = [][]float32{{1}}
+	if _, err := m.RunMTPDrafterStepWithExternalKV(d, state, &badKV); err == nil {
+		t.Fatal("accepted wrong external KV width")
+	}
+	bad := *d
+	bad.Layers = append([]Gemma4MTPDrafterLayer(nil), d.Layers...)
+	bad.Layers[0].KVSourceLayer = 0
+	if _, err := m.RunMTPDrafterStepWithExternalKV(&bad, state, validKV); err == nil {
+		t.Fatal("accepted non-q-only drafter KV source")
+	}
+	bad = *d
+	bad.Layers = append([]Gemma4MTPDrafterLayer(nil), d.Layers...)
+	bad.Layers[0].QW = bad.Layers[0].QW[:1]
+	if _, err := m.RunMTPDrafterStepWithExternalKV(&bad, state, validKV); err == nil {
+		t.Fatal("accepted invalid q-only projection dims")
 	}
 }
 
@@ -139,7 +186,21 @@ func validProjectionOnlyDrafter() *Gemma4MTPDrafter {
 func validDrafterStepScaffold() *Gemma4MTPDrafter {
 	d := validProjectionOnlyDrafter()
 	d.Config.NumLayers = 1
+	d.Config.NumHeads = 1
+	d.Config.NumKVHeads = 1
+	d.Config.HeadDim = 2
+	d.Config.Intermediate = 2
 	d.Norm = tensor.Ones([]int{2})
-	d.Layers = []Gemma4MTPDrafterLayer{{KVSourceLayer: -1}}
+	d.Layers = []Gemma4MTPDrafterLayer{{
+		InputNorm:     tensor.Ones([]int{2}),
+		PostNorm:      tensor.Ones([]int{2}),
+		QNorm:         tensor.Ones([]int{2}),
+		KVSourceLayer: -1,
+		QW:            []float32{1, 0, 0, 1},
+		OW:            []float32{1, 0, 0, 1},
+		GateW:         []float32{1, 0, 0, 1},
+		UpW:           []float32{1, 0, 0, 1},
+		DownW:         []float32{1, 0, 0, 1},
+	}}
 	return d
 }

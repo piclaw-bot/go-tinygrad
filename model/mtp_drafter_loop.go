@@ -20,6 +20,17 @@ type MTPDrafterStepResult struct {
 	NextState      MTPDrafterState
 }
 
+// MTPDrafterExternalKV is the read-only main-model KV view consumed by q-only
+// drafter layers. SourceLayers maps drafter layer index -> main-model KV layer.
+// K/V are flat per-source-layer sequences with element width equal to the
+// drafter layer's KV head count times head dim.
+type MTPDrafterExternalKV struct {
+	K            [][]float32
+	V            [][]float32
+	SourceLayers []int
+	SeqLen       int
+}
+
 // NewMTPDrafterState validates and copies the activation carry for one drafter
 // loop. The activation width is the main/backbone model hidden size, not the
 // assistant hidden size.
@@ -42,7 +53,13 @@ func NewMTPDrafterState(previousToken int, activation []float32, backboneHiddenS
 // runtime validation. Real drafter assets with q-only layers still return an
 // explicit not-implemented error until external-KV attention is wired.
 func (m *LlamaModel) RunMTPDrafterStep(d *Gemma4MTPDrafter, state MTPDrafterState) (MTPDrafterStepResult, error) {
-	if err := m.validateMTPDrafterStepModel(d, state); err != nil {
+	return m.RunMTPDrafterStepWithExternalKV(d, state, nil)
+}
+
+// RunMTPDrafterStepWithExternalKV is RunMTPDrafterStep plus the explicit
+// external/main-model KV view needed by q-only drafter layers.
+func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) (MTPDrafterStepResult, error) {
+	if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
 		return MTPDrafterStepResult{}, err
 	}
 	backboneEmbedding := make([]float32, d.BackboneHiddenSize)
@@ -75,7 +92,7 @@ func (m *LlamaModel) RunMTPDrafterStep(d *Gemma4MTPDrafter, state MTPDrafterStat
 	return MTPDrafterStepResult{Token: tok, Logits: logits, NextActivation: append([]float32(nil), nextActivation...), NextState: nextState}, nil
 }
 
-func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPDrafterState) error {
+func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) error {
 	if m == nil {
 		return fmt.Errorf("nil model")
 	}
@@ -96,6 +113,69 @@ func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPD
 	}
 	if len(d.PreProjection) == 0 || len(d.PostProjection) == 0 {
 		return fmt.Errorf("drafter projection weights are not loaded")
+	}
+	if d.Config.NumLayers != len(d.Layers) {
+		return fmt.Errorf("drafter layer count=%d, want %d", len(d.Layers), d.Config.NumLayers)
+	}
+	if d.Config.NumLayers == 0 {
+		return nil
+	}
+	return validateMTPDrafterExternalKV(d, externalKV)
+}
+
+func validateMTPDrafterExternalKV(d *Gemma4MTPDrafter, externalKV *MTPDrafterExternalKV) error {
+	if externalKV == nil {
+		return fmt.Errorf("MTP drafter external KV is required for q-only layers")
+	}
+	if externalKV.SeqLen <= 0 {
+		return fmt.Errorf("invalid MTP drafter external KV seq len %d", externalKV.SeqLen)
+	}
+	if len(externalKV.SourceLayers) != d.Config.NumLayers {
+		return fmt.Errorf("drafter external KV source layers=%d, want %d", len(externalKV.SourceLayers), d.Config.NumLayers)
+	}
+	if d.Config.NumHeads <= 0 || d.Config.NumKVHeads <= 0 || d.Config.HeadDim <= 0 || d.Config.Intermediate <= 0 {
+		return fmt.Errorf("invalid drafter q-only dims heads=%d kvHeads=%d headDim=%d intermediate=%d", d.Config.NumHeads, d.Config.NumKVHeads, d.Config.HeadDim, d.Config.Intermediate)
+	}
+	for i := range d.Layers {
+		layer := &d.Layers[i]
+		headDim := d.Config.HeadDim
+		if layer.HeadDimLocal > 0 {
+			headDim = layer.HeadDimLocal
+		}
+		qDim, ok := checkedProduct(d.Config.NumHeads, headDim)
+		if headDim <= 0 || !ok {
+			return fmt.Errorf("invalid drafter layer %d q dim heads=%d headDim=%d", i, d.Config.NumHeads, headDim)
+		}
+		kvDim, ok := checkedProduct(d.Config.NumKVHeads, headDim)
+		if !ok {
+			return fmt.Errorf("invalid drafter layer %d KV dim kvHeads=%d headDim=%d", i, d.Config.NumKVHeads, headDim)
+		}
+		if layer.KVSourceLayer != -1 {
+			return fmt.Errorf("drafter layer %d has unexpected owned/shared KV source %d, want q-only -1", i, layer.KVSourceLayer)
+		}
+		source := externalKV.SourceLayers[i]
+		if source < 0 || source >= len(externalKV.K) || source >= len(externalKV.V) {
+			return fmt.Errorf("drafter layer %d external KV source %d out of range K/V=%d/%d", i, source, len(externalKV.K), len(externalKV.V))
+		}
+		wantKV, ok := checkedProduct(externalKV.SeqLen, kvDim)
+		if !ok {
+			return fmt.Errorf("drafter layer %d external KV length overflows seq=%d kvDim=%d", i, externalKV.SeqLen, kvDim)
+		}
+		if len(externalKV.K[source]) != wantKV || len(externalKV.V[source]) != wantKV {
+			return fmt.Errorf("drafter layer %d external KV K/V=%d/%d, want %d", i, len(externalKV.K[source]), len(externalKV.V[source]), wantKV)
+		}
+		if layer.InputNorm == nil || layer.PostNorm == nil || layer.QNorm == nil {
+			return fmt.Errorf("drafter layer %d missing q-only norms", i)
+		}
+		if len(layer.InputNorm.Data()) < d.Config.HiddenSize || len(layer.PostNorm.Data()) < d.Config.HiddenSize || len(layer.QNorm.Data()) < headDim {
+			return fmt.Errorf("drafter layer %d norm dims are too small", i)
+		}
+		if len(layer.QW) != qDim*d.Config.HiddenSize || len(layer.OW) != d.Config.HiddenSize*qDim {
+			return fmt.Errorf("drafter layer %d attention weight dims Q/O=%d/%d, want %d/%d", i, len(layer.QW), len(layer.OW), qDim*d.Config.HiddenSize, d.Config.HiddenSize*qDim)
+		}
+		if len(layer.GateW) != d.Config.Intermediate*d.Config.HiddenSize || len(layer.UpW) != d.Config.Intermediate*d.Config.HiddenSize || len(layer.DownW) != d.Config.HiddenSize*d.Config.Intermediate {
+			return fmt.Errorf("drafter layer %d MLP weight dims are invalid", i)
+		}
 	}
 	return nil
 }
