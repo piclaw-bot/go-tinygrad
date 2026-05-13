@@ -1348,3 +1348,11 @@ Reviewed and refreshed project documentation after the latest audit fixes:
 - README and architecture docs now mention the Phase 6.6 SIMD guard baseline: empty vector/BF16 calls route to scalar fallbacks, GEBP scratch is per-call, and SGEMM/GEBP/gather byte offsets are checked before unsafe pointer arithmetic.
 - MTP docs now state that work resumed after Phase 6.5 closeout and document model-aware verifier validation plus acceptance consistency checks before KV commit.
 - Refactor and SIMD reorg notes now preserve the updated follow-up constraints for Phase 6.8 model splitting and future SIMD provider/subpackage splits.
+
+## Session 154: Runtime validation plan reset and MTP verifier plan
+
+Reset the sidebar plan around aggressive runtime validation and added the next small MTP verifier-path building block:
+
+- `MTPVerifierPlan` prepares `[input_token]+drafted` verifier tokens plus absolute verifier positions for the future batched main-model verifier pass.
+- The plan validates nil model, vocab size, negative/out-of-vocab tokens, negative start positions, and position overflow.
+- Added tests for token/position construction, copy semantics, and malformed plan inputs.
