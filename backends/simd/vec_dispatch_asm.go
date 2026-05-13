@@ -52,7 +52,7 @@ func bf16NarrowFromF32Asm(dst []uint16, src []float32)
 
 // Snrm2 returns sqrt(sum(x[i]*x[i])). NOT the RMS — caller divides by sqrt(n).
 func Snrm2(x []float32) float32 {
-	if HasVecAsm {
+	if len(x) > 0 && HasVecAsm {
 		return snrm2Asm(x)
 	}
 	return snrm2Go(x)
@@ -60,7 +60,7 @@ func Snrm2(x []float32) float32 {
 
 // VecAdd computes dst[i] = a[i] + b[i] for i in 0..len(a)-1. dst may alias a.
 func VecAdd(dst, a, b []float32) {
-	if len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
+	if len(a) > 0 && len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
 		vecAddAsm(dst, a, b)
 		return
 	}
@@ -69,7 +69,7 @@ func VecAdd(dst, a, b []float32) {
 
 // VecMul computes dst[i] = a[i] * b[i]. dst may alias a.
 func VecMul(dst, a, b []float32) {
-	if len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
+	if len(a) > 0 && len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
 		vecMulAsm(dst, a, b)
 		return
 	}
@@ -78,7 +78,7 @@ func VecMul(dst, a, b []float32) {
 
 // VecScaleAdd computes dst[i] = a[i] + scale*b[i]. Used for residual + scaled output.
 func VecScaleAdd(dst, a, b []float32, scale float32) {
-	if len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
+	if len(a) > 0 && len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
 		vecScaleAddAsm(dst, a, b, scale)
 		return
 	}
@@ -87,7 +87,7 @@ func VecScaleAdd(dst, a, b []float32, scale float32) {
 
 // VecScale computes dst[i] = scale*a[i]. dst may alias a.
 func VecScale(dst, a []float32, scale float32) {
-	if len(dst) == len(a) && HasVecAsm {
+	if len(a) > 0 && len(dst) == len(a) && HasVecAsm {
 		vecScaleAsm(dst, a, scale)
 		return
 	}
@@ -104,7 +104,7 @@ func GELUTanhMul(dst, a, b []float32) { geluTanhMulGo(dst, a, b) }
 
 // RMSNorm computes x[i] = w[i] * x[i] / rms(x) in-place.
 func RMSNorm(x, w []float32, eps float32) {
-	if len(x) == len(w) && HasVecAsm {
+	if len(x) > 0 && len(x) == len(w) && HasVecAsm {
 		rmsNormAsm(x, w, eps)
 		return
 	}
@@ -113,7 +113,7 @@ func RMSNorm(x, w []float32, eps float32) {
 
 // RMSNormBF16 is RMSNorm with each output rounded to BF16 precision.
 func RMSNormBF16(x, w []float32, eps float32) {
-	if len(x) == len(w) && HasVecAsm {
+	if len(x) > 0 && len(x) == len(w) && HasVecAsm {
 		rmsNormBF16Asm(x, w, eps)
 		return
 	}
@@ -122,7 +122,7 @@ func RMSNormBF16(x, w []float32, eps float32) {
 
 // RMSNormNoScale normalizes x in-place by dividing by RMS, without weight.
 func RMSNormNoScale(x []float32, eps float32) {
-	if HasVecAsm {
+	if len(x) > 0 && HasVecAsm {
 		rmsNormNoScaleAsm(x, eps)
 		return
 	}
@@ -131,7 +131,7 @@ func RMSNormNoScale(x []float32, eps float32) {
 
 // ToBF16 rounds each element to BF16 precision in-place.
 func ToBF16(x []float32) {
-	if HasVecAsm {
+	if len(x) > 0 && HasVecAsm {
 		toBF16Asm(x)
 		return
 	}
@@ -140,7 +140,7 @@ func ToBF16(x []float32) {
 
 // BF16DotAsm computes dot product of two BF16 slices, accumulating in F32.
 func BF16DotAsm(x, y []uint16) float32 {
-	if len(x) == len(y) && HasVecAsm {
+	if len(x) > 0 && len(x) == len(y) && HasVecAsm {
 		return bf16DotAsm(x, y)
 	}
 	return BF16Dot(x, y)
@@ -148,7 +148,7 @@ func BF16DotAsm(x, y []uint16) float32 {
 
 // BF16RMSNormAsm computes RMSNorm in-place on BF16 data with BF16 weights.
 func BF16RMSNormAsm(x, w []uint16, eps float32) {
-	if len(x) == len(w) && HasVecAsm {
+	if len(x) > 0 && len(x) == len(w) && HasVecAsm {
 		bf16RMSNormAsm(x, w, eps)
 		return
 	}
@@ -157,7 +157,7 @@ func BF16RMSNormAsm(x, w []uint16, eps float32) {
 
 // BF16VecAddAsm computes dst = a + b for BF16 slices.
 func BF16VecAddAsm(dst, a, b []uint16) {
-	if len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
+	if len(a) > 0 && len(dst) == len(a) && len(b) == len(a) && HasVecAsm {
 		bf16VecAddAsm(dst, a, b)
 		return
 	}
@@ -166,7 +166,7 @@ func BF16VecAddAsm(dst, a, b []uint16) {
 
 // BF16WidenToF32 converts []uint16 BF16 to []float32 using SIMD when available.
 func BF16WidenToF32(dst []float32, src []uint16) {
-	if len(dst) == len(src) && HasVecAsm {
+	if len(src) > 0 && len(dst) == len(src) && HasVecAsm {
 		bf16WidenToF32Asm(dst, src)
 		return
 	}
@@ -175,7 +175,7 @@ func BF16WidenToF32(dst []float32, src []uint16) {
 
 // BF16NarrowFromF32 converts []float32 to []uint16 BF16 using SIMD when available.
 func BF16NarrowFromF32(dst []uint16, src []float32) {
-	if len(dst) == len(src) && HasVecAsm {
+	if len(src) > 0 && len(dst) == len(src) && HasVecAsm {
 		bf16NarrowFromF32Asm(dst, src)
 		return
 	}

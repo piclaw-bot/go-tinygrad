@@ -1307,3 +1307,11 @@ Audited `backends/simd` for facade and subpackage-split hazards:
 - Added a regression check that GEBP scratch allocations are independent.
 - Changed unsupported-architecture `SgemmNT`/`SgemmNN` fallbacks from panics to safe no-ops, preserving the `backends/simd` facade policy that public entrypoints remain defensive even when callers should check `HasSgemmAsm`.
 - Verified native SIMD tests and a non-amd64 compile-only check (`GOARCH=riscv64 go test -c ./backends/simd`).
+
+## Session 149: SIMD empty-slice dispatch audit
+
+Continued the `backends/simd` dispatch audit:
+
+- Guarded assembly dispatch wrappers so zero-length vector/BF16 operations route through scalar fallbacks instead of passing empty slices to assembly stubs.
+- Added regression coverage for empty public vector and BF16 entrypoints.
+- Native SIMD tests, no-run package gate, vet, and diff checks passed.

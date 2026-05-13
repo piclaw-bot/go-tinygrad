@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+func TestVectorEntrypointsHandleEmptyInputs(t *testing.T) {
+	if got := Snrm2(nil); got != 0 {
+		t.Fatalf("Snrm2(nil)=%f want 0", got)
+	}
+	VecAdd(nil, nil, nil)
+	VecMul(nil, nil, nil)
+	VecScaleAdd(nil, nil, nil, 1)
+	VecScale(nil, nil, 1)
+	VecSiLUMul(nil, nil, nil)
+	GELUTanhMul(nil, nil, nil)
+	RMSNorm(nil, nil, 1e-6)
+	RMSNormBF16(nil, nil, 1e-6)
+	RMSNormNoScale(nil, 1e-6)
+	ToBF16(nil)
+	if got := BF16DotAsm(nil, nil); got != 0 {
+		t.Fatalf("BF16DotAsm(nil,nil)=%f want 0", got)
+	}
+	BF16RMSNormAsm(nil, nil, 1e-6)
+	BF16VecAddAsm(nil, nil, nil)
+	BF16WidenToF32(nil, nil)
+	BF16NarrowFromF32(nil, nil)
+}
+
 func TestVecAdd(t *testing.T) {
 	a := []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
 	b := []float32{10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170}
