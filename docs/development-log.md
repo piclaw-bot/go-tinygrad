@@ -1601,3 +1601,11 @@ Continued the next MTP integration slice:
 
 - Added an explicit one-layer `RunMTPVerifierForward` test that exercises `ForwardLayer`, produces deterministic all-accepted draft behavior, verifies output tokens, stages KV, and checks final activation width.
 - Focused verifier tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 184: MTP verifier helper-boundary decision
+
+Closed the verifier helper-boundary decision for the current slice:
+
+- Keep `RunMTPVerifierForward` on the existing `ForwardLayer` + `finishCPUDecodeStep` split for now.
+- Do not extract a fuller shared CPU decode-step helper yet; that boundary should wait until Gemma4 PLI and batched verifier semantics can be represented without diverging from `Generate`.
+- Refreshed `docs/mtp-speculative.md` to describe the current implemented CPU verifier loop instead of the older not-implemented scaffold.

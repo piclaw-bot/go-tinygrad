@@ -38,11 +38,11 @@ Current implementation status (resumed after Phase 6.5 closeout; model package s
 - Main-model helper primitives expose raw/scaled token embeddings, Gemma4 per-layer input preparation, a CPU decode finish helper that returns copied final activations, LM-head logits, and greedy argmax outside `Generate`; `Generate` now uses these shared helpers.
 - `runtime/kv` staged KV helpers can checkpoint, restore, and keep only the accepted prefix plus verifier bonus token for both uncompressed and TurboQuant-backed KV caches.
 - `AcceptMTPDraft`/`AcceptMTPDraftFromLogits` encode LiteRT-style accepted-prefix plus bonus-token semantics. `VerifiedCount` deliberately excludes the bonus token to match LiteRT-LM accounting, and `MTPAcceptance.Validate` rejects inconsistent manually assembled acceptance state before KV commit.
-- `MTPVerifierPlan` prepares `[input_token]+drafted` token IDs and absolute verifier positions with model-aware token/vocab and overflow checks for the future batched verifier path; `RunMTPVerifierForward` currently validates this contract and returns an explicit not-implemented error.
+- `MTPVerifierPlan` prepares `[input_token]+drafted` token IDs and absolute verifier positions with model-aware token/vocab and overflow checks. `RunMTPVerifierForward` now provides an initial CPU verifier loop: it embeds each verifier token, runs configured real layers through `ForwardLayer`, stages candidate float K/V updates, finishes decode via the shared CPU decode-finish helper, and returns per-position logits plus final activation.
 - `MTPVerifierResult` validates verifier logits/activation outputs, derives acceptance, and can commit the accepted KV prefix for float or TurboQuant-backed caches. `NewMTPVerifierResultForModel` additionally checks token IDs against vocab size, logits rows against vocab width, and final activation against hidden size for the real verifier path.
 - `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches; `runtime/kv` owns the generic staging state while `LayerKVDims` derives the correct per-layer widths for Gemma4 variable/shared KV layouts.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external; the forward pass must explicitly map them to staged/main-model KV state.
-- Remaining gap: implement the batched main-model verifier forward and the q-only drafter forward loop. There is no public speculative-decoding CLI flag yet.
+- Remaining gap: extend the verifier path to full Gemma4 per-layer-input/batched semantics and implement the q-only drafter forward loop. There is no public speculative-decoding CLI flag yet.
 
 ### Data flow
 
@@ -80,8 +80,8 @@ Verifier (main model batched forward):
 5. **KV staging primitives** ✅ — checkpoint/restore/keep-prefix helpers support both uncompressed and TurboQuant-backed caches.
 6. **KV cache sync primitive** ✅ — staged KV can keep `accepted_prefix_len + 1` verified positions and discard rejected candidate tails.
 7. **Main-model verifier result contract** ✅ — `MTPVerifierTokens`/`MTPVerifierPlan`/`MTPVerifierResult` define `[input_token]+drafted`, verifier positions, logits rows, final activation, acceptance, and KV commit hooks; model-aware construction validates vocab/logit/activation dimensions.
-8. **Verifier-forward scaffold** ✅ — `RunMTPVerifierForward` validates model/plan/KV-cache contract and returns explicit not-implemented until the real loop is wired.
-9. **Main-model verifier path** — run a short batched forward over `[input_token] + drafted_tokens`, return per-position logits and hidden activations, and stage candidate KV updates.
+8. **Verifier-forward scaffold** ✅ — `RunMTPVerifierForward` validates model/plan/KV-cache contract and rejects unsupported PLI/batched semantics explicitly.
+9. **Initial CPU verifier path** ✅ — run a short sequential CPU forward over `[input_token] + drafted_tokens`, return per-position logits and final activation, and stage candidate float KV updates. The current implementation deliberately reuses `ForwardLayer` plus `finishCPUDecodeStep` rather than extracting a larger shared decode-step helper; a fuller helper should wait until Gemma4 PLI and batched verifier semantics are implemented so the shared boundary matches `Generate` completely.
 10. **Drafter forward loop** — run q-only assistant layers for `G` steps with external/shared KV and projected activation carry.
 11. **End-to-end speculative decode** — integrate verifier, drafter, acceptance, and KV commit into generation.
 12. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
