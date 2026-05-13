@@ -35,13 +35,9 @@ func NewMTPVerifierPlan(m *LlamaModel, inputToken int, drafted []int, startPos i
 			return MTPVerifierPlan{}, fmt.Errorf("verifier token %d at index %d out of range [0,%d)", tok, i, vocab)
 		}
 	}
-	maxInt := int(^uint(0) >> 1)
-	if len(verifierTokens) > 0 && startPos > maxInt-(len(verifierTokens)-1) {
-		return MTPVerifierPlan{}, fmt.Errorf("verifier positions overflow: start=%d count=%d", startPos, len(verifierTokens))
-	}
-	positions := make([]int, len(verifierTokens))
-	for i := range positions {
-		positions[i] = startPos + i
+	positions, err := mtpVerifierPositions(startPos, len(verifierTokens))
+	if err != nil {
+		return MTPVerifierPlan{}, err
 	}
 	return MTPVerifierPlan{
 		InputToken:     inputToken,
@@ -50,4 +46,22 @@ func NewMTPVerifierPlan(m *LlamaModel, inputToken int, drafted []int, startPos i
 		StartPos:       startPos,
 		Positions:      positions,
 	}, nil
+}
+
+func mtpVerifierPositions(startPos, count int) ([]int, error) {
+	if startPos < 0 {
+		return nil, fmt.Errorf("start position %d out of range", startPos)
+	}
+	if count < 0 {
+		return nil, fmt.Errorf("verifier position count %d out of range", count)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if count > 0 && startPos > maxInt-(count-1) {
+		return nil, fmt.Errorf("verifier positions overflow: start=%d count=%d", startPos, count)
+	}
+	positions := make([]int, count)
+	for i := range positions {
+		positions[i] = startPos + i
+	}
+	return positions, nil
 }

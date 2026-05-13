@@ -26,13 +26,27 @@ func (m *LlamaModel) RunMTPVerifierForward(plan MTPVerifierPlan, kvCacheK, kvCac
 	if len(plan.DraftedTokens)+1 != len(plan.VerifierTokens) {
 		return MTPVerifierResult{}, fmt.Errorf("verifier plan drafted=%d tokens=%d", len(plan.DraftedTokens), len(plan.VerifierTokens))
 	}
-	if plan.StartPos < 0 || plan.Positions[0] != plan.StartPos {
-		return MTPVerifierResult{}, fmt.Errorf("verifier plan start position mismatch: start=%d positions=%v", plan.StartPos, plan.Positions)
+	vocab := m.Config.VocabSize
+	if vocab <= 0 {
+		return MTPVerifierResult{}, fmt.Errorf("invalid verifier vocab size %d", vocab)
+	}
+	for i, tok := range plan.VerifierTokens {
+		if tok < 0 || tok >= vocab {
+			return MTPVerifierResult{}, fmt.Errorf("verifier token %d at index %d out of range [0,%d)", tok, i, vocab)
+		}
+	}
+	for i, tok := range plan.DraftedTokens {
+		if tok != plan.VerifierTokens[i+1] {
+			return MTPVerifierResult{}, fmt.Errorf("drafted token %d=%d does not match verifier token %d", i, tok, plan.VerifierTokens[i+1])
+		}
+	}
+	wantPositions, err := mtpVerifierPositions(plan.StartPos, len(plan.VerifierTokens))
+	if err != nil {
+		return MTPVerifierResult{}, err
 	}
 	for i, pos := range plan.Positions {
-		want := plan.StartPos + i
-		if pos != want {
-			return MTPVerifierResult{}, fmt.Errorf("verifier plan position %d=%d, want %d", i, pos, want)
+		if pos != wantPositions[i] {
+			return MTPVerifierResult{}, fmt.Errorf("verifier plan position %d=%d, want %d", i, pos, wantPositions[i])
 		}
 	}
 	if len(kvCacheK) != len(m.Layers) || len(kvCacheV) != len(m.Layers) {

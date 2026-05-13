@@ -1454,3 +1454,11 @@ Closed the current aggressive runtime validation batch:
 - GPU/hybrid smoke matrix passed with CUDA available: SmolLM2 GPU, SmolLM2 hybrid, Gemma4 GPU decode, and quiet default GPU diagnostics.
 - MTP scaffold validation now covers verifier plans, model-aware verifier results, acceptance consistency, float/compressed KV commit chains, and verifier-forward contract validation while keeping speculative CLI disabled.
 - SIMD stress validation covers concurrent GEBP scratch under `-race`, malformed BF16 facade parity, cross-arch SIMD compile gates, and a bounded benchmark pass.
+
+## Session 166: MTP verifier scaffold audit
+
+Audited the new MTP verifier plan/forward scaffold for malformed manual-plan edges:
+
+- Factored verifier position construction through an overflow-checked helper shared by plan construction and scaffold validation.
+- `RunMTPVerifierForward` now revalidates manual plans against model vocab, verifies drafted tokens match the verifier-token suffix, and rejects overflowing/non-contiguous positions before checking KV caches.
+- Updated scaffold tests to clone plans before mutation and cover out-of-vocab verifier tokens, drafted/verifier suffix mismatches, and position overflow.
