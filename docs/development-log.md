@@ -1577,3 +1577,11 @@ Completed the current drafter-loop scaffold items:
 - `Record` validates `MTPAcceptance`, counts drafted tokens, accepted/verified draft-prefix tokens, verifier bonus tokens, output tokens, and rejects counter overflow.
 - `AcceptanceRate` reports accepted draft tokens divided by drafted tokens, deliberately excluding bonus tokens.
 - Focused stats/acceptance tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 181: Post drafter/verifier full validation
+
+Ran the validation policy gate after the recent verifier/drafter behavior changes:
+
+- Full suite passed: `go test ./... -count=1`.
+- CPU generation smokes passed for SmolLM2 and Gemma4 E2B MLX4 with short token budgets.
+- GPU smoke passed for SmolLM2 with a one-token budget.
