@@ -1479,3 +1479,11 @@ Continued the model-path audit beyond MTP scaffolding:
 - Found a malformed-state panic in `ForwardLayer`: layers with `QNorm` and K/V output assumed `KNorm` was also present before dereferencing it.
 - Hardened the forward-layer entrypoint to reject missing `KNorm` instead of panicking.
 - Extended malformed forward-layer regression coverage for the QNorm-without-KNorm case.
+
+## Session 169: Generate malformed KNorm audit
+
+Continued the model forward-path audit:
+
+- Found the same malformed QNorm-without-KNorm assumption in the main CPU `Generate` loop.
+- Hardened `Generate` to stop and return the current output instead of dereferencing a nil `KNorm` when K/V is produced.
+- Added a synthetic malformed-model regression test that verifies `Generate` does not panic and returns the original prompt when `KNorm` is missing.

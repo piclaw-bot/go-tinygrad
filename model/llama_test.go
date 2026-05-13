@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
+	"github.com/rcarmo/go-pherence/tensor"
 
 	"github.com/rcarmo/go-pherence/gpu"
 )
@@ -30,6 +31,37 @@ func gemma4Path() string {
 		}
 	}
 	return p
+}
+
+func TestGenerateRejectsMissingKNormWithoutPanic(t *testing.T) {
+	m := &LlamaModel{
+		Config:      LlamaConfig{VocabSize: 2, HiddenSize: 2, NumLayers: 1, NumHeads: 1, NumKVHeads: 1, HeadDim: 2, Intermediate: 2, RMSNormEps: 1e-6},
+		EmbedTokens: tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+		LMHead:      tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+		Layers: []LlamaLayer{{
+			InputNorm: tensor.Ones([]int{2}),
+			PostNorm:  tensor.Ones([]int{2}),
+			HasKV:     true,
+			QNorm:     tensor.Ones([]int{2}),
+			KNorm:     nil,
+			QW:        tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			KW:        tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			VW:        tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			OW:        tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			GateW:     tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			UpW:       tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+			DownW:     tensor.FromFloat32([]float32{1, 0, 0, 1}, []int{2, 2}),
+		}},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Generate panicked on missing KNorm: %v", r)
+		}
+	}()
+	out := m.Generate([]int{0}, 1)
+	if !sameInts(out, []int{0}) {
+		t.Fatalf("Generate output=%v want original prompt only", out)
+	}
 }
 
 func TestLoadSmolLM(t *testing.T) {

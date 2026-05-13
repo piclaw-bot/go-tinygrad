@@ -1106,6 +1106,9 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 					normFn(q[head*layerHeadDim:(head+1)*layerHeadDim], qNorm, float32(cfg.RMSNormEps))
 				}
 				if k != nil {
+					if layer.KNorm == nil {
+						return output
+					}
 					kNorm := layer.KNorm.Data()
 					for head := 0; head < numKVHeads; head++ {
 						normFn(k[head*layerHeadDim:(head+1)*layerHeadDim], kNorm, float32(cfg.RMSNormEps))
