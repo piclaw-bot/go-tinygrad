@@ -1683,3 +1683,13 @@ Continued the MTP audit over q-only drafter math:
 - Found that q-only drafter execution always used the generic FP32 RMSNorm helper, diverging from Gemma3/Gemma4 CPU layer semantics.
 - Added a drafter norm helper that selects the BF16 RMSNorm path for Gemma-style drafter configs and uses it for input, q, post-attention, pre/post-FFN, and final drafter norms.
 - Added focused coverage that verifies Gemma4 drafter norm selection follows the BF16 path.
+
+## Session 194: Documentation refresh after MTP audit batch
+
+Reviewed and refreshed public project docs after the verifier/drafter/speculative-step implementation and audit batches:
+
+- Updated `README.md` to describe MTP as internal speculative-decoding infrastructure rather than only scaffolding, while keeping public speculative generation explicitly disabled.
+- Updated `docs/architecture.md` with the current verifier-forward loop, q-only drafter/external-KV seam, stats, and remaining production gaps.
+- Updated `docs/mtp-speculative.md` to document current CPU verifier constraints, explicit PLI rejection, q-only drafter execution details, internal `RunMTPSpeculativeStep`, stats rollback behavior, and revised implementation-plan status.
+- Updated `docs/turboquant.md` to clarify that TurboQuant commit/rollback helpers exist but the internal verifier-forward loop is still float-KV CPU-only.
+- Updated `docs/refactor-plan.md` status and Phase 6.8 preservation notes to reflect internal MTP verifier/drafter/speculative-step code rather than the older scaffold-only state.

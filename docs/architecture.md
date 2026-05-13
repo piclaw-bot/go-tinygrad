@@ -101,19 +101,21 @@ loader/safetensors + loader/weights (GetFloat32, GetBF16, GetInt32, GetRaw)
 | Tensor prefix | — | — | — | — | ✅ language_model. |
 | Q/K/V bias | — | ✅ | — | — | — |
 | head_dim ≠ h/heads | — | — | ✅ | ✅ | ✅ |
-| MTP drafter assets | — | — | research | — | scaffold |
+| MTP drafter assets | — | — | research | — | internal |
 
 ## Speculative Decoding / MTP
 
-Gemma4 MTP support is currently scaffolded but not wired into public generation paths. Implemented pieces:
+Gemma4 MTP support now has internal verifier/drafter integration pieces, but it remains deliberately disabled in public generation/CLI paths. Implemented pieces:
 
 - `LoadGemma4MTPDrafter` for `gemma4_assistant` safetensors assets with q-only attention blocks.
 - Assistant projection helpers: token embedding row copy, masked ordering lookup, `PreProjectInto`, and `PostProjectInto`.
 - Main-model verifier primitives: raw/scaled token embeddings, Gemma4 per-layer input preparation, CPU decode finish helper with copied final activation, LM-head logits, and greedy argmax.
+- Initial CPU verifier loop: `RunMTPVerifierForward` validates plan/KV contracts, rejects unsupported Gemma4 PLI/batched semantics, runs real CPU layers through `ForwardLayer`, stages float KV, and returns per-position logits plus final activation.
 - Acceptance helpers: `AcceptMTPDraft`, `AcceptMTPDraftFromLogits`, LiteRT-style bonus-token accounting, and `MTPAcceptance.Validate` before staged KV commits.
 - `runtime/kv` staging helpers for candidate rollback/commit in both uncompressed and TurboQuant-backed caches; model-aware verifier plans/results validate vocab/token/position/logit/activation dimensions before deriving acceptance.
+- Internal drafter/verifier one-step seam: projection-only and synthetic q-only drafter paths can run against an explicit external-KV view, record LiteRT-style stats, and restore staged verifier KV on post-verifier errors.
 
-Remaining architecture work is the batched verifier forward path and q-only drafter forward loop with external/main-model KV state.
+Remaining architecture work is full Gemma4 PLI/batched verifier semantics, production q-only drafter parity against real assistant assets, adaptive multi-token loops, GPU/hybrid support, and public generation wiring after CPU/GPU smokes.
 
 ## BF16 Pipeline
 

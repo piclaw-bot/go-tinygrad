@@ -57,5 +57,6 @@ Unit tests cover:
   optimized path should read compressed blocks directly or cache per-window
   dequantized pages.
 - GPU-side compression/decompression and compressed KV attention are future work.
-- MTP/speculative decoding can use the TurboQuant staging helpers, but the full
-  verifier/drafter loop is not wired into public generation yet.
+- MTP/speculative decoding can commit/rollback TurboQuant-backed verifier KV via
+  the staging helpers, but the current internal verifier-forward loop itself is
+  float-KV CPU-only and public speculative generation remains disabled.

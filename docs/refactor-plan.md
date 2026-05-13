@@ -1,6 +1,6 @@
 # Source-tree refactor plan
 
-Status: in progress, blocking new MTP/backend functionality until the validation gate is complete.
+Status: Phase 6.5 validation baseline is complete; follow-up CUDA/model/generation splits remain deferred while MTP internals continue behind non-public APIs.
 
 This document captures the Phase 6.5 assessment and target package design. The refactor should be mostly mechanical at first: move code into ownership boundaries, keep CLI behavior stable where practical, but allow intentional package/API breaking changes instead of preserving old wrappers.
 
@@ -28,7 +28,7 @@ loader/safetensors   -> mmap safetensors reader and sharded reader with metadata
 loader/tokenizer     -> tokenizer.json and BPE/SentencePiece-compatible encode/decode; malformed merge validation and race-safe byte maps
 loader/weights       -> common safetensors source opener for sharded/single-file weights
 model                -> LLaMA-family loader/types, CPU forward, GPU model wrapper,
-                        MoE, MTP scaffold, model-specific KV sizing; MTP/MoE/inference/forward helper guards and logging gates hardened
+                        MoE, internal MTP verifier/drafter/speculative-step code, model-specific KV sizing; MTP/MoE/inference/forward helper guards and logging gates hardened
 models/bert          -> GTE/BERT encoder path
 runtime/kv           -> TurboQuant state, compressed KV cache, float/compressed KV staging with overflow/layout/accessor/accounting/protected-layer guards
 runtime/memory       -> mmap residency advice and range tracking; nil/invalid ranges are inert and malformed tracked ranges are sanitized
@@ -61,7 +61,7 @@ gpu/devbuf.go         ~620 lines: CUDA memory abstraction and vector ops
 
 ## Main problems found
 
-1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, generic KV/TurboQuant, and MLX/GPTQ CPU quant helpers have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, MoE, model-specific KV sizing, and MTP scaffold.
+1. **`model` remains a catch-all package.** Tokenizer, safetensors, config helpers, weight-source opening, SIMD, BERT/GTE, generic KV/TurboQuant, and MLX/GPTQ CPU quant helpers have moved out, but `model` still contains LLaMA-family model definitions, CPU kernels, GPU orchestration, MoE, model-specific KV sizing, and internal MTP verifier/drafter/speculative-step code.
 2. **Backends are not cleanly separated.** `gpu/` still mixes CUDA/PTX, GPU expert pool, and memory abstractions, although backend-neutral budget/placement policy has moved to `backends/placement` and Vulkan scaffolding/assets have moved to `backends/vulkan`. `model/gpu_forward.go` imports and orchestrates GPU details directly.
 3. **Architecture-specific behavior is mixed into generic names.** `LlamaModel` currently also carries Qwen, Gemma3, Gemma4, MoE, TurboQuant, and MTP concerns.
 4. **Loading is still coupled to architecture structs.** `LoadLlama` now uses `loader/config`, `loader/weights`, and `runtime/quant`, and load-time panics are recovered as returned errors, but it still normalizes config, applies quant format choices, and fills architecture-specific weights in one flow.
@@ -207,7 +207,7 @@ Each step should be one small commit with validation after it.
 2. **Loader extraction.** Move tokenizer/config/safetensors-facing loader boundaries first and update call sites directly.
 3. **Runtime KV/quant extraction.** Move KV staging/cache and quant formats to runtime packages, updating call sites in the same commit. ✅
 4. **Backend split.** Vulkan scaffolding/assets have moved to `backends/vulkan` ✅. Embedded CUDA PTX source assets have moved to `backends/cuda/ptx` ✅. CUDA runtime dispatch still remains in `gpu` until the split can preserve model upload/DevBuf semantics cleanly.
-5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and MTP scaffold into architecture packages.
+5. **Model split.** Move BERT/GTE first ✅, then LLaMA-family shared code, Gemma4, MoE, and internal MTP verifier/drafter code into architecture packages.
 6. **Generation runtime.** Move CPU/GPU/speculative generation loops into `runtime/generation` once backends/models have clean interfaces.
 7. **Test quarantine.** Gemma4 diagnostic tests are build-tagged ✅; later model-package split should move them next to their architecture package.
 8. **Remove temporary bridges.** Only if any were unavoidable during earlier large moves.
@@ -224,7 +224,7 @@ go vet ./...
 git diff --check
 ```
 
-Final Phase 6.5 validation before resuming MTP/verifier/drafter work:
+Final Phase 6.5 validation, already completed before MTP/verifier/drafter work resumed:
 
 ```sh
 go test ./...
@@ -261,8 +261,8 @@ These larger moves are deliberately deferred out of Phase 6.5 into follow-up ref
   - Preservation plan: keep `gpu` transitional but quiet/guarded; move only after `backends/cuda` can own `DevBuf` and upload state as first-class runtime concepts, with focused tests covering nil receivers, upload errors, allocation overflow, stream/graph launch guards, quantized weight layout validation, expert resource release, and debug-gated diagnostics. `backends/cuda/ptx` already owns embedded PTX assets and should remain the source owner during that split.
 
 - **LLaMA/Gemma/Qwen/MoE/MTP model package split → Phase 6.8 (`models/*`).**
-  - Rationale: transitional `model` still combines loader normalization, architecture-specific fields, CPU forward, GPU orchestration hooks, MoE, Gemma4 PLI/KV-sharing, MTP scaffold, and generation. Recent audits hardened helper entrypoints, but splitting files now would be mostly mechanical churn until shared model/backend interfaces are clearer.
-  - Preservation plan: keep resumed MTP work small and focused in `model` until the Phase 6.8 split; when splitting, move helpers with their focused tests and preserve MTP verifier dimension checks, acceptance/KV commit validation, MTP drafter projection validation, MoE loader/forward edge guards, inference helper sizing, CPU forward-layer entrypoint checks, and diagnostic build tags.
+  - Rationale: transitional `model` still combines loader normalization, architecture-specific fields, CPU forward, GPU orchestration hooks, MoE, Gemma4 PLI/KV-sharing, internal MTP verifier/drafter/speculative-step code, and generation. Recent audits hardened helper entrypoints, but splitting files now would be mostly mechanical churn until shared model/backend interfaces are clearer.
+  - Preservation plan: keep resumed MTP work small and focused in `model` until the Phase 6.8 split; when splitting, move helpers with their focused tests and preserve MTP verifier dimension/shared-KV checks, acceptance/KV commit validation, MTP drafter projection/external-KV/q-only validation, stats rollback behavior, MoE loader/forward edge guards, inference helper sizing, CPU forward-layer entrypoint checks, and diagnostic build tags.
 
 - **Generation runtime split → Phase 6.9 (`runtime/generation`).**
   - Rationale: generation currently depends on model-specific CPU/GPU paths, tokenizer behavior, KV cache semantics, TurboQuant, MTP acceptance, and future speculative decode loops. Extracting it before model/backend interfaces settle would likely create temporary bridges.
