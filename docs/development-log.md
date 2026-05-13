@@ -1263,3 +1263,12 @@ Recorded explicit Phase 6.5 split/defer decisions:
 - LLaMA/Gemma/Qwen/MoE/MTP model package split is deferred to Phase 6.8 with a plan to move helper tests and preserve MTP/MoE/inference/forward guard semantics.
 - Generation/runtime extraction is deferred to Phase 6.9 until model/backend interfaces stabilize.
 - Import-boundary scripting is deferred until follow-up split names stabilize; import rules remain documented and review-enforced for Phase 6.5 closeout.
+
+
+## Session 144: Phase 6.5 documentation closeout sweep
+
+Completed the final Phase 6.5 documentation sweep after recording mechanical split deferrals:
+
+- README and architecture docs now state that CUDA runtime, model package, and generation runtime splits are deferred follow-up phases rather than Phase 6.5 blockers.
+- GPU and MTP docs now point at the deferred Phase 6.7/6.8/6.9 split plan and keep MTP/speculative decoding paused until validation closeout is recorded.
+- The remaining closeout work is validation/smoke testing and the final Phase 6.5 closeout note.

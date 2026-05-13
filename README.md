@@ -150,7 +150,7 @@ only; GPU KV compression is a future step.
 
 ## Architecture Details
 
-Current package ownership is being refactored around explicit loader/model/backend boundaries:
+Current package ownership is now organized around explicit loader/runtime/backend boundaries, with the remaining large CUDA/model/generation splits explicitly deferred to follow-up phases:
 
 - **`loader/`** — `config`, `tokenizer`, `safetensors`, and shared `weights` source opening; tokenizer merge validation and deterministic safetensors name ordering are hardened
 - **`backends/placement/`** — backend-neutral memory budget and layer placement policy with guarded budget accounting and saturating estimator math
@@ -161,8 +161,8 @@ Current package ownership is being refactored around explicit loader/model/backe
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives with layout/overflow, accessor, and memory-accounting guards
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid/malformed ranges are inert or sanitized with saturating accounting
 - **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, checked expected-size arithmetic, dequantization, and guarded on-the-fly Q4 GEMV helpers
-- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP code is being split out during Phase 6.5; MTP, MoE, inference/forward, KV, prefill, LM-head, logging gates, and low-level helper guards are being hardened before moves
-- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, attention dispatch guards, and opt-in `GO_PHERENCE_GPU_DEBUG` diagnostics are hardened
+- **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP package splits are deferred to Phase 6.8 and generation extraction to Phase 6.9; MTP, MoE, inference/forward, KV, prefill, LM-head, logging gates, and low-level helper guards are hardened
+- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the Phase 6.7 CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, attention dispatch guards, and opt-in `GO_PHERENCE_GPU_DEBUG` diagnostics are hardened
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs

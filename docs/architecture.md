@@ -33,7 +33,7 @@ go-pherence is a multi-backend inference engine that runs MLX, GPTQ, and BF16 mo
 
 ## Source Layout
 
-Phase 6.5 is moving the repository toward explicit ownership boundaries:
+Phase 6.5 has moved the repository toward explicit ownership boundaries. Remaining large splits are documented follow-ups rather than Phase 6.5 blockers:
 
 | Area | Current package | Notes |
 |---|---|---|
@@ -46,8 +46,8 @@ Phase 6.5 is moving the repository toward explicit ownership boundaries:
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers with layout, accessor, memory-accounting, protected-layer input, and overflow guards |
 | Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming; nil advisors are inert and malformed tracked ranges are sanitized with saturating accounting |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, checked expected-size/dequant output arithmetic, dequantization, and guarded on-the-fly Q4 GEMV helpers |
-| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; still being split; helper guards now cover MTP drafter/acceptance, MoE, inference helpers, CPU forward-layer entrypoints, KV sizing, GPU prefill/LM-head, GEMV, GQA arithmetic, and opt-in loader/prefill logging |
-| GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu`; embedded PTX source assets now live under `backends/cuda/ptx`; DevBuf/stream/Q4/MLX/expert/NV/dense/JIT/BF16 validation and opt-in GPU diagnostics are hardened before the CUDA runtime split |
+| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; package split deferred to Phase 6.8 and generation extraction to Phase 6.9; helper guards cover MTP drafter/acceptance, MoE, inference helpers, CPU forward-layer entrypoints, KV sizing, GPU prefill/LM-head, GEMV, GQA arithmetic, and opt-in loader/prefill logging |
+| GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu` until the Phase 6.7 CUDA runtime split; embedded PTX source assets live under `backends/cuda/ptx`; DevBuf/stream/Q4/MLX/expert/NV/dense/JIT/BF16 validation and opt-in GPU diagnostics are hardened before that split |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, unsafe views, broadcasting, realization, rewrite/fusion, NN/convenience helpers, matmul/linear, and modules |
 
 

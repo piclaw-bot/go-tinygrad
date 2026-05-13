@@ -87,4 +87,4 @@ During the Phase 6.5 refactor audit, the transitional `gpu` package has been har
 - BF16 CUDA wrappers validate nil/undersized buffers and length overflow before emulated/native dispatch.
 - RoPE, partial RoPE, softmax-row, and GQA attention wrappers validate dimensions, sequence windows, tensor lengths, and product overflow before launch.
 
-These guards are part of the current backend baseline and should move with the CUDA runtime when `gpu` is split into `backends/cuda`.
+These guards are part of the current backend baseline and should move with the CUDA runtime when `gpu` is split into `backends/cuda` in Phase 6.7.
