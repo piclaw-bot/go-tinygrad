@@ -1651,3 +1651,11 @@ Continued the MTP code-smell/logic audit:
 - Found that `RunMTPSpeculativeStep` detected saturated stats only after verifier forward had already staged candidate KV.
 - Added `MTPSpeculationStats.ValidateOneStepCapacity` and preflight it before drafter/verifier execution.
 - Added tests for stats preflight and for ensuring saturated stats do not mutate staged verifier KV.
+
+## Session 190: MTP audit — shared-KV verifier validation
+
+Continued the MTP code-smell/logic audit:
+
+- Found that `RunMTPVerifierForward` did not explicitly validate shared-KV layer source mappings before entering `ForwardLayer`.
+- Added validation that q/shared layers point at a real KV-appending source layer and do not carry their own staged K/V entries.
+- Added malformed shared-KV verifier tests for invalid source, shared-to-shared source, and stray per-layer cache entries.

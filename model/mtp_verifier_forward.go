@@ -84,11 +84,28 @@ func (m *LlamaModel) validateMTPVerifierForwardInputs(plan MTPVerifierPlan, kvCa
 		return fmt.Errorf("KV cache layers K/V=%d/%d, want %d", len(kvCacheK), len(kvCacheV), m.Config.NumLayers)
 	}
 	for l := 0; l < m.Config.NumLayers; l++ {
+		layer := &m.Layers[l]
 		kvDim, err := m.LayerKVDim(l)
 		if err != nil {
 			return err
 		}
 		if kvDim == 0 {
+			if layer.HasKV {
+				return fmt.Errorf("layer %d has invalid zero KV dim", l)
+			}
+			if layer.KVSourceLayer < 0 || layer.KVSourceLayer >= m.Config.NumLayers {
+				return fmt.Errorf("shared-KV layer %d source %d out of range [0,%d)", l, layer.KVSourceLayer, m.Config.NumLayers)
+			}
+			sourceDim, err := m.LayerKVDim(layer.KVSourceLayer)
+			if err != nil {
+				return err
+			}
+			if sourceDim == 0 {
+				return fmt.Errorf("shared-KV layer %d source %d does not append KV", l, layer.KVSourceLayer)
+			}
+			if len(kvCacheK[l]) != 0 || len(kvCacheV[l]) != 0 {
+				return fmt.Errorf("shared-KV layer %d owns unexpected K/V cache entries %d/%d", l, len(kvCacheK[l]), len(kvCacheV[l]))
+			}
 			continue
 		}
 		want, ok := checkedProduct(plan.StartPos, kvDim)

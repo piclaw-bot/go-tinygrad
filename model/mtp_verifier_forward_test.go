@@ -147,6 +147,27 @@ func TestRunMTPVerifierForwardRejectsGemma4PLIUntilSupported(t *testing.T) {
 	}
 }
 
+func TestRunMTPVerifierForwardRejectsMalformedSharedKVLayers(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	m.Config.NumLayers = 2
+	m.Layers = append(m.Layers, LlamaLayer{HasKV: false, KVSourceLayer: -1})
+	plan := mustMTPVerifierPlan(t, m, 0, nil, 0)
+	if _, err := m.RunMTPVerifierForward(plan, make([][]float32, len(m.Layers)), make([][]float32, len(m.Layers))); err == nil {
+		t.Fatal("accepted shared-KV layer with invalid source")
+	}
+	m.Layers[1].KVSourceLayer = 1
+	if _, err := m.RunMTPVerifierForward(plan, make([][]float32, len(m.Layers)), make([][]float32, len(m.Layers))); err == nil {
+		t.Fatal("accepted shared-KV layer whose source is also shared")
+	}
+	m.Layers[1].KVSourceLayer = 0
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	kvCacheK[1] = []float32{1}
+	if _, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV); err == nil {
+		t.Fatal("accepted shared-KV layer with owned K cache entries")
+	}
+}
+
 func TestRunMTPVerifierForwardCompressedKVCommitKeepsAcceptedPrefix(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 0)
