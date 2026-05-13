@@ -111,6 +111,28 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 	}
 }
 
+func TestRunMTPDrafterStepAppliesFinalNormBeforePostProjection(t *testing.T) {
+	m := validDrafterStepBackboneModel()
+	d := validDrafterStepScaffold()
+	state, err := NewMTPDrafterState(1, []float32{0.5, 0.25}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	externalKV := &MTPDrafterExternalKV{K: [][]float32{{1, 0}}, V: [][]float32{{0, 1}}, SourceLayers: []int{0}, SeqLen: 1}
+	got, err := m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterStepWithExternalKV: %v", err)
+	}
+	d.Norm = tensor.FromFloat32([]float32{1, 2}, []int{2})
+	withNorm, err := m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterStepWithExternalKV with norm: %v", err)
+	}
+	if sameFloat32s(got.NextActivation, withNorm.NextActivation) {
+		t.Fatalf("final norm did not affect next activation: %v", got.NextActivation)
+	}
+}
+
 func TestRunMTPDrafterStepExternalKVValidation(t *testing.T) {
 	m := validDrafterStepBackboneModel()
 	d := validDrafterStepScaffold()
@@ -144,6 +166,11 @@ func TestRunMTPDrafterStepExternalKVValidation(t *testing.T) {
 	bad.Layers[0].KVSourceLayer = 0
 	if _, err := m.RunMTPDrafterStepWithExternalKV(&bad, state, validKV); err == nil {
 		t.Fatal("accepted non-q-only drafter KV source")
+	}
+	bad = *d
+	bad.Norm = nil
+	if _, err := m.RunMTPDrafterStepWithExternalKV(&bad, state, validKV); err == nil {
+		t.Fatal("accepted missing drafter final norm")
 	}
 	bad = *d
 	bad.Layers = append([]Gemma4MTPDrafterLayer(nil), d.Layers...)

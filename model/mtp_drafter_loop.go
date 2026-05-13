@@ -77,6 +77,13 @@ func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state 
 			return MTPDrafterStepResult{}, err
 		}
 	}
+	if d.Norm != nil {
+		norm := d.Norm.Data()
+		if len(norm) < d.Config.HiddenSize {
+			return MTPDrafterStepResult{}, fmt.Errorf("drafter final norm len=%d, want at least %d", len(norm), d.Config.HiddenSize)
+		}
+		rmsNormInPlace(assistantHidden, norm, float32(d.Config.RMSNormEps))
+	}
 	nextActivation := make([]float32, d.BackboneHiddenSize)
 	if err := d.PostProjectInto(nextActivation, assistantHidden); err != nil {
 		return MTPDrafterStepResult{}, err
@@ -123,6 +130,9 @@ func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPD
 	}
 	if d.Config.NumLayers == 0 {
 		return nil
+	}
+	if d.Norm == nil || len(d.Norm.Data()) < d.Config.HiddenSize {
+		return fmt.Errorf("drafter final norm is not loaded or too small")
 	}
 	return validateMTPDrafterExternalKV(d, externalKV)
 }

@@ -1634,3 +1634,12 @@ Added the first end-to-end internal speculative iteration without any public CLI
 - `RunMTPSpeculativeStep` runs one drafter step, builds the verifier plan, runs verifier forward, and records speculation stats.
 - The result returns the draft result, verifier plan/result, and updated stats; callers still own staged KV commit/restore decisions.
 - Added projection-only integration tests covering drafter -> verifier -> stats and validation failures.
+
+## Session 188: MTP code-smell audit — drafter final norm
+
+Audited the recent MTP drafter/speculative-step code for logic errors:
+
+- Found that the q-only drafter execution path validated per-layer norms but skipped the drafter final norm before `PostProjectInto`.
+- Fixed `RunMTPDrafterStepWithExternalKV` to apply `d.Norm` after q-only layers and before post-projection.
+- Required loaded/sufficient final norm for q-only drafter execution while preserving projection-only zero-layer fixtures.
+- Added regression coverage proving the final norm changes the next activation and malformed q-only drafter state rejects missing final norm.
