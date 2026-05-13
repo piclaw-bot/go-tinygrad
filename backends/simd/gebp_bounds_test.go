@@ -1,6 +1,8 @@
 package simd
 
 import (
+	"math"
+	"sync"
 	"testing"
 	"unsafe"
 )
@@ -52,6 +54,55 @@ func TestMakeGebpBufReturnsIndependentScratch(t *testing.T) {
 	if b[0] != 0 {
 		t.Fatalf("scratch buffers alias: b[0]=%f", b[0])
 	}
+}
+
+func TestSgemmNTGebpConcurrentScratch(t *testing.T) {
+	if !HasSgemmAsm {
+		t.Skip("SGEMM assembly unavailable on this runtime")
+	}
+	const (
+		m = 5
+		n = 7
+		k = 9
+	)
+	a := make([]float32, m*k)
+	b := make([]float32, n*k)
+	for i := range a {
+		a[i] = float32((i%11)-5) * 0.125
+	}
+	for i := range b {
+		b[i] = float32((i%13)-6) * 0.0625
+	}
+	want := make([]float32, m*n)
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			sum := float32(0)
+			for p := 0; p < k; p++ {
+				sum += a[i*k+p] * b[j*k+p]
+			}
+			want[i*n+j] = sum
+		}
+	}
+
+	const workers = 32
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for iter := 0; iter < 64; iter++ {
+				c := make([]float32, m*n)
+				SgemmNTGebp(m, n, k, 1, unsafe.Pointer(&a[0]), unsafe.Pointer(&b[0]), unsafe.Pointer(&c[0]), k, k, n)
+				for idx, got := range c {
+					if math.Abs(float64(got-want[idx])) > 1e-4 {
+						t.Errorf("worker %d iter %d c[%d]=%f want %f", worker, iter, idx, got, want[idx])
+						return
+					}
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
 }
 
 func TestSgemmNTBlockedValidationRejectsMalformedArgs(t *testing.T) {

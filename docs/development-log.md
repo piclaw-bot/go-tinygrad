@@ -1418,3 +1418,11 @@ Added the verifier-forward scaffold before wiring generation:
 - `RunMTPVerifierForward` now defines the future main-model verifier entrypoint and validates plan/model/KV-cache shape before returning an explicit not-implemented error.
 - Added tests that the scaffold accepts a well-formed plan up to the not-implemented boundary and rejects nil models, empty/mismatched plans, non-contiguous positions, and malformed KV cache layer counts.
 - Public speculative generation remains disabled until the verifier forward and drafter loop have runtime smoke coverage.
+
+## Session 162: SIMD GEBP concurrent scratch stress
+
+Continued SIMD/runtime stress validation:
+
+- Added `TestSgemmNTGebpConcurrentScratch`, which runs concurrent `SgemmNTGebp` calls with independent outputs and compares against a scalar NT reference.
+- Ran the new test under the race detector to prove the per-call packed-B scratch path has no shared-buffer races on this runtime.
+- Validation passed: `go test -race ./backends/simd -run 'TestSgemmNTGebpConcurrentScratch|TestGEBP' -count=1`, `go test ./backends/simd -count=1`, no-run all-package gate, vet, and diff checks.
