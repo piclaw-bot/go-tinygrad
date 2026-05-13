@@ -36,6 +36,35 @@ func TestFinishCPUDecodeStep(t *testing.T) {
 	}
 }
 
+func TestFinishCPUDecodeStepMatchesGenerateFinalToken(t *testing.T) {
+	m := &LlamaModel{
+		Config: LlamaConfig{VocabSize: 3, HiddenSize: 2, NumHeads: 1, NumKVHeads: 1, HeadDim: 2, RMSNormEps: 0},
+		EmbedTokens: tensor.FromFloat32([]float32{
+			3, 4,
+			1, 0,
+			0, 1,
+		}, []int{3, 2}),
+		Norm: tensor.Ones([]int{2}),
+		LMHead: tensor.FromFloat32([]float32{
+			1, 0,
+			0, 1,
+			1, 1,
+		}, []int{3, 2}),
+	}
+	hidden := make([]float32, 2)
+	if err := m.ScaledTokenEmbeddingInto(hidden, 0); err != nil {
+		t.Fatalf("ScaledTokenEmbeddingInto: %v", err)
+	}
+	_, _, wantToken, err := m.finishCPUDecodeStep(hidden)
+	if err != nil {
+		t.Fatalf("finishCPUDecodeStep: %v", err)
+	}
+	got := m.Generate([]int{0}, 1)
+	if !sameInts(got, []int{0, wantToken}) {
+		t.Fatalf("Generate output=%v want [0 %d]", got, wantToken)
+	}
+}
+
 func TestFinishCPUDecodeStepValidation(t *testing.T) {
 	if _, _, _, err := (*LlamaModel)(nil).finishCPUDecodeStep(nil); err == nil {
 		t.Fatal("accepted nil model")

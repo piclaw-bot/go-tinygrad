@@ -1518,3 +1518,11 @@ Reviewed and refreshed docs after the latest MTP and CPU generation audits:
 - README and architecture docs now mention MTP verifier plan/forward scaffolding, alias-safe drafter projections, CPU decode finish/final-norm validation, and CPU generation allocation guards.
 - MTP speculative docs now describe `RunMTPVerifierForward` as a contract-validating not-implemented scaffold and note that the CPU decode finish helper returns copied final activations for verifier use.
 - Development log remains the detailed record of aggressive runtime validation, scaffold hardening, and follow-up implementation constraints.
+
+## Session 174: CPU decode finish helper Generate parity
+
+Continued the MTP verifier-forward plan:
+
+- Added a synthetic regression test comparing `finishCPUDecodeStep` against the token appended by `Generate` on a zero-layer model.
+- The test exercises the shared embedding → final norm → LM-head → argmax path without requiring a large local fixture.
+- Focused model tests, no-run all-package gate, vet, and diff checks passed.
