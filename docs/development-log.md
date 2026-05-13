@@ -1289,3 +1289,12 @@ Closed Phase 6.5 as a source-tree ownership/audit phase:
 - All Phase 6.5 closeout commits are pushed and the plan sidebar is aligned with completed/deferred items.
 - Final note in `docs/refactor-plan.md` states that MTP/verifier/drafter work may resume under the documented constraints.
 - Deferred package splits remain assigned to follow-up phases: CUDA runtime in Phase 6.7, model packages in Phase 6.8, and generation runtime in Phase 6.9.
+
+## Session 147: SIMD bridge API design
+
+Designed the Phase 6.6 SIMD bridge API before any literal subpackage split:
+
+- `backends/simd` remains the only public facade/import path and owns validation, capability gates, fallback policy, and compatibility globals.
+- Future `scalar`, `amd64`, and `arm64` packages should expose provider-style kernel groups rather than direct public functions consumed by model code.
+- Assembly symbols remain provider-local after the split; the facade calls prevalidated kernels and preserves public malformed-input/no-op behavior.
+- Migration order is facade-internal provider structs first, then scalar split, then amd64/arm64 splits one family at a time.
