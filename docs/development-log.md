@@ -1426,3 +1426,11 @@ Continued SIMD/runtime stress validation:
 - Added `TestSgemmNTGebpConcurrentScratch`, which runs concurrent `SgemmNTGebp` calls with independent outputs and compares against a scalar NT reference.
 - Ran the new test under the race detector to prove the per-call packed-B scratch path has no shared-buffer races on this runtime.
 - Validation passed: `go test -race ./backends/simd -run 'TestSgemmNTGebpConcurrentScratch|TestGEBP' -count=1`, `go test ./backends/simd -count=1`, no-run all-package gate, vet, and diff checks.
+
+## Session 163: SIMD BF16 malformed facade parity
+
+Continued SIMD/runtime stress validation:
+
+- Added BF16 facade tests covering empty inputs, mismatched lengths, short weights, bounded widen/narrow conversion, and fallback parity through the `*Asm` public wrappers.
+- Re-ran native SIMD focused tests plus arm64/riscv64 SIMD compile gates to keep architecture-dispatch parity checked.
+- No-run all-package gate, vet, and diff checks passed.
