@@ -193,7 +193,9 @@ func TestMTPAcceptanceValidationRejectsMalformedTokens(t *testing.T) {
 }
 
 func TestMTPAcceptanceValidateRejectsInconsistentState(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
 	cases := []MTPAcceptance{
+		{DraftedCount: maxInt, VerifiedCount: maxInt, AcceptedPrefixLen: maxInt, BonusToken: 3},
 		{DraftedCount: 1, VerifiedCount: 0, AcceptedPrefixLen: 2, AcceptedTokens: []int{1, 2}, BonusToken: 3, OutputTokens: []int{1, 2, 3}},
 		{DraftedCount: 2, VerifiedCount: 1, AcceptedPrefixLen: 1, AcceptedTokens: nil, BonusToken: 3, OutputTokens: []int{3}},
 		{DraftedCount: 2, VerifiedCount: 1, AcceptedPrefixLen: 1, AcceptedTokens: []int{1}, BonusToken: 3, OutputTokens: []int{2, 3}},

@@ -51,8 +51,12 @@ func (a MTPAcceptance) Validate() error {
 	if len(a.AcceptedTokens) != a.AcceptedPrefixLen {
 		return fmt.Errorf("accepted tokens len=%d, want accepted prefix len=%d", len(a.AcceptedTokens), a.AcceptedPrefixLen)
 	}
-	if len(a.OutputTokens) != a.AcceptedPrefixLen+1 {
-		return fmt.Errorf("output tokens len=%d, want accepted prefix plus bonus=%d", len(a.OutputTokens), a.AcceptedPrefixLen+1)
+	keep := a.KVKeepTokens()
+	if keep <= 0 {
+		return fmt.Errorf("accepted prefix len=%d cannot be converted to KV keep count", a.AcceptedPrefixLen)
+	}
+	if len(a.OutputTokens) != keep {
+		return fmt.Errorf("output tokens len=%d, want accepted prefix plus bonus=%d", len(a.OutputTokens), keep)
 	}
 	for i, tok := range a.AcceptedTokens {
 		if tok < 0 {

@@ -1462,3 +1462,12 @@ Audited the new MTP verifier plan/forward scaffold for malformed manual-plan edg
 - Factored verifier position construction through an overflow-checked helper shared by plan construction and scaffold validation.
 - `RunMTPVerifierForward` now revalidates manual plans against model vocab, verifies drafted tokens match the verifier-token suffix, and rejects overflowing/non-contiguous positions before checking KV caches.
 - Updated scaffold tests to clone plans before mutation and cover out-of-vocab verifier tokens, drafted/verifier suffix mismatches, and position overflow.
+
+## Session 167: MTP acceptance and drafter alias audit
+
+Continued the MTP scaffold audit:
+
+- Hardened `MTPAcceptance.Validate` to use `KVKeepTokens` before comparing output-token length, avoiding unchecked `accepted_prefix_len + 1` arithmetic on manually assembled structs.
+- Added regression coverage for max-int accepted-prefix acceptance state.
+- Made drafter `PreProjectInto` and `PostProjectInto` alias-safe by computing into temporary output buffers before copying into caller-provided destinations.
+- Added projection alias-safety tests for overlapping destination/input slices.

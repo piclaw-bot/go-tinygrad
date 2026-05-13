@@ -287,11 +287,13 @@ func (d *Gemma4MTPDrafter) PreProjectInto(dst, backboneTokenEmbedding, activatio
 	if len(d.PreProjection) < want {
 		return fmt.Errorf("pre_projection len=%d, want at least %d", len(d.PreProjection), want)
 	}
+	out := make([]float32, h)
 	for row := 0; row < h; row++ {
 		start := row * preWidth
 		w := d.PreProjection[start : start+preWidth]
-		dst[row] = simdDot(backboneTokenEmbedding, w[:bh]) + simdDot(activation, w[bh:])
+		out[row] = simdDot(backboneTokenEmbedding, w[:bh]) + simdDot(activation, w[bh:])
 	}
+	copy(dst, out)
 	return nil
 }
 
@@ -318,7 +320,9 @@ func (d *Gemma4MTPDrafter) PostProjectInto(dst, assistantHidden []float32) error
 	if len(d.PostProjection) < want {
 		return fmt.Errorf("post_projection len=%d, want at least %d", len(d.PostProjection), want)
 	}
-	gemvNT(dst, assistantHidden, d.PostProjection, h, bh)
+	out := make([]float32, bh)
+	gemvNT(out, assistantHidden, d.PostProjection, h, bh)
+	copy(dst, out)
 	return nil
 }
 

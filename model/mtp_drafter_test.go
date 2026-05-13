@@ -180,6 +180,35 @@ func TestGemma4MTPDrafterProjectionHelpers(t *testing.T) {
 	}
 }
 
+func TestGemma4MTPDrafterProjectionHelpersAreAliasSafe(t *testing.T) {
+	d := &Gemma4MTPDrafter{
+		Config:             LlamaConfig{HiddenSize: 2},
+		BackboneHiddenSize: 2,
+		PreProjection: []float32{
+			1, 0, 0, 1,
+			0, 1, 1, 0,
+		},
+		PostProjection: []float32{
+			1, 0,
+			0, 1,
+		},
+	}
+	shared := []float32{10, 20}
+	if err := d.PreProjectInto(shared, shared, []float32{1, 2}); err != nil {
+		t.Fatalf("PreProjectInto alias: %v", err)
+	}
+	if !sameFloat32s(shared, []float32{12, 21}) {
+		t.Fatalf("PreProjectInto alias result=%v want [12 21]", shared)
+	}
+	postShared := []float32{3, 4}
+	if err := d.PostProjectInto(postShared, postShared); err != nil {
+		t.Fatalf("PostProjectInto alias: %v", err)
+	}
+	if !sameFloat32s(postShared, []float32{3, 4}) {
+		t.Fatalf("PostProjectInto alias result=%v want [3 4]", postShared)
+	}
+}
+
 func TestMTPDrafterHelpersRejectOverflowingProducts(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)
 	d := &Gemma4MTPDrafter{BackboneHiddenSize: maxInt/2 + 1}
