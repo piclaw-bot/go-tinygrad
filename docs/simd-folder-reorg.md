@@ -61,6 +61,9 @@ Before introducing subpackages:
 - avoid moving unexported assembly symbols across package boundaries until the public facade wrappers are complete;
 - keep shared guard helpers such as `checkedMulInt`/`checkedAddInt` in the facade package until subpackage bridge APIs are designed;
 - keep SGEMM/GEBP/gather capability checks (`HasSgemmAsm`) at the public facade boundary so unsupported architectures no-op safely instead of reaching fallback panic stubs;
+- keep blocked/GEBP/gather SGEMM pointer arithmetic behind checked shape products and checked float32 byte offsets before `unsafe.Add`;
+- keep GEBP packing scratch per-call rather than package-global so concurrent facade calls cannot alias packed B tiles;
+- route zero-length vector/BF16 entrypoints through scalar fallbacks instead of assembly stubs;
 - run at minimum:
 
 ```sh
@@ -80,7 +83,7 @@ The literal `backends/simd/{amd64,arm64,scalar}` split should not start until th
 - Export the public API (`Sdot`, `Saxpy`, `Vec*`, `RMSNorm*`, `BF16*`, `Sgemm*`, `Pack*`, GEBP/gather helpers).
 - Own all public input validation, nil/length/stride checks, overflow checks, and scalar fallback selection.
 - Own runtime feature detection and the public `RuntimeCapabilities`, `HasDotAsm`, `HasVecAsm`, and `HasSgemmAsm` compatibility variables.
-- Own scalar fallback behavior for malformed or partially sized inputs so architecture providers can assume prevalidated exact-shape calls.
+- Own scalar fallback behavior for malformed, zero-length, or partially sized inputs so architecture providers can assume prevalidated exact-shape calls.
 - Keep `checkedMulInt`/`checkedAddInt` and SGEMM/GEBP/gather preflight helpers at the facade boundary until every provider API has equivalent tests.
 
 ### Provider shape
