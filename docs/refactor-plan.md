@@ -252,22 +252,41 @@ GEMMA4_TRACE_TEST=1 go test -tags diagnostic ./model -run 'TestGemma4GPUGenerate
 
 Phase 6.5 is complete only when each checklist item below is either checked off or explicitly deferred into a named follow-up phase with rationale. This replaces the earlier broad "cleanup until it feels stable" approach.
 
+### Deferred mechanical split decisions
+
+These larger moves are deliberately deferred out of Phase 6.5 into follow-up refactor phases. Phase 6.5 now closes on documented ownership boundaries, guard baselines, and validation gates rather than performing every possible package split.
+
+- **CUDA runtime split → Phase 6.7 (`backends/cuda`).**
+  - Rationale: `gpu` still owns live CUDA driver state, `DevBuf`, stream/graph helpers, upload/dirty-state semantics, GPU-resident Q4/MLX weights, LM-head/dense dispatch, native/emulated BF16 helpers, experimental NV ioctl/memory/query/GPFIFO helpers, and expert resources. Splitting this now would be broad API surgery with high risk of losing the recently added guard behavior.
+  - Preservation plan: keep `gpu` transitional but quiet/guarded; move only after `backends/cuda` can own `DevBuf` and upload state as first-class runtime concepts, with focused tests covering nil receivers, upload errors, allocation overflow, stream/graph launch guards, quantized weight layout validation, expert resource release, and debug-gated diagnostics. `backends/cuda/ptx` already owns embedded PTX assets and should remain the source owner during that split.
+
+- **LLaMA/Gemma/Qwen/MoE/MTP model package split → Phase 6.8 (`models/*`).**
+  - Rationale: transitional `model` still combines loader normalization, architecture-specific fields, CPU forward, GPU orchestration hooks, MoE, Gemma4 PLI/KV-sharing, MTP scaffold, and generation. Recent audits hardened helper entrypoints, but splitting files now would be mostly mechanical churn until shared model/backend interfaces are clearer.
+  - Preservation plan: keep new feature work paused in `model` except small guard fixes; when splitting, move helpers with their focused tests and preserve MTP acceptance/KV commit semantics, MTP drafter projection validation, MoE loader/forward edge guards, inference helper sizing, CPU forward-layer entrypoint checks, and diagnostic build tags.
+
+- **Generation runtime split → Phase 6.9 (`runtime/generation`).**
+  - Rationale: generation currently depends on model-specific CPU/GPU paths, tokenizer behavior, KV cache semantics, TurboQuant, MTP acceptance, and future speculative decode loops. Extracting it before model/backend interfaces settle would likely create temporary bridges.
+  - Preservation plan: defer until Phase 6.8 has architecture packages or stable shared interfaces. Keep command-front-end token/request validation and output normalization behavior in place, and move generation tests with the runtime when extracted.
+
+- **Import-boundary script → deferred to Phase 6.5 closeout follow-up.**
+  - Rationale: import ownership rules are documented and currently enforced by review. A small script is useful but not required to close Phase 6.5, and should be added after deferred split names are settled to avoid hard-coding transitional exceptions twice.
+
 ### 6.5 completion checklist
 
 1. **Ownership docs and import rules**
    - [x] `docs/refactor-plan.md` exists and is current.
    - [x] Current package ownership map is documented.
    - [x] Target package architecture and import direction are documented.
-   - [ ] Optional: add a small import-boundary check script, or explicitly defer it.
+   - [x] Optional import-boundary script explicitly deferred until split names stabilize in follow-up refactors.
 
 2. **Mechanical ownership moves**
    - [x] Loader boundaries moved: tokenizer, config, safetensors, weights.
    - [x] Shared runtime boundaries moved: KV/TurboQuant, MLX/GPTQ/Q4 quant helpers, mmap advisor.
    - [x] Backend boundaries moved: SIMD facade, placement policy, Vulkan scaffolding/assets, CUDA PTX assets.
    - [x] BERT/GTE encoder path moved to `models/bert`.
-   - [ ] CUDA runtime split from transitional `gpu` to `backends/cuda`, or explicitly defer with a preservation plan for `DevBuf`, upload state, GPU quantized weights, expert resources, and guard behavior.
-   - [ ] LLaMA/Gemma/Qwen/MoE/MTP split from transitional `model`, or explicitly defer with a named follow-up plan.
-   - [ ] Generation/runtime split from transitional `model`, or explicitly defer until model/backend interfaces are stable.
+   - [x] CUDA runtime split from transitional `gpu` to `backends/cuda` deferred to Phase 6.7 with preservation plan for `DevBuf`, upload state, GPU quantized weights, expert resources, and guard behavior.
+   - [x] LLaMA/Gemma/Qwen/MoE/MTP split from transitional `model` deferred to Phase 6.8 with named follow-up plan.
+   - [x] Generation/runtime split from transitional `model` deferred to Phase 6.9 until model/backend interfaces are stable.
 
 3. **Audit/guard baseline**
    - [x] `tensor` malformed-input, unsafe-view, NN/convenience, matmul/linear, module guards audited.
@@ -276,9 +295,9 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
    - [x] `backends/placement`, `backends/simd`, and `backends/vulkan` guard/logging status audited.
    - [x] Transitional `gpu` CUDA/NV helper guard/logging baseline audited before CUDA split.
    - [x] Transitional `model` helper audit completed for MTP drafter, MoE helpers, inference helpers, CPU forward-layer entrypoint, chunked LM-head, batched prefill, and logging gates.
-   - [ ] Remaining large `model` loader/generation paths require final scan or explicit deferral with split plan.
+   - [x] Remaining large `model` loader/generation paths explicitly deferred to Phase 6.8/6.9 split plans after helper audit and guard baseline.
    - [x] `cmd` front-end/server boundary audit completed for token limits, request decoding, scanner errors, streaming write failures, and throughput reporting.
-   - [ ] Re-run `cmd` boundary scan after any final model/generation changes.
+   - [x] Re-run `cmd` boundary scan after final model/generation audit; remaining output is explicit CLI/server behavior.
 
 4. **Debug/test/logging hygiene**
    - [x] Heavy Gemma4 diagnostics are `diagnostic` build-tagged and gated by `GEMMA4_TRACE_TEST=1`.
@@ -287,7 +306,7 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
 
 5. **Documentation alignment**
    - [x] README, architecture, runtime/backend notes, TurboQuant, GPU options, weight-budget docs, and development log reflect completed moves/audits through the loader/runtime batch.
-   - [ ] Final documentation sweep after any remaining transitional `model`/`cmd` audit or explicit deferrals.
+   - [ ] Final documentation sweep after recording these explicit deferrals and validation results.
 
 6. **Validation gate**
    - [x] Fast shared gates have passed repeatedly during audit batches.

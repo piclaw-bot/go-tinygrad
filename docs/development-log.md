@@ -1253,3 +1253,13 @@ Completed the Phase 6.5 non-test stdout/stderr/logging scan:
 - Non-test library/backend packages are quiet by default, with only `GO_PHERENCE_*_DEBUG` helper output remaining.
 - `backends/placement.PrintPlan` remains as an explicit caller-requested reporting API.
 - `cmd/*` output remains user-facing CLI/server reporting and error handling.
+
+
+## Session 143: Phase 6.5 mechanical split deferrals
+
+Recorded explicit Phase 6.5 split/defer decisions:
+
+- CUDA runtime split is deferred to Phase 6.7 with a preservation plan for `DevBuf`, upload state, GPU quantized weights, expert resources, and recently added guard/debug behavior.
+- LLaMA/Gemma/Qwen/MoE/MTP model package split is deferred to Phase 6.8 with a plan to move helper tests and preserve MTP/MoE/inference/forward guard semantics.
+- Generation/runtime extraction is deferred to Phase 6.9 until model/backend interfaces stabilize.
+- Import-boundary scripting is deferred until follow-up split names stabilize; import rules remain documented and review-enforced for Phase 6.5 closeout.
