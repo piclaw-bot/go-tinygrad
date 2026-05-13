@@ -77,14 +77,21 @@ func TestAcceptMTPDraftNoDraftsEmitsVerifierToken(t *testing.T) {
 }
 
 func TestMTPAcceptanceKVKeepTokens(t *testing.T) {
-	got := MTPAcceptance{AcceptedPrefixLen: 3}.KVKeepTokens()
+	acceptance, err := AcceptMTPDraft([]int{1, 2, 3}, []int{1, 2, 3, 4})
+	if err != nil {
+		t.Fatalf("AcceptMTPDraft: %v", err)
+	}
+	got := acceptance.KVKeepTokens()
 	if got != 4 {
 		t.Fatalf("KVKeepTokens=%d want 4", got)
 	}
 }
 
 func TestCommitAcceptedFloatKV(t *testing.T) {
-	acceptance := MTPAcceptance{AcceptedPrefixLen: 1} // keep accepted token + bonus = 2 staged positions
+	acceptance, err := AcceptMTPDraft([]int{10, 11}, []int{10, 12, 13}) // keep accepted token + bonus = 2 staged positions
+	if err != nil {
+		t.Fatalf("AcceptMTPDraft: %v", err)
+	}
 	k := [][]float32{{1, 2, 10, 11, 12, 13, 14, 15}}
 	v := [][]float32{{3, 4, 20, 21, 22, 23, 24, 25}}
 	cp := kv.FloatKVCheckpoint{KLen: []int{2}, VLen: []int{2}}
@@ -106,7 +113,10 @@ func TestCommitAcceptedCompressedKV(t *testing.T) {
 	cache.Append([]float32{3, 4}, []float32{30, 40})
 	cache.Append([]float32{5, 6}, []float32{50, 60})
 	cache.Append([]float32{7, 8}, []float32{70, 80})
-	acceptance := MTPAcceptance{AcceptedPrefixLen: 1} // keep two staged positions
+	acceptance, err := AcceptMTPDraft([]int{10, 11}, []int{10, 12, 13}) // keep two staged positions
+	if err != nil {
+		t.Fatalf("AcceptMTPDraft: %v", err)
+	}
 	if err := CommitAcceptedCompressedKV([]*kv.CompressedKVCache{cache}, cp, acceptance); err != nil {
 		t.Fatalf("CommitAcceptedCompressedKV: %v", err)
 	}
@@ -179,5 +189,21 @@ func TestMTPAcceptanceValidationRejectsMalformedTokens(t *testing.T) {
 	}
 	if err := CommitAcceptedCompressedKV(nil, nil, bad); err == nil {
 		t.Fatal("CommitAcceptedCompressedKV accepted negative prefix")
+	}
+}
+
+func TestMTPAcceptanceValidateRejectsInconsistentState(t *testing.T) {
+	cases := []MTPAcceptance{
+		{DraftedCount: 1, VerifiedCount: 0, AcceptedPrefixLen: 2, AcceptedTokens: []int{1, 2}, BonusToken: 3, OutputTokens: []int{1, 2, 3}},
+		{DraftedCount: 2, VerifiedCount: 1, AcceptedPrefixLen: 1, AcceptedTokens: nil, BonusToken: 3, OutputTokens: []int{3}},
+		{DraftedCount: 2, VerifiedCount: 1, AcceptedPrefixLen: 1, AcceptedTokens: []int{1}, BonusToken: 3, OutputTokens: []int{2, 3}},
+		{DraftedCount: 2, VerifiedCount: 1, AcceptedPrefixLen: 1, AcceptedTokens: []int{1}, BonusToken: -3, OutputTokens: []int{1, -3}},
+		{DraftedCount: 2, VerifiedCount: 2, AcceptedPrefixLen: 2, AcceptedTokens: []int{1, 2}, BonusToken: 3, OutputTokens: []int{1, 2, 3}, AllDraftsAccepted: false, FirstRejectedIndex: 2},
+		{DraftedCount: 2, VerifiedCount: 2, AcceptedPrefixLen: 2, AcceptedTokens: []int{1, 2}, BonusToken: 3, OutputTokens: []int{1, 2, 3}, AllDraftsAccepted: true, FirstRejectedIndex: 2},
+	}
+	for i, tc := range cases {
+		if err := tc.Validate(); err == nil {
+			t.Fatalf("case %d accepted malformed state: %+v", i, tc)
+		}
 	}
 }

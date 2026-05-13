@@ -1332,3 +1332,11 @@ Resumed MTP/speculative work after Phase 6.5 closeout with a small verifier-scaf
 - Added `NewMTPVerifierResultForModel`, a model-aware verifier result constructor that validates verifier token IDs against vocab size, logits row width against vocab size, and final activation width against hidden size.
 - Kept the existing low-level `NewMTPVerifierResult` for tests/helpers that do not have a model instance.
 - Added regression coverage for nil/invalid model dims, token bounds, logits width, final activation width, and a valid model-aware acceptance path.
+
+## Session 152: MTP acceptance consistency audit
+
+Audited MTP acceptance and KV commit semantics:
+
+- Added `MTPAcceptance.Validate` so manually assembled accept/reject results are checked before committing staged verifier KV.
+- Float and compressed KV commit helpers now reject inconsistent accepted/verified counts, accepted-token/output-token mismatches, invalid bonus tokens, and inconsistent all-accepted/rejected state before mutating caches.
+- Updated KV commit tests to use constructor-produced acceptance values and added malformed-state regression cases.
