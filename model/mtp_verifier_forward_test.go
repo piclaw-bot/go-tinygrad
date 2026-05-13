@@ -87,6 +87,36 @@ func TestRunMTPVerifierForwardFloatKVCommitKeepsAcceptedPrefix(t *testing.T) {
 	}
 }
 
+func TestRunMTPVerifierForwardCompressedKVCommitKeepsAcceptedPrefix(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	plan := mustMTPVerifierPlan(t, m, 0, []int{2}, 0)
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	result, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
+	if err != nil {
+		t.Fatalf("RunMTPVerifierForward: %v", err)
+	}
+	cache := kv.NewCompressedKVCache(2, 1, 2, nil, true)
+	cp := kv.CheckpointCompressedKV([]*kv.CompressedKVCache{cache})
+	for i := 0; i < len(plan.VerifierTokens); i++ {
+		base := float32(i*10 + 1)
+		cache.Append([]float32{base, base + 1}, []float32{base + 100, base + 101})
+	}
+	if got, want := cache.SeqLen(), len(plan.VerifierTokens); got != want {
+		t.Fatalf("staged compressed seq len=%d want %d", got, want)
+	}
+	keep := result.Acceptance.KVKeepTokens()
+	if err := result.CommitCompressedKV([]*kv.CompressedKVCache{cache}, cp); err != nil {
+		t.Fatalf("CommitCompressedKV: %v", err)
+	}
+	if got, want := cache.SeqLen(), keep; got != want {
+		t.Fatalf("committed compressed seq len=%d want %d acceptance=%+v", got, want, result.Acceptance)
+	}
+	if got, want := len(cache.GetK()), keep*2; got != want {
+		t.Fatalf("committed compressed K len=%d want %d", got, want)
+	}
+}
+
 func TestRunMTPVerifierForwardScaffoldRejectsMalformedInputs(t *testing.T) {
 	m := newZeroLayerVerifierModel()
 	base := mustMTPVerifierPlan(t, m, 1, []int{2}, 5)

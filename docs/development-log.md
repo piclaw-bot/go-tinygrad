@@ -1543,3 +1543,11 @@ Continued the MTP verifier-forward implementation plan:
 - Added a single-layer verifier-forward test that stages float KV entries through `RunMTPVerifierForward` and then commits the result.
 - The test verifies staged KV length for all verifier positions and post-commit K/V lengths of `accepted_prefix_len + 1`, covering rollback/keep-prefix behavior independent of whether the synthetic draft is accepted or rejected.
 - Focused verifier tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 177: MTP verifier compressed KV keep-prefix test
+
+Completed the remaining verifier-forward KV keep-prefix test coverage:
+
+- Added a resource-safe compressed/TurboQuant-backed KV commit test using the verifier result from `RunMTPVerifierForward`.
+- The test stages compressed KV entries for all verifier positions, commits via `MTPVerifierResult.CommitCompressedKV`, and verifies the final sequence/K lengths match `accepted_prefix_len + 1`.
+- Focused verifier tests, no-run all-package gate, vet, and diff checks passed. Public speculative CLI exposure remains disabled until the drafter loop and end-to-end smokes are implemented.
