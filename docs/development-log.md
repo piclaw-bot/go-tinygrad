@@ -1434,3 +1434,11 @@ Continued SIMD/runtime stress validation:
 - Added BF16 facade tests covering empty inputs, mismatched lengths, short weights, bounded widen/narrow conversion, and fallback parity through the `*Asm` public wrappers.
 - Re-ran native SIMD focused tests plus arm64/riscv64 SIMD compile gates to keep architecture-dispatch parity checked.
 - No-run all-package gate, vet, and diff checks passed.
+
+## Session 164: SIMD benchmark and speculative CLI gate
+
+Completed the remaining aggressive runtime validation checks:
+
+- Confirmed there is no public speculative/MTP CLI flag in `cmd`; speculative generation remains disabled while verifier forward and drafter loop are scaffold-only.
+- Ran selective SIMD benchmarks after correctness/race/smoke gates: `go test ./backends/simd -run '^$' -bench 'Benchmark(VecAdd|BF16DotAsm|RMSNorm|ToBF16)' -benchtime=100ms -count=1`.
+- Results on this host (i7-12700, amd64): BF16DotAsm ~404 ns/op, RMSNorm ~689 ns/op, VecAdd ~241 ns/op, ToBF16 ~216 ns/op.
