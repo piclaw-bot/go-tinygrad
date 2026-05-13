@@ -1381,3 +1381,14 @@ Continued the aggressive runtime validation plan with cross-architecture gates:
 - `GOARCH=riscv64 go test -c ./backends/simd` passed.
 - Plain `GOARCH=arm64 go test ./... -run '^$'` compiled test binaries but failed to execute them on the amd64 host with `exec format error`.
 - Compile-focused substitute passed with `GOARCH=arm64 go test -exec /bin/true ./... -run '^$'`.
+
+## Session 158: CPU runtime smoke matrix
+
+Completed the CPU generation smoke matrix with short budgets:
+
+- SmolLM2 CPU: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 3` passed.
+- Gemma4 E2B MLX4 CPU: `go run ./cmd/llmgen -model models/gemma4-e2b-mlx4 -prompt 'Hello' -tokens 2` passed.
+- Qwen3 0.6B MLX4 CPU: `go run ./cmd/llmgen -model models/qwen3-0.6b-mlx4 -prompt 'Hello' -tokens 2` passed.
+- Eager-load small model smoke: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2 -eager-load` passed.
+- TurboQuant CPU smoke: `go run ./cmd/llmgen -model models/smollm2-135m -prompt 'Hello' -tokens 2 -turbo-quant` passed.
+- Qwen3 MoE loader/short-generation smoke: `go run ./cmd/llmgen -model models/qwen3-30b-a3b-mlx4 -prompt 'Hi' -tokens 0` passed within the current resource budget.
