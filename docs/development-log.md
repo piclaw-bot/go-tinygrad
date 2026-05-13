@@ -1442,3 +1442,15 @@ Completed the remaining aggressive runtime validation checks:
 - Confirmed there is no public speculative/MTP CLI flag in `cmd`; speculative generation remains disabled while verifier forward and drafter loop are scaffold-only.
 - Ran selective SIMD benchmarks after correctness/race/smoke gates: `go test ./backends/simd -run '^$' -bench 'Benchmark(VecAdd|BF16DotAsm|RMSNorm|ToBF16)' -benchtime=100ms -count=1`.
 - Results on this host (i7-12700, amd64): BF16DotAsm ~404 ns/op, RMSNorm ~689 ns/op, VecAdd ~241 ns/op, ToBF16 ~216 ns/op.
+
+## Session 165: Aggressive runtime validation closeout
+
+Closed the current aggressive runtime validation batch:
+
+- Full unit suite passed after aligning stale MTP KV staging tests with the stricter acceptance validator.
+- Race gates passed for shared runtime/loader/tensor/SIMD and a focused model MTP/KV/inference/forward/MoE subset; the broad model race regex was documented as resource-killed and replaced by the focused safe subset.
+- Cross-arch compile gates passed for SIMD arm64/riscv64 and an all-package arm64 compile substitute; native execution of arm64 tests on this amd64 host was documented as an `exec format error` limitation.
+- CPU smoke matrix passed for SmolLM2, Gemma4 E2B MLX4, Qwen3 0.6B, Qwen3 MoE loader/short-generation, eager-load, and TurboQuant.
+- GPU/hybrid smoke matrix passed with CUDA available: SmolLM2 GPU, SmolLM2 hybrid, Gemma4 GPU decode, and quiet default GPU diagnostics.
+- MTP scaffold validation now covers verifier plans, model-aware verifier results, acceptance consistency, float/compressed KV commit chains, and verifier-forward contract validation while keeping speculative CLI disabled.
+- SIMD stress validation covers concurrent GEBP scratch under `-race`, malformed BF16 facade parity, cross-arch SIMD compile gates, and a bounded benchmark pass.
