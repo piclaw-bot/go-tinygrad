@@ -48,6 +48,12 @@ func NewMTPVerifierPlan(m *LlamaModel, inputToken int, drafted []int, startPos i
 	}, nil
 }
 
+// NewMTPVerifierPlanForModel is a compatibility alias for call sites that
+// name the model-aware constructor explicitly.
+func NewMTPVerifierPlanForModel(m *LlamaModel, inputToken int, drafted []int, startPos int) (MTPVerifierPlan, error) {
+	return NewMTPVerifierPlan(m, inputToken, drafted, startPos)
+}
+
 func mtpVerifierPositions(startPos, count int) ([]int, error) {
 	if startPos < 0 {
 		return nil, fmt.Errorf("start position %d out of range", startPos)
