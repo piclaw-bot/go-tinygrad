@@ -318,7 +318,7 @@ func f32SlotsForBytes(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	return (n + 3) / 4
+	return n/4 + boolToInt(n%4 != 0)
 }
 
 func bytesAsFloat32Padded(data []byte) []float32 {
@@ -340,9 +340,20 @@ func float32PackedAsBytes(data []float32, n int) []byte {
 	if n <= 0 || len(data) == 0 {
 		return nil
 	}
-	out := make([]byte, len(data)*4)
+	maxBytes, ok := checkedMulInt(len(data), 4)
+	if !ok || n > maxBytes {
+		return nil
+	}
+	out := make([]byte, maxBytes)
 	for i, f := range data {
 		binary.LittleEndian.PutUint32(out[i*4:i*4+4], math.Float32bits(f))
 	}
 	return out[:n]
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

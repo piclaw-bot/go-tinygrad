@@ -60,6 +60,15 @@ func TestNVFP4RequiredBytesRejectsBadDims(t *testing.T) {
 	}
 }
 
+func TestF32SlotsForBytesAvoidsOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	got := f32SlotsForBytes(maxInt)
+	want := maxInt/4 + 1
+	if got != want {
+		t.Fatalf("f32SlotsForBytes(maxInt)=%d want %d", got, want)
+	}
+}
+
 func TestBytesAsFloat32PaddedRoundTripsRawBytes(t *testing.T) {
 	input := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 	got := bytesAsFloat32Padded(input)
@@ -74,6 +83,9 @@ func TestBytesAsFloat32PaddedRoundTripsRawBytes(t *testing.T) {
 	}
 	if roundTrip := float32PackedAsBytes(got, len(input)); string(roundTrip) != string(input) {
 		t.Fatalf("roundTrip=%#v want %#v", roundTrip, input)
+	}
+	if roundTrip := float32PackedAsBytes(got, len(got)*4+1); roundTrip != nil {
+		t.Fatalf("oversized roundTrip=%#v want nil", roundTrip)
 	}
 }
 
