@@ -72,6 +72,9 @@ func (m *LlamaModel) RunMTPMultiDraftSpeculativeStep(d *Gemma4MTPDrafter, state 
 	cp := kv.CheckpointFloatKV(kvCacheK, kvCacheV)
 	verifier, err := m.RunMTPVerifierForward(plan, kvCacheK, kvCacheV)
 	if err != nil {
+		if restoreErr := cp.Restore(kvCacheK, kvCacheV); restoreErr != nil {
+			return MTPMultiDraftSpeculativeResult{}, fmt.Errorf("MTP verifier forward: %w; restore staged verifier KV: %v", err, restoreErr)
+		}
 		return MTPMultiDraftSpeculativeResult{}, fmt.Errorf("MTP verifier forward: %w", err)
 	}
 	if err := stats.Record(verifier.Acceptance); err != nil {

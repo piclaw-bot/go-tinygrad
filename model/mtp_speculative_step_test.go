@@ -124,6 +124,24 @@ func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
 	}
 }
 
+func TestRunMTPMultiDraftSpeculativeStepRestoresKVOnVerifierForwardError(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	m.Norm = nil
+	d := validProjectionOnlyDrafterForModel(m)
+	state, err := NewMTPDrafterState(0, []float32{1, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, 2, kvCacheK, kvCacheV, MTPSpeculationStats{}); err == nil {
+		t.Fatal("accepted verifier forward error")
+	}
+	if len(kvCacheK[0]) != 0 || len(kvCacheV[0]) != 0 {
+		t.Fatalf("verifier forward failure left staged KV K/V=%d/%d", len(kvCacheK[0]), len(kvCacheV[0]))
+	}
+}
+
 func TestRunMTPSpeculativeStepRestoresKVOnPostVerifierStatsFailure(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	d := validProjectionOnlyDrafterForModel(m)

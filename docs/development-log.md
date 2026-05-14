@@ -1787,3 +1787,11 @@ Continued the bounded drafter-loop audit:
 - Found that `RunMTPDrafterSteps(..., count=0)` returned the caller-supplied `MTPDrafterState` directly, so the result activation could alias external state.
 - Fixed the zero-count path to rebuild the final state through `NewMTPDrafterState`, preserving validation and copy semantics.
 - Added regression coverage proving the zero-count final state no longer aliases the caller state.
+
+## Session 206: MTP audit — restore KV on verifier-forward errors
+
+Continued speculative error-path auditing:
+
+- Found that `RunMTPMultiDraftSpeculativeStep` checkpointed float KV before verifier forward but only restored it on post-verifier stats failures.
+- Fixed verifier-forward error handling to restore staged KV as well, covering failures that occur after partial verifier KV appends (for example decode-finish validation after a layer has staged K/V).
+- Added regression coverage using a missing final norm to force a verifier-forward error after staging and asserting K/V is restored.
