@@ -79,6 +79,27 @@ func TestEstimateNVFP4MatrixBytes(t *testing.T) {
 	}
 }
 
+func TestPlanLayerPlacementReportsNVFP4Breakdown(t *testing.T) {
+	info := ModelSizeInfo{NumLayers: 2, HiddenSize: 4096, Intermediate: 12288, NumHeads: 32, NumKVHeads: 8, HeadDim: 128, VocabSize: 151936, QuantBits: 4, QuantFormat: "nvfp4", NumExperts: 128, MoEIntermediate: 768}
+	plan := PlanLayerPlacement(info, 1, testAvailGPUBytes)
+	if plan.NVFP4ResidentMB <= 0 || plan.NVFP4LayerMB <= 0 || plan.NVFP4ExpertMB <= 0 {
+		t.Fatalf("missing NVFP4 breakdown: %+v", plan)
+	}
+	if plan.NVFP4LayerMB >= plan.TotalGPUMB {
+		t.Fatalf("NVFP4 layer breakdown=%f should be below total GPU=%f", plan.NVFP4LayerMB, plan.TotalGPUMB)
+	}
+}
+
+func TestEstimateNVFP4ExpertBytes(t *testing.T) {
+	info := ModelSizeInfo{HiddenSize: 2048, Intermediate: 768, NumExperts: 128, QuantBits: 4, QuantFormat: "nvfp4"}
+	got := EstimateNVFP4ExpertBytes(info)
+	wantOneExpert := 2*estimateNVFP4MatrixBytes(2048, 768) + estimateNVFP4MatrixBytes(768, 2048)
+	want := int64(128) * wantOneExpert
+	if got != want {
+		t.Fatalf("EstimateNVFP4ExpertBytes=%d want %d", got, want)
+	}
+}
+
 func TestEstimateLayerWeightBytesNVFP4(t *testing.T) {
 	info := ModelSizeInfo{NumLayers: 1, HiddenSize: 4096, Intermediate: 12288, NumHeads: 32, NumKVHeads: 8, HeadDim: 128, QuantBits: 4, QuantFormat: "nvfp4"}
 	got := EstimateLayerWeightBytes(info, 0)

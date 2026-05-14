@@ -35,14 +35,17 @@ type LayerPlacement struct {
 
 // PlacementPlan describes the full model placement across tiers.
 type PlacementPlan struct {
-	Layers     []LayerPlacement
-	ResidentMB float64 // embeddings + LM head + norms + work buffers
-	GPULayers  int
-	CPULayers  int
-	MmapLayers int
-	TotalGPUMB float64
-	TotalCPUMB float64
-	AvailGPUMB float64
+	Layers          []LayerPlacement
+	ResidentMB      float64 // embeddings + LM head + norms + work buffers
+	GPULayers       int
+	CPULayers       int
+	MmapLayers      int
+	TotalGPUMB      float64
+	TotalCPUMB      float64
+	AvailGPUMB      float64
+	NVFP4ResidentMB float64
+	NVFP4LayerMB    float64
+	NVFP4ExpertMB   float64
 }
 
 // ModelSizeInfo provides the dimensions needed for placement planning.
@@ -61,6 +64,8 @@ type ModelSizeInfo struct {
 	IsGemma4          bool
 	HasDoubleWideMLP  bool // Gemma4 KV-shared layers
 	NumKVSharedLayers int
+	NumExperts        int
+	MoEIntermediate   int
 }
 
 // EstimateLayerWeightBytes estimates GPU VRAM for one transformer layer.
@@ -246,8 +251,11 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 
 	plan := PlacementPlan{
 		Layers:     make([]LayerPlacement, numLayers),
-		ResidentMB: float64(residentBytes) / (1024 * 1024),
-		AvailGPUMB: float64(availGPU) / (1024 * 1024),
+		ResidentMB: bytesToMB(residentBytes),
+		AvailGPUMB: bytesToMB(availGPU),
+	}
+	if isNVFP4(info) {
+		plan.NVFP4ResidentMB = bytesToMB(residentBytes)
 	}
 
 	if gpuLayers < 0 {
@@ -267,11 +275,15 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 
 	var totalGPU, totalCPU float64
 	for i := 0; i < numLayers; i++ {
-		layerMB := float64(EstimateLayerWeightBytes(info, i)) / (1024 * 1024)
+		layerBytes := EstimateLayerWeightBytes(info, i)
+		layerMB := bytesToMB(layerBytes)
 		if i < gpuLayers {
 			plan.Layers[i] = LayerPlacement{Layer: i, Location: TierGPU, WeightMB: layerMB}
 			plan.GPULayers++
 			totalGPU += layerMB
+			if isNVFP4(info) {
+				plan.NVFP4LayerMB += layerMB
+			}
 		} else {
 			plan.Layers[i] = LayerPlacement{Layer: i, Location: TierMmap, WeightMB: layerMB}
 			plan.MmapLayers++
@@ -280,6 +292,9 @@ func PlanLayerPlacement(info ModelSizeInfo, gpuLayers int, availGPUBytes uint64)
 	}
 	plan.TotalGPUMB = totalGPU + plan.ResidentMB
 	plan.TotalCPUMB = totalCPU
+	if isNVFP4(info) {
+		plan.NVFP4ExpertMB = bytesToMB(EstimateNVFP4ExpertBytes(info))
+	}
 
 	return plan
 }
@@ -291,8 +306,35 @@ func (p PlacementPlan) PrintPlan() {
 	if p.MmapLayers > 0 {
 		fmt.Printf("[placement] mmap: %d layers (%.0f MB)\n", p.MmapLayers, p.TotalCPUMB)
 	}
+	if p.NVFP4ResidentMB > 0 || p.NVFP4LayerMB > 0 || p.NVFP4ExpertMB > 0 {
+		fmt.Printf("[placement] NVFP4: %.0f MB resident, %.0f MB GPU layers, %.0f MB experts\n",
+			p.NVFP4ResidentMB, p.NVFP4LayerMB, p.NVFP4ExpertMB)
+	}
 	fmt.Printf("[placement] available GPU: %.0f MB\n", p.AvailGPUMB)
 }
+
+// EstimateNVFP4ExpertBytes estimates one layer's full MoE expert set in NVFP4.
+// It is reported separately from dense layer bytes so expert-cache policies can
+// size hot slots without conflating router/attention residency.
+func EstimateNVFP4ExpertBytes(info ModelSizeInfo) int64 {
+	if !isNVFP4(info) || info.NumExperts <= 0 {
+		return 0
+	}
+	h := nonNegativeInt64(info.HiddenSize)
+	inter := nonNegativeInt64(info.MoEIntermediate)
+	if inter == 0 {
+		inter = nonNegativeInt64(info.Intermediate)
+	}
+	experts := nonNegativeInt64(info.NumExperts)
+	perExpert := int64(0)
+	add := func(v int64) { perExpert = saturatingAddInt64(perExpert, v) }
+	add(estimateNVFP4MatrixBytes(h, inter))
+	add(estimateNVFP4MatrixBytes(h, inter))
+	add(estimateNVFP4MatrixBytes(inter, h))
+	return saturatingMulInt64(experts, perExpert)
+}
+
+func bytesToMB(v int64) float64 { return float64(v) / (1024 * 1024) }
 
 func isNVFP4(info ModelSizeInfo) bool {
 	return info.QuantFormat == "nvfp4"

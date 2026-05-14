@@ -100,7 +100,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
 - Done: placement estimates include NVFP4 packed FP4 bytes plus F8 scale and
   scalar metadata overhead, with BF16 resident embeddings/LM-head for inspected
   NVIDIA checkpoints.
-- Pending: report NVFP4 resident/layer/expert bytes separately from MLX/GPTQ.
+- Done: placement plans report NVFP4 resident, GPU-layer, and per-layer expert-set MB separately from the generic MLX/GPTQ totals.
 - Re-evaluate auto-fit and expert-slot sizing using Qwen3-30B-A3B-NVFP4.
 
 ## Roadmap insertion
