@@ -1726,3 +1726,12 @@ Ran the conservative full-suite gate after closing the real-asset MTP drafter co
 
 - Full suite passed: `go test ./... -count=1`.
 - No generation behavior changed in this slice, so CPU/GPU generation smokes were not rerun here.
+
+## Session 199: Internal multi-step MTP drafter loop
+
+Started the next internal-only MTP integration slice:
+
+- Added `RunMTPDrafterSteps`, a bounded drafter-only loop that repeatedly calls `RunMTPDrafterStepWithExternalKV` and carries `NextState` between draft steps.
+- Added `MTPDrafterRunResult` with drafted tokens, copied logits, copied next activations, and final state.
+- Added tests for projection-only deterministic multi-step behavior, synthetic q-only shape/state coverage, zero-count validation, malformed state validation, and negative draft count rejection.
+- Public speculative CLI remains untouched.
