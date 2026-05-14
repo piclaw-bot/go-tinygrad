@@ -76,13 +76,21 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 		}
 		md.Symmetric = qc.Sym
 		for _, group := range qc.ConfigGroups {
-			if isFP4FormatString(group.Format) || isFP4FormatString(group.Weights.Format) || (group.Weights.NumBits == 4 && isFloatFormatString(group.Weights.Type)) {
+			groupFP4 := isFP4FormatString(group.Format) || isFP4FormatString(group.Weights.Format) || (group.Weights.NumBits == 4 && isFloatFormatString(group.Weights.Type))
+			if groupFP4 {
 				fp4FormatSeen = true
-			}
-			if group.Weights.NumBits > 0 && md.Bits == 0 {
+				// Prefer the unsupported FP4 group's dimensions for diagnostics even
+				// when mixed config_groups are iterated in an arbitrary map order.
+				if group.Weights.NumBits > 0 {
+					md.Bits = group.Weights.NumBits
+				}
+				if group.Weights.GroupSize > 0 {
+					md.GroupSize = group.Weights.GroupSize
+				}
+			} else if group.Weights.NumBits > 0 && md.Bits == 0 {
 				md.Bits = group.Weights.NumBits
 			}
-			if group.Weights.GroupSize > 0 && md.GroupSize == 0 {
+			if !groupFP4 && group.Weights.GroupSize > 0 && md.GroupSize == 0 {
 				md.GroupSize = group.Weights.GroupSize
 			}
 			if group.Weights.Symmetric {
