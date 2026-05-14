@@ -36,6 +36,7 @@ func TestValidateNVFP4KernelSpec(t *testing.T) {
 		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4095, Batch: 1, Groups: 256, GroupSize: 16},
 		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4096, Batch: 1, Groups: 128, GroupSize: 16},
 		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4096, Batch: 1, Groups: 64, GroupSize: 64},
+		{Kind: NVFP4KernelGEMM, OutDim: int(math.MaxUint32) + 1, InDim: 16, Batch: 1, Groups: 1, GroupSize: 16},
 	}
 	for _, spec := range bad {
 		if err := ValidateNVFP4KernelSpec(spec); err == nil {

@@ -66,6 +66,9 @@ func ValidateNVFP4KernelSpec(spec NVFP4KernelSpec) error {
 	if spec.OutDim <= 0 || spec.InDim <= 0 || spec.Batch <= 0 || spec.Groups <= 0 || spec.GroupSize <= 0 {
 		return fmt.Errorf("invalid NVFP4 kernel dims out=%d in=%d batch=%d groups=%d groupSize=%d", spec.OutDim, spec.InDim, spec.Batch, spec.Groups, spec.GroupSize)
 	}
+	if spec.OutDim > math.MaxUint32 || spec.InDim > math.MaxUint32 || spec.Batch > math.MaxUint32 || spec.Groups > math.MaxUint32 || spec.GroupSize > math.MaxUint32 {
+		return fmt.Errorf("NVFP4 kernel dims exceed CUDA u32 interface out=%d in=%d batch=%d groups=%d groupSize=%d", spec.OutDim, spec.InDim, spec.Batch, spec.Groups, spec.GroupSize)
+	}
 	if spec.Kind == NVFP4KernelGEMV && spec.Batch != 1 {
 		return fmt.Errorf("NVFP4 GEMV batch=%d, want 1", spec.Batch)
 	}
