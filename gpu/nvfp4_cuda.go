@@ -159,6 +159,7 @@ func dequantNVFP4ToF32CUDA(w *GPUNVFP4Weight) ([]float32, bool) {
 	}
 	outBuf, err := Malloc(outLen)
 	if err != nil {
+		debugf("[gpu] NVFP4 CUDA dequant alloc fallback: %v\n", err)
 		return nil, false
 	}
 	defer outBuf.Free()
@@ -175,13 +176,16 @@ func dequantNVFP4ToF32CUDA(w *GPUNVFP4Weight) ([]float32, bool) {
 		unsafe.Pointer(&total),
 		unsafe.Pointer(&inDim),
 		unsafe.Pointer(&groupSize)); err != nil {
+		debugf("[gpu] NVFP4 CUDA dequant launch fallback: %v\n", err)
 		return nil, false
 	}
 	if err := SyncErr(); err != nil {
+		debugf("[gpu] NVFP4 CUDA dequant sync fallback: %v\n", err)
 		return nil, false
 	}
 	out := make([]float32, outLen)
 	if err := outBuf.Download(out); err != nil {
+		debugf("[gpu] NVFP4 CUDA dequant download fallback: %v\n", err)
 		return nil, false
 	}
 	return out, true

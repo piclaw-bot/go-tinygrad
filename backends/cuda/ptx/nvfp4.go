@@ -39,8 +39,9 @@ const NVFP4DequantF32PTX = `.version 7.0
     div.u32 %r7, %r3, %r5;                // row
     rem.u32 %r8, %r3, %r5;                // col
     shr.u32 %r9, %r5, 1;                  // packed bytes per row
-    mad.lo.u32 %r10, %r7, %r9, %r8;
-    shr.u32 %r10, %r10, 1;                // weight byte offset
+    mad.lo.u32 %r10, %r7, %r9, 0;         // row byte offset
+    shr.u32 %r26, %r8, 1;                 // col/2 packed byte within row
+    add.u32 %r10, %r10, %r26;             // weight byte offset
     add.u64 %rd3, %rd0, %r10;
     ld.global.u8 %r11, [%rd3];
     and.b32 %r12, %r8, 1;

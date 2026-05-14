@@ -27,6 +27,10 @@ type CUresult int32
 
 const (
 	CUDA_SUCCESS CUresult = 0
+
+	cuDeviceAttributeMultiprocessorCount    = 16
+	cuDeviceAttributeComputeCapabilityMajor = 75
+	cuDeviceAttributeComputeCapabilityMinor = 76
 )
 
 // Function pointers (populated by dlopen)
@@ -157,11 +161,9 @@ func Init() bool {
 			}
 		}
 
-		// Get SM count (attribute 16 = CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)
-		cuDeviceGetAttribute(&gpuSMs, 16, gpuDev)
-		// CUDA compute capability attributes.
-		cuDeviceGetAttribute(&gpuCCMajor, 75, gpuDev)
-		cuDeviceGetAttribute(&gpuCCMinor, 76, gpuDev)
+		cuDeviceGetAttribute(&gpuSMs, cuDeviceAttributeMultiprocessorCount, gpuDev)
+		cuDeviceGetAttribute(&gpuCCMajor, cuDeviceAttributeComputeCapabilityMajor, gpuDev)
+		cuDeviceGetAttribute(&gpuCCMinor, cuDeviceAttributeComputeCapabilityMinor, gpuDev)
 
 		// Create context
 		if r := cuCtxCreate(&gpuCtx, 0, gpuDev); r != CUDA_SUCCESS {
