@@ -36,6 +36,9 @@ func TestMTPSpeculationStatsValidateStepCapacity(t *testing.T) {
 	if err := (MTPSpeculationStats{}).ValidateStepCapacity(0); err == nil {
 		t.Fatal("accepted zero draft count")
 	}
+	if err := (MTPSpeculationStats{}).ValidateStepCapacity(maxMTPDraftCount + 1); err == nil {
+		t.Fatal("accepted oversized draft count")
+	}
 	if err := (MTPSpeculationStats{Steps: -1}).ValidateStepCapacity(1); err == nil {
 		t.Fatal("accepted negative stats counter")
 	}

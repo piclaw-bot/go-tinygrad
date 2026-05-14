@@ -119,6 +119,9 @@ func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
 	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, -1, nil, nil, MTPSpeculationStats{}); err == nil {
 		t.Fatal("accepted negative draft count")
 	}
+	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, maxMTPDraftCount+1, nil, nil, MTPSpeculationStats{}); err == nil {
+		t.Fatal("accepted oversized draft count")
+	}
 }
 
 func TestRunMTPSpeculativeStepRestoresKVOnPostVerifierStatsFailure(t *testing.T) {

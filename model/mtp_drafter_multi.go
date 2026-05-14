@@ -2,6 +2,8 @@ package model
 
 import "fmt"
 
+const maxMTPDraftCount = 64
+
 // MTPDrafterRunResult is a bounded internal drafter-only loop result. It is not
 // a public generation API; verifier integration remains explicit and separate.
 type MTPDrafterRunResult struct {
@@ -17,8 +19,8 @@ func (m *LlamaModel) RunMTPDrafterSteps(d *Gemma4MTPDrafter, state MTPDrafterSta
 	if m == nil {
 		return MTPDrafterRunResult{}, fmt.Errorf("nil model")
 	}
-	if count < 0 {
-		return MTPDrafterRunResult{}, fmt.Errorf("draft count %d out of range", count)
+	if count < 0 || count > maxMTPDraftCount {
+		return MTPDrafterRunResult{}, fmt.Errorf("draft count %d out of range [0,%d]", count, maxMTPDraftCount)
 	}
 	if count == 0 {
 		if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {

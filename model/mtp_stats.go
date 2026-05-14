@@ -25,8 +25,8 @@ func (s MTPSpeculationStats) ValidateOneStepCapacity() error {
 // preflighted against draftCount because the accepted prefix is only known after
 // verifier forward; post-verifier accounting failures restore staged KV.
 func (s MTPSpeculationStats) ValidateStepCapacity(draftCount int) error {
-	if draftCount <= 0 {
-		return fmt.Errorf("draft count %d out of range", draftCount)
+	if draftCount <= 0 || draftCount > maxMTPDraftCount {
+		return fmt.Errorf("draft count %d out of range [1,%d]", draftCount, maxMTPDraftCount)
 	}
 	if s.Steps < 0 || s.DraftedTokens < 0 || s.VerifiedTokens < 0 || s.BonusTokens < 0 || s.OutputTokens < 0 {
 		return fmt.Errorf("invalid MTP stats counters: %+v", s)
@@ -40,8 +40,9 @@ func (s MTPSpeculationStats) ValidateStepCapacity(draftCount int) error {
 	if _, ok := checkedAddNonNegative(s.BonusTokens, 1); !ok {
 		return fmt.Errorf("MTP stats bonus token count cannot record another step: %+v", s)
 	}
-	if _, ok := checkedAddNonNegative(s.OutputTokens, draftCount+1); !ok {
-		return fmt.Errorf("MTP stats output token count cannot record at most %d outputs: %+v", draftCount+1, s)
+	maxOutput := draftCount + 1
+	if _, ok := checkedAddNonNegative(s.OutputTokens, maxOutput); !ok {
+		return fmt.Errorf("MTP stats output token count cannot record at most %d outputs: %+v", maxOutput, s)
 	}
 	return nil
 }

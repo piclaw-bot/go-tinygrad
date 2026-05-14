@@ -1770,3 +1770,12 @@ Audited the new multi-draft speculative helper for error-path smells:
 - Added draft-count-aware `MTPSpeculationStats.ValidateStepCapacity` and switched the multi-draft speculative helper to use it.
 - Kept `VerifiedTokens` out of preflight because accepted-prefix length is only known after verifier forward; post-verifier stats failures still restore staged KV.
 - Added tests proving multi-draft stats overflow is rejected before verifier KV mutation.
+
+## Session 204: MTP audit — bound multi-draft counts
+
+Continued the multi-draft MTP audit:
+
+- Found that the internal “bounded” multi-step drafter loop accepted arbitrary positive counts and could allocate very large result slices.
+- Added `maxMTPDraftCount` and applied it consistently to `RunMTPDrafterSteps`, `RunMTPMultiDraftSpeculativeStep`, and stats preflight.
+- Avoided unchecked `draftCount+1` accounting by validating the draft count before deriving the maximum output count.
+- Added oversized-count coverage for drafter, speculative, and stats validation paths.

@@ -63,6 +63,9 @@ func TestRunMTPDrafterStepsValidation(t *testing.T) {
 	if _, err := m.RunMTPDrafterSteps(d, state, nil, -1); err == nil {
 		t.Fatal("accepted negative draft count")
 	}
+	if _, err := m.RunMTPDrafterSteps(d, state, nil, maxMTPDraftCount+1); err == nil {
+		t.Fatal("accepted oversized draft count")
+	}
 	if got, err := m.RunMTPDrafterSteps(d, state, nil, 0); err != nil || got.FinalState.PreviousToken != state.PreviousToken {
 		t.Fatalf("zero-count result=%+v err=%v", got, err)
 	}
