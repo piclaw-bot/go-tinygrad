@@ -58,7 +58,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 
 ### GPU: CUDA PTX (NVIDIA)
 
-27 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen. Runtime dispatch/resource ownership remains in `gpu`; embedded PTX source assets live in `backends/cuda/ptx`:
+28 hand-written PTX kernels compiled by the driver at runtime via `purego` dlopen. Runtime dispatch/resource ownership remains in `gpu`; embedded PTX source assets live in `backends/cuda/ptx`:
 
 - **Quantized GEMV**: INT4 dequant+multiply with shared memory tiling (GPTQ + MLX)
 - **Batched GEMM**: multi-token prefill, reads weights once for all tokens
@@ -66,6 +66,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 - **RMSNorm, RoPE, GQA Attention, SiLU, VecAdd/Mul/Scale**
 - **BF16 kernels**: native `cvt.f32.bf16` on Ampere+ (sm_86), emulated on sm_80
 - **MLX bias correction**: post-GEMV fixup for MLX affine quantization
+- **NVFP4 fallback**: packed FP4/F8-scale upload, dequant-to-F32 kernel, and correctness-first dense GEMV fallback; public generation remains disabled for NVFP4 checkpoints
 
 ### GPU: Vulkan Compute (any GPU)
 
@@ -113,6 +114,7 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 | **BF16** | safetensors dtype | Direct load | F32 on GPU | Half bandwidth |
 | **F16** | safetensors dtype | F16→F32 at load | F32 on GPU | |
 | **F32** | safetensors dtype | Direct load | Native | |
+| **NVFP4 / FP4** | `quantization_config` ModelOpt/compressed-tensors metadata | FP4 E2M1 + F8_E4M3FN scale reference path | Upload + dequant-to-F32 fallback kernel | Experimental/internal only; public model loading rejects NVFP4 until CPU/CUDA smokes agree |
 
 ## Commands
 
@@ -160,9 +162,9 @@ Current package ownership is now organized around explicit loader/runtime/backen
 - **`models/bert/`** — GTE/BERT encoder path
 - **`runtime/kv/`** — TurboQuant state, compressed KV cache, and KV staging/rollback primitives with layout/overflow, accessor, and memory-accounting guards
 - **`runtime/memory/`** — mmap residency advice and range tracking for eager/streamed weights; nil/invalid/malformed ranges are inert or sanitized with saturating accounting
-- **`runtime/quant/`** — MLX/GPTQ CPU quant formats, dtype/shape validation, checked expected-size arithmetic, dequantization, and guarded on-the-fly Q4 GEMV helpers
+- **`runtime/quant/`** — MLX/GPTQ CPU quant formats plus experimental NVFP4 layout/decode helpers, dtype/shape validation, checked expected-size arithmetic, dequantization, and guarded on-the-fly Q4/GEMV helpers
 - **`model/`** — transitional LLaMA-family decoder package; Gemma/Qwen/MoE/MTP package splits are deferred to Phase 6.8 and generation extraction to Phase 6.9; MTP, MoE, inference/forward, KV, prefill, LM-head, logging gates, and low-level helper guards are hardened
-- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the Phase 6.7 CUDA backend split; DevBuf, stream/graph, Q4/MLX dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, attention dispatch guards, and opt-in `GO_PHERENCE_GPU_DEBUG` diagnostics are hardened
+- **`gpu/`** — transitional CUDA package plus GPU-resident expert cache pending the Phase 6.7 CUDA backend split; DevBuf, stream/graph, Q4/MLX/NVFP4 fallback dispatch, expert-pool, NV ioctl/memory/query/GPFIFO, dense SGEMM/LM-head, JIT, BF16, RoPE, softmax, attention dispatch guards, and opt-in `GO_PHERENCE_GPU_DEBUG` diagnostics are hardened
 
 - **Lazy tensor DAG** with elementwise fusion, graph rewrites, and explicit malformed-input validation
 - **Pattern matcher + graph rewrite** (tinygrad-style, 16 rules), nil-safe for malformed rule graphs

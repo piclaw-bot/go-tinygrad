@@ -4,7 +4,7 @@ go-pherence currently has a production CUDA backend plus Vulkan backend scaffold
 
 ## CUDA PTX (NVIDIA)
 
-Primary GPU backend. 27 hand-written PTX kernels. Source strings are owned by `backends/cuda/ptx`; runtime loading, launch helpers, `DevBuf`, and GPU-resident resources remain in the transitional `gpu` package:
+Primary GPU backend. 28 hand-written PTX kernels. Source strings are owned by `backends/cuda/ptx`; runtime loading, launch helpers, `DevBuf`, and GPU-resident resources remain in the transitional `gpu` package:
 
 | Category | Kernels | Notes |
 |---|---|---|
@@ -17,6 +17,7 @@ Primary GPU backend. 27 hand-written PTX kernels. Source strings are owned by `b
 | **Utility** | lm_head_gemv, prefetch_l2, vec_scale | 2D grid, L2 warming |
 | **BF16** | bf16_rms_norm, bf16_vec_add, bf16_silu_mul, bf16_gelu_tanh_mul | emulated (sm_80) |
 | **BF16 native** | native_bf16_rms_norm/vec_add/gemv | ld.b16+cvt (sm_86+) |
+| **NVFP4 fallback** | nvfp4_dequant_f32 | packed FP4 + F8_E4M3FN scales → F32 materialization |
 
 Loaded as one mega module + optional native BF16 module.
 
@@ -41,15 +42,18 @@ Portable backend for non-NVIDIA hardware. Vulkan code and shaders now live under
 
 ## NVFP4 / FP4 Track
 
-NVFP4 support is not implemented yet, but public NVIDIA/Model Optimizer and
-community checkpoints now exist for Qwen3 and Gemma4. This should be treated as
-a new CUDA quantization path, not an MLX/GPTQ tweak:
+NVFP4 is an experimental/internal CUDA quantization path. Public NVIDIA
+ModelOpt and community checkpoints exist for Qwen3 and Gemma4, but go-pherence
+still rejects them during public model loading until real CPU-vs-CUDA smoke
+coverage agrees:
 
-- loader detection for Model Optimizer / compressed-tensors metadata
-- correctness-first CPU unpack/dequant fallback
-- CUDA upload/GEMV/GEMM representation separate from MLX/GPTQ
-- hardware-gated native NVFP4 tensor-core kernels where available
-- non-Blackwell fallback via dequant-to-F16/BF16/F32 kernels
+- loader detection for ModelOpt / compressed-tensors metadata is in place
+- Qwen3 dense, Qwen3 MoE, and Gemma4 tensor naming/layout metadata is documented
+- `runtime/quant` has correctness-first FP4/F8 decode, dequant, GEMV, and
+  synthetic-logit tests
+- `gpu` has `GPUNVFP4Weight`, raw byte upload, CUDA dequant-to-F32 fallback,
+  native tensor-core capability gating, and dense GEMV fallback via F32 materialization
+- packed/native GEMV/GEMM and MoE expert cache integration remain future work
 
 See [nvfp4.md](nvfp4.md) for current model-weight findings and roadmap.
 
@@ -65,7 +69,7 @@ AVX2+FMA (amd64) and NEON (arm64):
 
 ```
 if NVIDIA GPU available:
-    → CUDA PTX (fastest, 27 kernels)
+    → CUDA PTX (fastest, 28 kernels)
 elif Vulkan model dispatch is enabled and a non-software Vulkan device is available:
     → backends/vulkan SPIR-V (portable shader path; still being wired)
 else:

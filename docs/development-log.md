@@ -1861,3 +1861,15 @@ Started preparing the FP4/NVFP4 compute approach:
 - Confirmed current go-pherence MLX4 is not directly compatible with these NVFP4 layouts; NVFP4 should be a distinct quantization family.
 - Added early `LoadLlama` detection for FP4/NVFP4/ModelOpt configs so unsupported checkpoints fail clearly before opening/missing weight files.
 - Added a regression test for early unsupported NVFP4 detection.
+
+## Session 7: NVFP4/FP4 support track
+
+Added the first end-to-end internal scaffolding for NVIDIA/ModelOpt NVFP4 checkpoints while keeping public generation disabled for the format:
+
+- Added reusable quantization metadata parsing in `loader/config`, including ModelOpt/compressed-tensors FP4/NVFP4 detection and early unsupported-format errors before safetensors weight loading.
+- Metadata-inspected public Qwen3 dense, Qwen3 MoE, and Gemma4 NVFP4 checkpoints without downloading full weight shards; documented tensor prefixes, companion tensors, BF16 router/embedding/LM-head exceptions, and Gemma4 nested `model.language_model` text layout.
+- Added `runtime/quant.NVFP4Weight`, FP4 E2M1 and F8_E4M3FN decode helpers, dequant-to-F32, direct GEMV fallback, and synthetic golden tests including tiny logits vs explicit F32 reference.
+- Added `gpu.GPUNVFP4Weight`, raw byte upload helpers, CUDA dequant-to-F32 fallback PTX, compute-capability gating for future native NVFP4 tensor-core kernels, and a correctness-first dense GEMV integration point that currently materializes F32 weights.
+- Audited and fixed raw-byte slice aliasing, F8_E4M3FN finite-only decode semantics, PTX packed-byte offset arithmetic, metadata role matching, and GEMV fallback validation.
+
+Remaining work: keep public NVFP4 generation disabled until real CPU-vs-CUDA smokes agree, then add packed/native GEMV/GEMM, LM-head support if needed by a checkpoint, MoE expert-cache integration, and placement/budget accounting for NVFP4 scale overhead.
