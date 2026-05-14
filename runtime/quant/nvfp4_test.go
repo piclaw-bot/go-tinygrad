@@ -78,6 +78,31 @@ func TestGemvNVFP4MatchesDequantizedReference(t *testing.T) {
 	}
 }
 
+func TestNVFP4TinySyntheticLogitsMatchF32Reference(t *testing.T) {
+	qw := syntheticNVFP4LogitWeight()
+	hidden := []float32{0.25, -0.5, 1.5, -2, 0.75, -1.25, 2.5, -3, 1, 0.5, -0.75, 1.25, -1.5, 2, -2.5, 3}
+
+	got := make([]float32, qw.OutDim)
+	GemvNVFP4(got, hidden, qw)
+
+	weights := DequantNVFP4(qw)
+	want := make([]float32, qw.OutDim)
+	for row := 0; row < qw.OutDim; row++ {
+		for col := 0; col < qw.InDim; col++ {
+			want[row] += weights[row*qw.InDim+col] * hidden[col]
+		}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want %d", len(got), len(want))
+	}
+	for i := range want {
+		if math.Abs(float64(got[i]-want[i])) > 1e-6 {
+			t.Fatalf("logit[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
 func syntheticNVFP4Weight() *NVFP4Weight {
 	return &NVFP4Weight{
 		// Low nibble first: codes 0..15 across one 16-value group.
@@ -85,6 +110,28 @@ func syntheticNVFP4Weight() *NVFP4Weight {
 		WeightScale:  []byte{0x40}, // E4M3 2.0
 		WeightScale2: 0.25,
 		OutDim:       1,
+		InDim:        16,
+		Groups:       1,
+		GroupSize:    16,
+	}
+}
+
+func syntheticNVFP4LogitWeight() *NVFP4Weight {
+	return &NVFP4Weight{
+		// Three vocab rows, each one 16-value group. The bytes deliberately mix
+		// positive/negative FP4 codes so logits exercise signs and scale handling.
+		Weight: []byte{
+			0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe,
+			0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67,
+			0x21, 0x43, 0x65, 0x87, 0xa9, 0xcb, 0xed, 0x0f,
+		},
+		WeightScale: []byte{
+			0x38, // 1.0
+			0x40, // 2.0
+			0x34, // 0.75
+		},
+		WeightScale2: 0.5,
+		OutDim:       3,
 		InDim:        16,
 		Groups:       1,
 		GroupSize:    16,
