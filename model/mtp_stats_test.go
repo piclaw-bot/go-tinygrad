@@ -26,17 +26,30 @@ func TestMTPSpeculationStatsRecord(t *testing.T) {
 	}
 }
 
-func TestMTPSpeculationStatsValidateOneStepCapacity(t *testing.T) {
+func TestMTPSpeculationStatsValidateStepCapacity(t *testing.T) {
 	if err := (MTPSpeculationStats{}).ValidateOneStepCapacity(); err != nil {
 		t.Fatalf("ValidateOneStepCapacity empty: %v", err)
 	}
-	if err := (MTPSpeculationStats{Steps: -1}).ValidateOneStepCapacity(); err == nil {
+	if err := (MTPSpeculationStats{}).ValidateStepCapacity(2); err != nil {
+		t.Fatalf("ValidateStepCapacity empty: %v", err)
+	}
+	if err := (MTPSpeculationStats{}).ValidateStepCapacity(0); err == nil {
+		t.Fatal("accepted zero draft count")
+	}
+	if err := (MTPSpeculationStats{Steps: -1}).ValidateStepCapacity(1); err == nil {
 		t.Fatal("accepted negative stats counter")
 	}
-	if err := (MTPSpeculationStats{Steps: int(^uint(0) >> 1)}).ValidateOneStepCapacity(); err == nil {
+	if err := (MTPSpeculationStats{Steps: int(^uint(0) >> 1)}).ValidateStepCapacity(1); err == nil {
 		t.Fatal("accepted saturated stats counter")
 	}
-	if err := (MTPSpeculationStats{VerifiedTokens: int(^uint(0) >> 1)}).ValidateOneStepCapacity(); err != nil {
+	maxInt := int(^uint(0) >> 1)
+	if err := (MTPSpeculationStats{DraftedTokens: maxInt - 1}).ValidateStepCapacity(2); err == nil {
+		t.Fatal("accepted multi-draft counter overflow")
+	}
+	if err := (MTPSpeculationStats{OutputTokens: maxInt - 2}).ValidateStepCapacity(2); err == nil {
+		t.Fatal("accepted multi-output counter overflow")
+	}
+	if err := (MTPSpeculationStats{VerifiedTokens: maxInt}).ValidateStepCapacity(2); err != nil {
 		t.Fatalf("rejected saturated verified counter before acceptance is known: %v", err)
 	}
 }

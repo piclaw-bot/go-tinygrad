@@ -13,16 +13,35 @@ type MTPSpeculationStats struct {
 	OutputTokens   int
 }
 
-// ValidateOneStepCapacity checks counters that would make a one-step speculative
-// wrapper fail regardless of verifier output. It lets callers reject obviously
-// bad stats before mutating staged verifier KV.
+// ValidateOneStepCapacity checks counters for the compatibility one-draft
+// wrapper. Prefer ValidateStepCapacity when the draft count is known.
 func (s MTPSpeculationStats) ValidateOneStepCapacity() error {
-	maxInt := int(^uint(0) >> 1)
+	return s.ValidateStepCapacity(1)
+}
+
+// ValidateStepCapacity checks counters that would make a speculative step fail
+// regardless of verifier output. It lets callers reject obviously bad stats
+// before mutating staged verifier KV. VerifiedTokens is deliberately not
+// preflighted against draftCount because the accepted prefix is only known after
+// verifier forward; post-verifier accounting failures restore staged KV.
+func (s MTPSpeculationStats) ValidateStepCapacity(draftCount int) error {
+	if draftCount <= 0 {
+		return fmt.Errorf("draft count %d out of range", draftCount)
+	}
 	if s.Steps < 0 || s.DraftedTokens < 0 || s.VerifiedTokens < 0 || s.BonusTokens < 0 || s.OutputTokens < 0 {
 		return fmt.Errorf("invalid MTP stats counters: %+v", s)
 	}
-	if s.Steps == maxInt || s.DraftedTokens == maxInt || s.BonusTokens == maxInt || s.OutputTokens == maxInt {
-		return fmt.Errorf("MTP stats counters cannot record another step: %+v", s)
+	if _, ok := checkedAddNonNegative(s.Steps, 1); !ok {
+		return fmt.Errorf("MTP stats step count cannot record another step: %+v", s)
+	}
+	if _, ok := checkedAddNonNegative(s.DraftedTokens, draftCount); !ok {
+		return fmt.Errorf("MTP stats drafted token count cannot record %d drafts: %+v", draftCount, s)
+	}
+	if _, ok := checkedAddNonNegative(s.BonusTokens, 1); !ok {
+		return fmt.Errorf("MTP stats bonus token count cannot record another step: %+v", s)
+	}
+	if _, ok := checkedAddNonNegative(s.OutputTokens, draftCount+1); !ok {
+		return fmt.Errorf("MTP stats output token count cannot record at most %d outputs: %+v", draftCount+1, s)
 	}
 	return nil
 }

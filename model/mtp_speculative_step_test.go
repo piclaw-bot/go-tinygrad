@@ -88,6 +88,24 @@ func TestRunMTPMultiDraftSpeculativeStepProjectionOnlyAllAccepted(t *testing.T) 
 	}
 }
 
+func TestRunMTPMultiDraftSpeculativeStepPreflightsStatsBeforeKV(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	d := validProjectionOnlyDrafterForModel(m)
+	state, err := NewMTPDrafterState(0, []float32{1, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	stats := MTPSpeculationStats{DraftedTokens: int(^uint(0)>>1) - 1}
+	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, 2, kvCacheK, kvCacheV, stats); err == nil {
+		t.Fatal("accepted preflight stats overflow")
+	}
+	if len(kvCacheK[0]) != 0 || len(kvCacheV[0]) != 0 {
+		t.Fatalf("preflight stats failure mutated verifier KV K/V=%d/%d", len(kvCacheK[0]), len(kvCacheV[0]))
+	}
+}
+
 func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	d := validProjectionOnlyDrafterForModel(m)

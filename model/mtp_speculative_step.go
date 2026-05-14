@@ -55,7 +55,7 @@ func (m *LlamaModel) RunMTPMultiDraftSpeculativeStep(d *Gemma4MTPDrafter, state 
 	if draftCount <= 0 {
 		return MTPMultiDraftSpeculativeResult{}, fmt.Errorf("draft count %d out of range", draftCount)
 	}
-	if err := stats.ValidateOneStepCapacity(); err != nil {
+	if err := stats.ValidateStepCapacity(draftCount); err != nil {
 		return MTPMultiDraftSpeculativeResult{}, fmt.Errorf("MTP stats: %w", err)
 	}
 	drafts, err := m.RunMTPDrafterSteps(d, state, externalKV, draftCount)

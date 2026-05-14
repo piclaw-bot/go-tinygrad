@@ -1761,3 +1761,12 @@ Completed the remaining multi-draft speculative behavior coverage:
 - Added a zero-layer projection-only fixture where two drafted tokens are both accepted and the verifier emits the bonus token.
 - Covered all-accepted output tokens and LiteRT-style stats (`drafted=2`, `verified=2`, `bonus=1`, `output=3`).
 - Focused speculative tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 203: MTP audit — multi-draft stats preflight
+
+Audited the new multi-draft speculative helper for error-path smells:
+
+- Found that stats preflight was still one-draft oriented, so predictable `DraftedTokens`/`OutputTokens` overflow for multi-draft steps would only be reported after verifier KV mutation.
+- Added draft-count-aware `MTPSpeculationStats.ValidateStepCapacity` and switched the multi-draft speculative helper to use it.
+- Kept `VerifiedTokens` out of preflight because accepted-prefix length is only known after verifier forward; post-verifier stats failures still restore staged KV.
+- Added tests proving multi-draft stats overflow is rejected before verifier KV mutation.
