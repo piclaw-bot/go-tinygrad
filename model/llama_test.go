@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -34,8 +35,7 @@ func gemma4Path() string {
 }
 
 func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
-	dir := t.TempDir()
-	cfg := `{
+	base := `{
 		"model_type":"qwen3",
 		"vocab_size":1024,
 		"hidden_size":128,
@@ -44,18 +44,37 @@ func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
 		"num_attention_heads":4,
 		"num_key_value_heads":1,
 		"head_dim":32,
-		"quantization_config":{
-			"quant_algo":"NVFP4",
-			"quant_method":"modelopt",
-			"config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}
-		}
+		%s
 	}`
-	if err := os.WriteFile(dir+"/config.json", []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name string
+		qc   string
+	}{
+		{
+			name: "modelopt nvfp4",
+			qc:   `"quantization_config":{"quant_algo":"NVFP4","quant_method":"modelopt","config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}}`,
+		},
+		{
+			name: "compressed tensors fp4",
+			qc:   `"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}}`,
+		},
+		{
+			name: "compressed tensors nvfp4 format",
+			qc:   `"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"format":"nvfp4-pack-quantized","weights":{"num_bits":4,"group_size":16}}}}`,
+		},
 	}
-	_, err := LoadLlama(dir)
-	if err == nil || !strings.Contains(err.Error(), "unsupported FP4/NVFP4") {
-		t.Fatalf("LoadLlama err=%v, want unsupported FP4/NVFP4", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfg := fmt.Sprintf(base, tc.qc)
+			if err := os.WriteFile(dir+"/config.json", []byte(cfg), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadLlama(dir)
+			if err == nil || !strings.Contains(err.Error(), "unsupported FP4/NVFP4") {
+				t.Fatalf("LoadLlama err=%v, want unsupported FP4/NVFP4", err)
+			}
+		})
 	}
 }
 
