@@ -4,9 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"unsafe"
 
 	"github.com/rcarmo/go-pherence/runtime/quant"
 )
+
+var fnNVFP4DequantF32 CUfunction
 
 // GPUNVFP4Weight is the GPU-resident representation for ModelOpt/NVFP4
 // weights. It is deliberately separate from GPTQ/MLX upload structures because
@@ -101,6 +104,9 @@ func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
 	if !validGPUNVFP4Weight(w) {
 		return nil, fmt.Errorf("invalid GPU NVFP4 weight")
 	}
+	if out, ok := dequantNVFP4ToF32CUDA(w); ok {
+		return out, nil
+	}
 	weightPacked := make([]float32, f32SlotsForBytes(w.WeightBytes))
 	if err := w.Weight.Download(weightPacked); err != nil {
 		return nil, fmt.Errorf("download NVFP4 weight: %w", err)
@@ -125,6 +131,44 @@ func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
 		return nil, fmt.Errorf("dequantize NVFP4 fallback failed")
 	}
 	return out, nil
+}
+
+func dequantNVFP4ToF32CUDA(w *GPUNVFP4Weight) ([]float32, bool) {
+	if fnNVFP4DequantF32 == 0 || !megaModuleOK {
+		return nil, false
+	}
+	outLen, ok := checkedMulInt(w.OutDim, w.InDim)
+	if !ok {
+		return nil, false
+	}
+	outBuf, err := Malloc(outLen)
+	if err != nil {
+		return nil, false
+	}
+	defer outBuf.Free()
+
+	total := uint32(outLen)
+	inDim := uint32(w.InDim)
+	groupSize := uint32(w.GroupSize)
+	grid := (total + 255) / 256
+	if err := LaunchKernel(fnNVFP4DequantF32, grid, 1, 1, 256, 1, 1, 0,
+		unsafe.Pointer(&w.Weight.Ptr),
+		unsafe.Pointer(&w.WeightScale.Ptr),
+		unsafe.Pointer(&outBuf.Ptr),
+		unsafe.Pointer(&w.WeightScale2),
+		unsafe.Pointer(&total),
+		unsafe.Pointer(&inDim),
+		unsafe.Pointer(&groupSize)); err != nil {
+		return nil, false
+	}
+	if err := SyncErr(); err != nil {
+		return nil, false
+	}
+	out := make([]float32, outLen)
+	if err := outBuf.Download(out); err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 func validGPUNVFP4Weight(w *GPUNVFP4Weight) bool {
