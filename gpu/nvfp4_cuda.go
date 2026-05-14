@@ -296,7 +296,7 @@ func validGPUNVFP4Weight(w *GPUNVFP4Weight) bool {
 	if err != nil || w.WeightBytes != weightBytes || w.ScaleBytes != scaleBytes {
 		return false
 	}
-	return w.Weight.Size >= f32SlotsForBytes(weightBytes)*4 && w.WeightScale.Size >= f32SlotsForBytes(scaleBytes)*4
+	return hasPaddedByteCapacity(w.Weight.Size, weightBytes) && hasPaddedByteCapacity(w.WeightScale.Size, scaleBytes)
 }
 
 func nvfp4RequiredBytes(outDim, inDim, groups int) (int, int, error) {
@@ -319,6 +319,18 @@ func f32SlotsForBytes(n int) int {
 		return 0
 	}
 	return n/4 + boolToInt(n%4 != 0)
+}
+
+func hasPaddedByteCapacity(sizeBytes, requiredBytes int) bool {
+	if requiredBytes <= 0 {
+		return sizeBytes >= 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	slots := f32SlotsForBytes(requiredBytes)
+	if slots > maxInt/4 {
+		return false
+	}
+	return sizeBytes >= slots*4
 }
 
 func bytesAsFloat32Padded(data []byte) []float32 {

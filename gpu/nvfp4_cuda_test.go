@@ -69,6 +69,16 @@ func TestF32SlotsForBytesAvoidsOverflow(t *testing.T) {
 	}
 }
 
+func TestHasPaddedByteCapacityAvoidsOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	if hasPaddedByteCapacity(maxInt, maxInt) {
+		t.Fatal("hasPaddedByteCapacity accepted unrepresentable padded byte count")
+	}
+	if !hasPaddedByteCapacity(8, 5) {
+		t.Fatal("hasPaddedByteCapacity rejected valid padded byte count")
+	}
+}
+
 func TestBytesAsFloat32PaddedRoundTripsRawBytes(t *testing.T) {
 	input := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 	got := bytesAsFloat32Padded(input)
