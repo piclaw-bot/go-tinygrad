@@ -39,6 +39,20 @@ Portable backend for non-NVIDIA hardware. Vulkan code and shaders now live under
 - **BF16**: emulated via uint16 bitshift (no extensions needed)
 - **Status**: init + buffer path and embedded SPIR-V are present; Vulkan op dispatch wiring is still pending in Phase 3.6
 
+## NVFP4 / FP4 Track
+
+NVFP4 support is not implemented yet, but public NVIDIA/Model Optimizer and
+community checkpoints now exist for Qwen3 and Gemma4. This should be treated as
+a new CUDA quantization path, not an MLX/GPTQ tweak:
+
+- loader detection for Model Optimizer / compressed-tensors metadata
+- correctness-first CPU unpack/dequant fallback
+- CUDA upload/GEMV/GEMM representation separate from MLX/GPTQ
+- hardware-gated native NVFP4 tensor-core kernels where available
+- non-Blackwell fallback via dequant-to-F16/BF16/F32 kernels
+
+See [nvfp4.md](nvfp4.md) for current model-weight findings and roadmap.
+
 ## CPU SIMD Assembly
 
 AVX2+FMA (amd64) and NEON (arm64):

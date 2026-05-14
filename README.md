@@ -213,6 +213,7 @@ go vet ./...
 - **[docs/architecture.md](docs/architecture.md)** — UOp graph, fusion, SIMD dispatch
 - **[docs/gemma4-precision.md](docs/gemma4-precision.md)** — Gemma4 GPU correctness & precision
 - **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager (ds4-inspired)
+- **[docs/nvfp4.md](docs/nvfp4.md)** — NVFP4/FP4 support track and relevant Gemma/Qwen checkpoint findings
 - **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — Gemma4/Qwen3.6 MTP research plus current internal implementation status
 - **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)

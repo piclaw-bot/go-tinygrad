@@ -42,6 +42,7 @@ Backend-neutral budget and layer-placement policy now lives in `backends/placeme
 - `PlanLayerPlacement` estimates per-layer/resident weight sizes from model dimensions and accepts caller-supplied device-memory availability, keeping policy independent from CUDA/Vulkan discovery; invalid dimensions are clamped, estimator arithmetic saturates, and odd INT4 packed sizes round up instead of truncating.
 - `runtime/memory.MmapAdvisor` tracks mmap residency ranges and madvise hints with idempotent/saturating hot-byte accounting; malformed tracked ranges are sanitized, and `loader/safetensors` uses it for eager pre-faulting and future streamed weight access.
 - GPU-resident expert cache entries remain in `gpu` because they own `GPUMLXWeight` device resources, but they use `backends/placement.BudgetManager` for accounting and handle disabled/replacement cases explicitly.
+- NVFP4/FP4 is a roadmap format, not implemented yet. Budget estimates should eventually include NVFP4 bytes-per-parameter plus scale/metadata overhead from actual loaded tensors, especially for Qwen3 MoE expert-slot sizing.
 
 ## Budget Categories
 

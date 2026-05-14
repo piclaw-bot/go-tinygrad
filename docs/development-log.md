@@ -1844,3 +1844,11 @@ Reviewed and refreshed documentation after the multi-step/multi-draft MTP implem
 - Updated `docs/architecture.md` to describe the current multi-step/multi-draft internal seams and refined remaining architecture work.
 - Updated `docs/mtp-speculative.md` with current q-only drafter behavior, Gemma attention scaling, real-asset contract coverage, bounded multi-step drafting, multi-draft speculative verification, and verifier/stat rollback behavior.
 - Updated `docs/refactor-plan.md` preservation notes so future model-package moves keep bounded count checks, zero-count state copy semantics, and rollback behavior.
+
+## Session 213: NVFP4 roadmap and checkpoint survey
+
+Added NVFP4/FP4 to the Gemma/Qwen efficiency roadmap:
+
+- Searched for public Gemma/Qwen NVFP4 checkpoints and found relevant Hugging Face artifacts including `nvidia/Qwen3-8B-NVFP4`, `NVFP4/Qwen3-32B-FP4`, `nvidia/Qwen3-30B-A3B-NVFP4`, `nvidia/Qwen3-235B-A22B-Instruct-2507-NVFP4`, `nvidia/Gemma-4-31B-IT-NVFP4`, and community Gemma4 26B-A4B NVFP4 checkpoints.
+- Added `docs/nvfp4.md` with current repo status, model-weight findings, loader/CPU/CUDA/memory-budget fit gaps, and a staged implementation plan.
+- Updated performance, GPU options, weight-budget, README, and refactor docs to include NVFP4 as a CUDA-focused roadmap format distinct from MLX/GPTQ.

@@ -48,6 +48,19 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | Embedding + sampling | ~0.1 ms | ~0.1 ms |
 | **Total** | **~5 ms** | **~910 ms** |
 
+## NVFP4 / FP4 watchlist
+
+NVFP4 is now a roadmap item rather than an implemented format. Public Hugging
+Face searches found relevant checkpoints including `nvidia/Qwen3-8B-NVFP4`,
+`NVFP4/Qwen3-32B-FP4`, `nvidia/Qwen3-30B-A3B-NVFP4`,
+`nvidia/Gemma-4-31B-IT-NVFP4`, and community Gemma4 26B-A4B NVFP4 artifacts.
+See [nvfp4.md](nvfp4.md) for the support track.
+
+Implementation priority should be metadata/detection first, then a
+correctness-first CPU dequant path, then CUDA upload/GEMV/GEMM. For Qwen3 MoE,
+NVFP4 must be evaluated together with expert-cache/prefetch redesign because the
+current bottleneck is cold-miss upload rather than only arithmetic throughput.
+
 ## MLX vs GPTQ on GPU
 
 MLX 4-bit is **faster** than GPTQ 4-bit for the same model (217 vs 51 tok/s for 7B):

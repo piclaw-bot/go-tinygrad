@@ -257,7 +257,7 @@ Phase 6.5 is complete only when each checklist item below is either checked off 
 These larger moves are deliberately deferred out of Phase 6.5 into follow-up refactor phases. Phase 6.5 now closes on documented ownership boundaries, guard baselines, and validation gates rather than performing every possible package split.
 
 - **CUDA runtime split → Phase 6.7 (`backends/cuda`).**
-  - Rationale: `gpu` still owns live CUDA driver state, `DevBuf`, stream/graph helpers, upload/dirty-state semantics, GPU-resident Q4/MLX weights, LM-head/dense dispatch, native/emulated BF16 helpers, experimental NV ioctl/memory/query/GPFIFO helpers, and expert resources. Splitting this now would be broad API surgery with high risk of losing the recently added guard behavior.
+  - Rationale: `gpu` still owns live CUDA driver state, `DevBuf`, stream/graph helpers, upload/dirty-state semantics, GPU-resident Q4/MLX weights, LM-head/dense dispatch, native/emulated BF16 helpers, future NVFP4 upload/dispatch work, experimental NV ioctl/memory/query/GPFIFO helpers, and expert resources. Splitting this now would be broad API surgery with high risk of losing the recently added guard behavior.
   - Preservation plan: keep `gpu` transitional but quiet/guarded; move only after `backends/cuda` can own `DevBuf` and upload state as first-class runtime concepts, with focused tests covering nil receivers, upload errors, allocation overflow, stream/graph launch guards, quantized weight layout validation, expert resource release, and debug-gated diagnostics. `backends/cuda/ptx` already owns embedded PTX assets and should remain the source owner during that split.
 
 - **LLaMA/Gemma/Qwen/MoE/MTP model package split → Phase 6.8 (`models/*`).**
