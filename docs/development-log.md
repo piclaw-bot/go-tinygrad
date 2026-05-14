@@ -1873,3 +1873,15 @@ Added the first end-to-end internal scaffolding for NVIDIA/ModelOpt NVFP4 checkp
 - Audited and fixed raw-byte slice aliasing, F8_E4M3FN finite-only decode semantics, PTX packed-byte offset arithmetic, metadata role matching, and GEMV fallback validation.
 
 Remaining work: keep public NVFP4 generation disabled until real CPU-vs-CUDA smokes agree, then add packed/native GEMV/GEMM, LM-head support if needed by a checkpoint, MoE expert-cache integration, and placement/budget accounting for NVFP4 scale overhead.
+
+## Session 215: NVFP4 documentation and audit follow-up
+
+Completed the current NVFP4/FP4 follow-up roadmap and refreshed status after repeated code audits:
+
+- Hardened public NVFP4 rejection coverage across ModelOpt and compressed-tensors variants, including mixed `config_groups`, group `format`, `weights.format`, and 4-bit float `weights.type` metadata. Mixed-group diagnostics now prefer the unsupported FP4 group's bit/group metadata regardless of Go map iteration order.
+- Added metadata-only Qwen3-30B-A3B-NVFP4 placement sizing without downloading shards: about 1188 MB resident, 324 MB for one layer's full expert set, 2.53 MB per expert slot, and roughly 202 expert slots in a 512 MiB cache.
+- Added a packed NVFP4 GEMV/GEMM `NVFP4KernelSpec` contract with row-major packed weights, F8 scales, F32 inputs/outputs, batch semantics, group-size checks, u32 CUDA-interface limits, and overflow guards before native dispatch exists.
+- Validated synthetic CPU-vs-CUDA NVFP4 dequant parity on the local RTX 3060 and fixed PTX pointer arithmetic so the 28-kernel mega-module loads successfully.
+- Hardened NVFP4 runtime/CUDA helpers against overflow-prone packed-count, padded-byte-capacity, byte-packing, and u32 launch-dimension edge cases.
+
+Public NVFP4 loading/generation remains disabled: synthetic dequant parity is in place, but real checkpoint logits/tokens must agree before enabling user-facing generation.

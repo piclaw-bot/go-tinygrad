@@ -14,14 +14,18 @@ format for large dense and MoE models once loader/runtime/kernel support exists.
   rejected for public model loading/generation. Synthetic CPU-vs-CUDA dequant
   smoke now agrees; real checkpoint logits/tokens remain the enablement gate.
 - `loader/config` owns reusable quantization metadata parsing plus NVFP4 tensor
-  role/companion-name helpers for Qwen/Gemma layouts.
+  role/companion-name helpers for Qwen/Gemma layouts. The parser detects
+  ModelOpt and compressed-tensors FP4/NVFP4 across top-level fields, mixed
+  `config_groups`, group `format`, `weights.format`, and 4-bit float
+  `weights.type` variants with stable FP4 diagnostics regardless of map order.
 - `runtime/quant` has a correctness-first `NVFP4Weight`, FP4 E2M1 and
-  F8_E4M3FN decode helpers, F32 dequantization, direct GEMV fallback, and golden
-  synthetic logit tests.
+  F8_E4M3FN decode helpers, F32 dequantization, direct GEMV fallback, guarded
+  unpack/count validation, and golden synthetic logit tests.
 - `gpu` has a separate `GPUNVFP4Weight` upload representation, raw-byte packing,
   CUDA dequant-to-F32 fallback kernel wiring, hardware capability gating for a
-  future native tensor-core path, and a dense GEMV integration point that
-  currently materializes F32 weights per call.
+  future native tensor-core path, padded byte-capacity/u32 launch guards, a
+  packed GEMV/GEMM `NVFP4KernelSpec` contract, and a dense GEMV integration
+  point that currently materializes F32 weights per call.
 - Existing 4-bit support remains MLX affine int4 and GPTQ int4. NVFP4 is treated
   as a distinct quantization family, not as an MLX/GPTQ tweak.
 - Vulkan remains a portability track; initial NVFP4 work targets CUDA only.
@@ -52,7 +56,8 @@ safetensors.
 ### Loader and metadata
 
 - Done: detect NVFP4/FP4 from `quantization_config`, ModelOpt, and
-  compressed-tensors metadata before normal tensor loading.
+  compressed-tensors metadata before normal tensor loading, including mixed
+  group metadata and both group-level and weight-level format fields.
 - Done: metadata-only inspection covered Qwen3 dense, Qwen3 MoE, and Gemma4
   checkpoints without downloading full weight shards.
 - Done: `loader/config` classifies dense, MoE expert, and router prefixes and
@@ -94,7 +99,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
   `OutDim*InDim*4` bytes per call.
 - Done: packed GEMV/GEMM shape/interface contract is defined as `NVFP4KernelSpec`
   with row-major packed weights, F8 scales, F32 inputs/outputs, batch semantics,
-  and group-size/overflow validation before any native dispatch is enabled.
+  u32 CUDA-interface limits, and group-size/overflow validation before any native dispatch is enabled.
 - Pending: packed/native GEMV/GEMM implementation, LM-head if a checkpoint quantizes it, and
   full Qwen3 MoE expert-cache/prefetch integration using the new slot estimates.
 

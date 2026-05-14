@@ -66,7 +66,7 @@ go run ./cmd/llmgen -gpu -model models/qwen3-0.6b -tokens 50 -prompt "The meanin
 - **RMSNorm, RoPE, GQA Attention, SiLU, VecAdd/Mul/Scale**
 - **BF16 kernels**: native `cvt.f32.bf16` on Ampere+ (sm_86), emulated on sm_80
 - **MLX bias correction**: post-GEMV fixup for MLX affine quantization
-- **NVFP4 fallback**: packed FP4/F8-scale upload, dequant-to-F32 kernel, and correctness-first dense GEMV fallback; public generation remains disabled for NVFP4 checkpoints
+- **NVFP4 fallback**: packed FP4/F8-scale upload, dequant-to-F32 kernel, and correctness-first dense GEMV fallback; public loading/generation remains disabled for NVFP4 checkpoints until real logits/tokens agree
 
 ### GPU: Vulkan Compute (any GPU)
 
@@ -114,7 +114,7 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 | **BF16** | safetensors dtype | Direct load | F32 on GPU | Half bandwidth |
 | **F16** | safetensors dtype | F16→F32 at load | F32 on GPU | |
 | **F32** | safetensors dtype | Direct load | Native | |
-| **NVFP4 / FP4** | `quantization_config` ModelOpt/compressed-tensors metadata | FP4 E2M1 + F8_E4M3FN scale reference path | Upload + dequant-to-F32 fallback kernel | Experimental/internal only; public model loading rejects NVFP4 until CPU/CUDA smokes agree |
+| **NVFP4 / FP4** | `quantization_config` ModelOpt/compressed-tensors metadata, including mixed `config_groups` and group/weight format fields | FP4 E2M1 + F8_E4M3FN scale reference path | Upload + dequant-to-F32 fallback kernel | Experimental/internal only; synthetic CPU/CUDA dequant agrees, but public loading rejects NVFP4 until real checkpoint logits/tokens agree |
 
 ## Commands
 
@@ -195,9 +195,9 @@ Current package ownership is now organized around explicit loader/runtime/backen
 Recent Phase 6.5 audit passes made malformed-input behavior explicit across the shared runtime layers:
 
 - `tensor/` validates shapes, reductions, broadcasting, unsafe float32 views, realization internals, rewrite/fusion graphs, pooled allocations, NN helpers, convenience ops, embeddings, matmul/linear helpers, and module wrappers.
-- `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts, checked shape/expected-size/dequant output arithmetic, and no-ops or returns nil on malformed in-memory weights.
+- `runtime/quant` validates MLX/GPTQ/Q4 tensor layouts, checked shape/expected-size/dequant output arithmetic, NVFP4 unpack/dequant bounds without overflow-prone packed-count multiplication, and no-ops or returns nil on malformed in-memory weights.
 - `runtime/kv` and `runtime/memory` guard cache dimensions/layouts, compressed-cache accessor/memory accounting, staging rollback arithmetic, TurboQuant sizing/packed-byte calculations, protected-layer helper inputs, mmap range overflow, malformed tracked ranges, and nil advisor receivers.
-- `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, Q4/MLX weight layouts, expert IDs, experimental NV ioctl/memory/query setup, dense SGEMM/LM-head buffers, JIT kernel specs, and BF16 buffers before dispatch; CUDA/NV progress diagnostics are quiet unless `GO_PHERENCE_GPU_DEBUG` is set.
+- `gpu/` CUDA helpers preflight dimensions, upload state, device pointers, stream launches, graph executables, copy wrappers, allocation sizes, Q4/MLX/NVFP4 weight layouts, expert IDs, experimental NV ioctl/memory/query setup, dense SGEMM/LM-head buffers, JIT/NVFP4 kernel specs, and BF16 buffers before dispatch; CUDA/NV progress diagnostics are quiet unless `GO_PHERENCE_GPU_DEBUG` is set.
 - `backends/simd` scalar fallbacks bound all input/output slices, BF16 GEMV checks shape-product overflow, scalar RMSNorm uses precise `math.Sqrt`, empty vector/BF16 calls avoid assembly stubs, GEBP scratch is per-call, and SGEMM/GEBP/gather helpers preflight dimensions, pointers, strides, CPU capability gates, checked byte offsets, and overflow before unsafe pointer arithmetic.
 - `loader/safetensors` validates dtype byte sizes against shapes/offsets at open time; file/sharded helpers are nil-safe, names are sorted deterministically, partial sharded opens clean up already-open shards, sharded eager-load totals are checked, tokenizer byte maps are initialized with `sync.Once`, and malformed tokenizer BPE merges are rejected.
 - Transitional `model` helpers validate MTP token/KV keep counts, model-aware MTP verifier plan/logit/activation dimensions, shared-KV verifier sources, MTP acceptance consistency before KV commit, alias-safe MTP drafter projection sizing, q-only drafter external-KV/layer dimensions, bounded multi-draft counts, speculative stats overflow/rollback paths, zero-count state copy semantics, CPU decode final norm/LM-head dimensions, CPU generation allocation setup, MoE edge cases, embedding/LM-head/per-layer input backing data, chunked LM-head and batched-prefill dimensions, CPU forward-layer entrypoints, model-specific KV width overflow, and low-level GEMV/GQA product arithmetic; loader/prefill/GPU placement diagnostics are quiet unless `GO_PHERENCE_LOAD_DEBUG` or `GO_PHERENCE_PREFILL_DEBUG` is set.

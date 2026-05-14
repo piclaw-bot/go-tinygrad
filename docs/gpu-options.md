@@ -44,15 +44,15 @@ Portable backend for non-NVIDIA hardware. Vulkan code and shaders now live under
 
 NVFP4 is an experimental/internal CUDA quantization path. Public NVIDIA
 ModelOpt and community checkpoints exist for Qwen3 and Gemma4, but go-pherence
-still rejects them during public model loading until real CPU-vs-CUDA smoke
-coverage agrees:
+still rejects them during public model loading. Synthetic CPU-vs-CUDA dequant
+parity now passes; real checkpoint logits/tokens remain the enablement gate:
 
-- loader detection for ModelOpt / compressed-tensors metadata is in place
+- loader detection for ModelOpt / compressed-tensors metadata is in place, including mixed `config_groups`, `format`, `weights.format`, and 4-bit float `weights.type` variants
 - Qwen3 dense, Qwen3 MoE, and Gemma4 tensor naming/layout metadata is documented
 - `runtime/quant` has correctness-first FP4/F8 decode, dequant, GEMV, and
   synthetic-logit tests
 - `gpu` has `GPUNVFP4Weight`, raw byte upload, CUDA dequant-to-F32 fallback,
-  native tensor-core capability gating, and dense GEMV fallback via F32 materialization
+  native tensor-core capability gating, dense GEMV fallback via F32 materialization, and a packed GEMV/GEMM `NVFP4KernelSpec` contract with u32/overflow guards
 - packed/native GEMV/GEMM and MoE expert cache integration remain future work
 
 See [nvfp4.md](nvfp4.md) for current model-weight findings and roadmap.
