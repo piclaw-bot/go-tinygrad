@@ -70,6 +70,36 @@ func TestPlanLayerPlacementGemma4(t *testing.T) {
 		plan10.GPULayers, plan10.MmapLayers, plan10.TotalGPUMB)
 }
 
+func TestEstimateNVFP4MatrixBytes(t *testing.T) {
+	// Qwen3 dense q_proj observed layout: U8 [4096,2048] + F8 [4096,256] + F32 scalar.
+	got := estimateNVFP4MatrixBytes(4096, 4096)
+	want := int64(4096*2048 + 4096*256 + 4)
+	if got != want {
+		t.Fatalf("estimateNVFP4MatrixBytes=%d want %d", got, want)
+	}
+}
+
+func TestEstimateLayerWeightBytesNVFP4(t *testing.T) {
+	info := ModelSizeInfo{NumLayers: 1, HiddenSize: 4096, Intermediate: 12288, NumHeads: 32, NumKVHeads: 8, HeadDim: 128, QuantBits: 4, QuantFormat: "nvfp4"}
+	got := EstimateLayerWeightBytes(info, 0)
+	wantWeights := estimateNVFP4MatrixBytes(4096, 4096) + 2*estimateNVFP4MatrixBytes(4096, 1024) + estimateNVFP4MatrixBytes(4096, 4096) + 2*estimateNVFP4MatrixBytes(4096, 12288) + estimateNVFP4MatrixBytes(12288, 4096)
+	if got <= wantWeights {
+		t.Fatalf("NVFP4 layer estimate=%d want above raw weight estimate=%d due to norms/KV", got, wantWeights)
+	}
+}
+
+func TestEstimateResidentBytesNVFP4UsesBF16Embeddings(t *testing.T) {
+	info := ModelSizeInfo{HiddenSize: 4, VocabSize: 8, QuantBits: 4, QuantFormat: "nvfp4"}
+	got := EstimateResidentBytes(info)
+	// Embedding + LM head are BF16 for inspected NVIDIA NVFP4 checkpoints: 8*4*2*2.
+	if got < 128 {
+		t.Fatalf("resident estimate=%d want at least BF16 embedding+LM head bytes", got)
+	}
+	if got >= EstimateResidentBytes(ModelSizeInfo{HiddenSize: 4, VocabSize: 8, QuantBits: 0}) {
+		t.Fatalf("NVFP4 resident estimate=%d should stay below F32 resident estimate", got)
+	}
+}
+
 func TestEstimateLayerWeightBytes(t *testing.T) {
 	oddGroups := ModelSizeInfo{NumLayers: 1, HiddenSize: 65, Intermediate: 65, NumHeads: 1, NumKVHeads: 1, HeadDim: 65, QuantBits: 4}
 	if got := EstimateLayerWeightBytes(oddGroups, 0); got <= 0 {

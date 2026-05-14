@@ -56,7 +56,8 @@ type ModelSizeInfo struct {
 	GlobalHeadDim     int
 	VocabSize         int
 	HiddenPerLayer    int
-	QuantBits         int // 0 = fp32/bf16, 4 = int4
+	QuantBits         int    // 0 = fp32/bf16, 4 = int4/fp4
+	QuantFormat       string // "", "mlx", "gptq", "nvfp4"
 	IsGemma4          bool
 	HasDoubleWideMLP  bool // Gemma4 KV-shared layers
 	NumKVSharedLayers int
@@ -93,7 +94,18 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 	var bytes int64
 	add := func(v int64) { bytes = saturatingAddInt64(bytes, v) }
 
-	if info.QuantBits == 4 {
+	if isNVFP4(info) {
+		// NVFP4: two FP4 values per byte plus one F8 scale per 16 input values
+		// and one scalar F32 secondary scale per tensor.
+		pack := func(inD, outD int64) int64 { return estimateNVFP4MatrixBytes(inD, outD) }
+		add(pack(h, qDim))       // Q proj
+		add(pack(h, kvDim))      // K proj
+		add(pack(h, kvDim))      // V proj
+		add(pack(qDim, h))       // O proj
+		add(pack(h, layerInter)) // Gate proj
+		add(pack(h, layerInter)) // Up proj
+		add(pack(layerInter, h)) // Down proj
+	} else if info.QuantBits == 4 {
 		// INT4 quantized: packed weights + scales + biases
 		// Packed: inDim * outDim / 8 bytes (4-bit)
 		// Scales: outDim * numGroups * 4 bytes
@@ -161,15 +173,21 @@ func EstimateResidentBytes(info ModelSizeInfo) int64 {
 		return saturatingMulInt64(saturatingMulInt64(rows, cols), elemSize)
 	}
 
-	// Embedding table
-	if info.QuantBits == 4 {
+	// Embedding table. Inspected NVIDIA NVFP4 Qwen/Gemma checkpoints keep
+	// embeddings in BF16, so estimate them as 2-byte resident tensors.
+	if isNVFP4(info) {
+		add(matrixBytes(vocab, h, 2))
+	} else if info.QuantBits == 4 {
 		add(divCeilInt64(saturatingMulInt64(vocab, h), 2)) // packed INT4
 	} else {
 		add(matrixBytes(vocab, h, 4)) // F32
 	}
 
-	// LM head (often same size as embedding, or quantized)
-	if info.QuantBits == 4 {
+	// LM head (often same size as embedding, or quantized). Inspected NVIDIA
+	// NVFP4 Qwen checkpoints keep LM head in BF16; Gemma4 may omit/untie it.
+	if isNVFP4(info) {
+		add(matrixBytes(vocab, h, 2))
+	} else if info.QuantBits == 4 {
 		add(divCeilInt64(saturatingMulInt64(vocab, h), 2))
 	} else {
 		add(matrixBytes(vocab, h, 4))
@@ -274,6 +292,21 @@ func (p PlacementPlan) PrintPlan() {
 		fmt.Printf("[placement] mmap: %d layers (%.0f MB)\n", p.MmapLayers, p.TotalCPUMB)
 	}
 	fmt.Printf("[placement] available GPU: %.0f MB\n", p.AvailGPUMB)
+}
+
+func isNVFP4(info ModelSizeInfo) bool {
+	return info.QuantFormat == "nvfp4"
+}
+
+func estimateNVFP4MatrixBytes(inD, outD int64) int64 {
+	if inD <= 0 || outD <= 0 {
+		return 0
+	}
+	params := saturatingMulInt64(inD, outD)
+	packed := divCeilInt64(params, 2)
+	groups := divCeilInt64(inD, 16)
+	f8Scales := saturatingMulInt64(outD, groups)
+	return saturatingAddInt64(saturatingAddInt64(packed, f8Scales), 4)
 }
 
 func nonNegativeInt64(v int) int64 {
