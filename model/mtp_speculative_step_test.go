@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRunMTPSpeculativeStepProjectionOnly(t *testing.T) {
 	m := newSingleLayerVerifierModel()
@@ -121,6 +124,8 @@ func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
 	}
 	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, maxMTPDraftCount+1, nil, nil, MTPSpeculationStats{}); err == nil {
 		t.Fatal("accepted oversized draft count")
+	} else if strings.Contains(err.Error(), "MTP stats") {
+		t.Fatalf("oversized draft count reported as stats error: %v", err)
 	}
 }
 

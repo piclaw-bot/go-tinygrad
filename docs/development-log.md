@@ -1811,3 +1811,11 @@ Continued code-smell auditing after the zero-count validation split:
 - Removed the stale `externalKV` parameter from the base drafter validation helper after zero-count q-only handling split shell validation from full execution validation.
 - Kept full q-only execution validation as the only path that receives and validates external KV.
 - Focused drafter tests, no-run all-package gate, vet, and diff checks passed.
+
+## Session 209: MTP audit — explicit multi-draft count errors
+
+Continued multi-draft speculative API auditing:
+
+- Found that oversized `draftCount` values in `RunMTPMultiDraftSpeculativeStep` were rejected by stats preflight, causing a misleading `MTP stats` error for an API-boundary validation issue.
+- Moved the upper-bound check into the speculative helper's draft-count validation before stats preflight.
+- Added regression coverage that oversized draft counts are not reported as stats errors.
