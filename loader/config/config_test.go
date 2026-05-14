@@ -85,6 +85,7 @@ func TestClassifyNVFP4TensorPrefix(t *testing.T) {
 		{"model.layers.0.mlp.experts.7.up_proj", NVFP4RoleMoEExpertUp},
 		{"model.layers.0.mlp.experts.7.down_proj", NVFP4RoleMoEExpertDown},
 		{"model.language_model.layers.0.experts.7.down_proj", NVFP4RoleMoEExpertDown},
+		{"adapter.experts.7.down_proj", NVFP4RoleUnknown},
 		{"model.layers.0.mlp.gate", NVFP4RoleMoERouter},
 		{"lm_head", NVFP4RoleUnknown},
 	}

@@ -26,7 +26,7 @@ const (
 // roles used by loader integration. It intentionally handles dense and MoE
 // expert names without binding to a specific top-level model prefix.
 func ClassifyNVFP4TensorPrefix(prefix string) NVFP4TensorRole {
-	if strings.Contains(prefix, ".mlp.experts.") || strings.Contains(prefix, ".experts.") {
+	if isNVFP4MoEExpertPrefix(prefix) {
 		switch {
 		case strings.HasSuffix(prefix, ".gate_proj"):
 			return NVFP4RoleMoEExpertGate
@@ -56,6 +56,10 @@ func ClassifyNVFP4TensorPrefix(prefix string) NVFP4TensorRole {
 	default:
 		return NVFP4RoleUnknown
 	}
+}
+
+func isNVFP4MoEExpertPrefix(prefix string) bool {
+	return strings.Contains(prefix, ".mlp.experts.") || strings.Contains(prefix, ".layers.") && strings.Contains(prefix, ".experts.")
 }
 
 // NVFP4CompanionNames returns the ModelOpt companion tensor names for a
