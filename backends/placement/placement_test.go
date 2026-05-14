@@ -111,6 +111,21 @@ func TestPlanLayerPlacementReportsNVFP4Breakdown(t *testing.T) {
 	}
 }
 
+func TestNVFP4MoEUsesIntermediateFallbackForSparseExperts(t *testing.T) {
+	info := ModelSizeInfo{HiddenSize: 2048, Intermediate: 768, NumHeads: 32, NumKVHeads: 4, HeadDim: 128, QuantBits: 4, QuantFormat: "nvfp4", NumExperts: 128}
+	layerBytes := EstimateLayerWeightBytes(info, 0)
+	denseInfo := info
+	denseInfo.NumExperts = 0
+	denseLayerBytes := EstimateLayerWeightBytes(denseInfo, 0)
+	denseMLP := 2*estimateNVFP4MatrixBytes(2048, 768) + estimateNVFP4MatrixBytes(768, 2048)
+	if layerBytes >= denseLayerBytes {
+		t.Fatalf("MoE layer estimate=%d should be below dense fallback estimate=%d", layerBytes, denseLayerBytes)
+	}
+	if slotBytes := EstimateNVFP4ExpertSlotBytes(info); slotBytes != denseMLP {
+		t.Fatalf("expert slot fallback=%d want %d", slotBytes, denseMLP)
+	}
+}
+
 func TestEstimateNVFP4ExpertBytes(t *testing.T) {
 	info := ModelSizeInfo{HiddenSize: 2048, Intermediate: 768, NumExperts: 128, QuantBits: 4, QuantFormat: "nvfp4"}
 	got := EstimateNVFP4ExpertBytes(info)

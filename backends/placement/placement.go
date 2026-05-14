@@ -326,17 +326,8 @@ func EstimateNVFP4ExpertBytes(info ModelSizeInfo) int64 {
 	if !isNVFP4(info) || info.NumExperts <= 0 {
 		return 0
 	}
-	h := nonNegativeInt64(info.HiddenSize)
-	inter := nonNegativeInt64(info.MoEIntermediate)
-	if inter == 0 {
-		inter = nonNegativeInt64(info.Intermediate)
-	}
 	experts := nonNegativeInt64(info.NumExperts)
-	perExpert := int64(0)
-	add := func(v int64) { perExpert = saturatingAddInt64(perExpert, v) }
-	add(estimateNVFP4MatrixBytes(h, inter))
-	add(estimateNVFP4MatrixBytes(h, inter))
-	add(estimateNVFP4MatrixBytes(inter, h))
+	perExpert := EstimateNVFP4ExpertSlotBytes(info)
 	return saturatingMulInt64(experts, perExpert)
 }
 
@@ -383,7 +374,7 @@ func isNVFP4(info ModelSizeInfo) bool {
 }
 
 func isMoE(info ModelSizeInfo) bool {
-	return info.NumExperts > 0 && info.MoEIntermediate > 0
+	return info.NumExperts > 0 && (info.MoEIntermediate > 0 || info.Intermediate > 0)
 }
 
 func estimateNVFP4MatrixBytes(inD, outD int64) int64 {
