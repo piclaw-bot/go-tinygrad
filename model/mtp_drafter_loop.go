@@ -71,11 +71,10 @@ func NewMTPDrafterState(previousToken int, activation []float32, backboneHiddenS
 	return MTPDrafterState{PreviousToken: previousToken, Activation: append([]float32(nil), activation...)}, nil
 }
 
-// RunMTPDrafterStep is one hidden-state-conditioned drafter iteration. The
-// complete q-only attention loop is still pending; this function implements the
-// projection/LM-head shell and supports zero-layer synthetic drafter fixtures for
-// runtime validation. Real drafter assets with q-only layers still return an
-// explicit not-implemented error until external-KV attention is wired.
+// RunMTPDrafterStep is one hidden-state-conditioned drafter iteration. It is a
+// convenience wrapper for projection-only/zero-layer drafter fixtures; q-only
+// drafter layers require RunMTPDrafterStepWithExternalKV so their external
+// main-model K/V view is explicit.
 func (m *LlamaModel) RunMTPDrafterStep(d *Gemma4MTPDrafter, state MTPDrafterState) (MTPDrafterStepResult, error) {
 	return m.RunMTPDrafterStepWithExternalKV(d, state, nil)
 }

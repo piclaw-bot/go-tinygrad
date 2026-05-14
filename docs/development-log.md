@@ -1819,3 +1819,11 @@ Continued multi-draft speculative API auditing:
 - Found that oversized `draftCount` values in `RunMTPMultiDraftSpeculativeStep` were rejected by stats preflight, causing a misleading `MTP stats` error for an API-boundary validation issue.
 - Moved the upper-bound check into the speculative helper's draft-count validation before stats preflight.
 - Added regression coverage that oversized draft counts are not reported as stats errors.
+
+## Session 210: MTP audit — stale q-only wording cleanup
+
+Continued MTP code-smell auditing:
+
+- Found stale comments still describing q-only drafter execution as not implemented after the synthetic/contract q-only path had landed.
+- Updated `RunMTPDrafterStep` comments to describe it as the projection-only convenience wrapper and direct q-only users to `RunMTPDrafterStepWithExternalKV`.
+- Refreshed the MTP docs implementation-plan wording from verifier-forward scaffold to verifier-forward contract.
