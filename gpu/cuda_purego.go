@@ -55,12 +55,14 @@ var (
 )
 
 var (
-	gpuOnce sync.Once
-	gpuOK   bool
-	gpuDev  CUdevice
-	gpuCtx  CUcontext
-	gpuName string
-	gpuSMs  int32
+	gpuOnce    sync.Once
+	gpuOK      bool
+	gpuDev     CUdevice
+	gpuCtx     CUcontext
+	gpuName    string
+	gpuSMs     int32
+	gpuCCMajor int32
+	gpuCCMinor int32
 )
 
 // Init attempts to load CUDA and initialize the GPU.
@@ -157,6 +159,9 @@ func Init() bool {
 
 		// Get SM count (attribute 16 = CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)
 		cuDeviceGetAttribute(&gpuSMs, 16, gpuDev)
+		// CUDA compute capability attributes.
+		cuDeviceGetAttribute(&gpuCCMajor, 75, gpuDev)
+		cuDeviceGetAttribute(&gpuCCMinor, 76, gpuDev)
 
 		// Create context
 		if r := cuCtxCreate(&gpuCtx, 0, gpuDev); r != CUDA_SUCCESS {
@@ -187,6 +192,9 @@ func DeviceName() string { return gpuName }
 
 // SMCount returns the number of streaming multiprocessors.
 func SMCount() int { return int(gpuSMs) }
+
+// ComputeCapability returns the CUDA compute capability for device 0.
+func ComputeCapability() (major, minor int) { return int(gpuCCMajor), int(gpuCCMinor) }
 
 // Buffer holds GPU device memory.
 type Buffer struct {

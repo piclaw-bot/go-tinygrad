@@ -11,6 +11,22 @@ import (
 
 var fnNVFP4DequantF32 CUfunction
 
+// NativeNVFP4TensorCoreSupported reports whether the active CUDA device is new
+// enough for native NVFP4 tensor-core work. Blackwell-class GPUs are expected to
+// expose compute capability 10.x or newer. This is a capability gate only; the
+// native kernel path remains disabled until implemented and validated.
+func NativeNVFP4TensorCoreSupported() bool {
+	if !Available() {
+		return false
+	}
+	major, minor := ComputeCapability()
+	return supportsNativeNVFP4TensorCore(major, minor)
+}
+
+func supportsNativeNVFP4TensorCore(major, minor int) bool {
+	return major >= 10
+}
+
 // GPUNVFP4Weight is the GPU-resident representation for ModelOpt/NVFP4
 // weights. It is deliberately separate from GPTQ/MLX upload structures because
 // NVFP4 uses U8 packed FP4 weights plus F8_E4M3 per-block scales and scalar

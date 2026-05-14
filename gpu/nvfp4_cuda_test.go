@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+func TestSupportsNativeNVFP4TensorCore(t *testing.T) {
+	cases := []struct {
+		major int
+		minor int
+		want  bool
+	}{
+		{8, 0, false},
+		{8, 9, false},
+		{9, 0, false},
+		{10, 0, true},
+		{12, 0, true},
+	}
+	for _, tc := range cases {
+		if got := supportsNativeNVFP4TensorCore(tc.major, tc.minor); got != tc.want {
+			t.Fatalf("supportsNativeNVFP4TensorCore(%d,%d)=%v want %v", tc.major, tc.minor, got, tc.want)
+		}
+	}
+}
+
 func TestNVFP4RequiredBytes(t *testing.T) {
 	weightBytes, scaleBytes, err := nvfp4RequiredBytes(4096, 4096, 256)
 	if err != nil {
