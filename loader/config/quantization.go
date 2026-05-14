@@ -61,6 +61,7 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 		md.GroupSize = raw.Quantization.GroupSize
 	}
 
+	fp4FormatSeen := false
 	qc := raw.QuantizationConfig
 	if qc.QuantAlgo != "" || qc.QuantMethod != "" || qc.Format != "" || qc.Bits > 0 || len(qc.ConfigGroups) > 0 {
 		md.HasConfig = true
@@ -75,6 +76,9 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 		}
 		md.Symmetric = qc.Sym
 		for _, group := range qc.ConfigGroups {
+			if isFP4FormatString(group.Format) || isFP4FormatString(group.Weights.Format) || (group.Weights.NumBits == 4 && isFloatFormatString(group.Weights.Type)) {
+				fp4FormatSeen = true
+			}
 			if group.Weights.NumBits > 0 && md.Bits == 0 {
 				md.Bits = group.Weights.NumBits
 			}
@@ -99,6 +103,15 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 	algo := strings.ToLower(md.Algo)
 	method := strings.ToLower(md.Method)
 	format := strings.ToLower(md.Format)
-	md.UnsupportedFP4 = strings.Contains(algo, "nvfp4") || strings.Contains(algo, "fp4") || strings.Contains(format, "nvfp4") || strings.Contains(format, "fp4") || strings.Contains(method, "modelopt") || (md.Bits == 4 && strings.Contains(format, "float"))
+	md.UnsupportedFP4 = strings.Contains(algo, "nvfp4") || strings.Contains(algo, "fp4") || isFP4FormatString(format) || strings.Contains(method, "modelopt") || (md.Bits == 4 && isFloatFormatString(format)) || fp4FormatSeen
 	return md, nil
+}
+
+func isFP4FormatString(s string) bool {
+	s = strings.ToLower(s)
+	return strings.Contains(s, "nvfp4") || strings.Contains(s, "fp4")
+}
+
+func isFloatFormatString(s string) bool {
+	return strings.Contains(strings.ToLower(s), "float")
 }
