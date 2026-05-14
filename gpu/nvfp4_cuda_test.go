@@ -86,20 +86,9 @@ func TestGemvNVFP4F32RejectsOverflowShape(t *testing.T) {
 }
 
 func TestGemvNVFP4F32WithReferenceDequant(t *testing.T) {
-	qw := &quant.NVFP4Weight{
-		Weight: []byte{
-			0x10, 0x32, 0x54, 0x76,
-			0x98, 0xba, 0xdc, 0xfe,
-		},
-		WeightScale:  []byte{0x38, 0x40}, // 1.0, 2.0
-		WeightScale2: 0.5,
-		OutDim:       2,
-		InDim:        8,
-		Groups:       1,
-		GroupSize:    8,
-	}
+	qw := syntheticNVFP4Weight()
 	weights := quant.DequantNVFP4(qw)
-	x := []float32{1, -1, 2, -2, 0.5, -0.5, 3, -3}
+	x := []float32{1, -1, 2, -2, 0.5, -0.5, 3, -3, 4, -4, 1.5, -1.5, 2.5, -2.5, 0.25, -0.25}
 	want := make([]float32, 2)
 	for row := 0; row < qw.OutDim; row++ {
 		for col := 0; col < qw.InDim; col++ {
@@ -114,6 +103,47 @@ func TestGemvNVFP4F32WithReferenceDequant(t *testing.T) {
 		if math.Abs(float64(got[i]-want[i])) > 1e-6 {
 			t.Fatalf("got[%d]=%v want %v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestDequantNVFP4ToF32CUDAMatchesCPU(t *testing.T) {
+	if !SgemmReady() {
+		t.Skip("no GPU")
+	}
+	qw := syntheticNVFP4Weight()
+	gw, err := UploadNVFP4Weight(qw)
+	if err != nil {
+		t.Fatalf("UploadNVFP4Weight: %v", err)
+	}
+	defer gw.Free()
+
+	got, ok := dequantNVFP4ToF32CUDA(gw)
+	if !ok {
+		t.Skip("NVFP4 CUDA dequant kernel unavailable")
+	}
+	want := quant.DequantNVFP4(qw)
+	if len(got) != len(want) {
+		t.Fatalf("len(got)=%d want %d", len(got), len(want))
+	}
+	for i := range want {
+		if math.Abs(float64(got[i]-want[i])) > 1e-6 {
+			t.Fatalf("got[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func syntheticNVFP4Weight() *quant.NVFP4Weight {
+	return &quant.NVFP4Weight{
+		Weight: []byte{
+			0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe,
+			0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01,
+		},
+		WeightScale:  []byte{0x38, 0x40}, // 1.0, 2.0
+		WeightScale2: 0.5,
+		OutDim:       2,
+		InDim:        16,
+		Groups:       1,
+		GroupSize:    16,
 	}
 }
 

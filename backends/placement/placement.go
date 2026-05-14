@@ -334,6 +334,42 @@ func EstimateNVFP4ExpertBytes(info ModelSizeInfo) int64 {
 	return saturatingMulInt64(experts, perExpert)
 }
 
+// EstimateNVFP4ExpertSlotBytes estimates one MoE expert's three projection
+// tensors in NVFP4. This is the unit the GPU expert cache uploads/evicts.
+func EstimateNVFP4ExpertSlotBytes(info ModelSizeInfo) int64 {
+	if !isNVFP4(info) {
+		return 0
+	}
+	h := nonNegativeInt64(info.HiddenSize)
+	inter := nonNegativeInt64(info.MoEIntermediate)
+	if inter == 0 {
+		inter = nonNegativeInt64(info.Intermediate)
+	}
+	bytes := int64(0)
+	bytes = saturatingAddInt64(bytes, estimateNVFP4MatrixBytes(h, inter))
+	bytes = saturatingAddInt64(bytes, estimateNVFP4MatrixBytes(h, inter))
+	bytes = saturatingAddInt64(bytes, estimateNVFP4MatrixBytes(inter, h))
+	return bytes
+}
+
+// RecommendNVFP4ExpertSlots returns how many NVFP4 expert slots fit in a byte
+// budget. It deliberately does not pick a policy by itself; callers should size
+// the budget from VRAM left after resident/layer placement and expected top-k.
+func RecommendNVFP4ExpertSlots(info ModelSizeInfo, budgetBytes int64) int {
+	if budgetBytes <= 0 {
+		return 0
+	}
+	slotBytes := EstimateNVFP4ExpertSlotBytes(info)
+	if slotBytes <= 0 {
+		return 0
+	}
+	slots := budgetBytes / slotBytes
+	if slots > int64(int(^uint(0)>>1)) {
+		return int(^uint(0) >> 1)
+	}
+	return int(slots)
+}
+
 func bytesToMB(v int64) float64 { return float64(v) / (1024 * 1024) }
 
 func isNVFP4(info ModelSizeInfo) bool {

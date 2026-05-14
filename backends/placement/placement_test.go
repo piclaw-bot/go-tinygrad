@@ -98,6 +98,23 @@ func TestEstimateNVFP4ExpertBytes(t *testing.T) {
 	if got != want {
 		t.Fatalf("EstimateNVFP4ExpertBytes=%d want %d", got, want)
 	}
+	if slot := EstimateNVFP4ExpertSlotBytes(info); slot != wantOneExpert {
+		t.Fatalf("EstimateNVFP4ExpertSlotBytes=%d want %d", slot, wantOneExpert)
+	}
+}
+
+func TestRecommendNVFP4ExpertSlots(t *testing.T) {
+	info := ModelSizeInfo{HiddenSize: 2048, MoEIntermediate: 768, NumExperts: 128, QuantBits: 4, QuantFormat: "nvfp4"}
+	slotBytes := EstimateNVFP4ExpertSlotBytes(info)
+	if slotBytes <= 0 {
+		t.Fatal("slotBytes must be positive")
+	}
+	if got := RecommendNVFP4ExpertSlots(info, slotBytes*8+slotBytes/2); got != 8 {
+		t.Fatalf("RecommendNVFP4ExpertSlots=%d want 8", got)
+	}
+	if got := RecommendNVFP4ExpertSlots(info, 0); got != 0 {
+		t.Fatalf("zero budget slots=%d want 0", got)
+	}
 }
 
 func TestEstimateLayerWeightBytesNVFP4(t *testing.T) {
