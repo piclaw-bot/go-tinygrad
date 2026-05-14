@@ -63,6 +63,31 @@ func TestRunMTPMultiDraftSpeculativeStepProjectionOnlyFirstRejection(t *testing.
 	}
 }
 
+func TestRunMTPMultiDraftSpeculativeStepProjectionOnlyAllAccepted(t *testing.T) {
+	m := newZeroLayerVerifierModel()
+	d := validProjectionOnlyDrafterForModel(m)
+	state, err := NewMTPDrafterState(0, []float32{1, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	result, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, 2, nil, nil, MTPSpeculationStats{})
+	if err != nil {
+		t.Fatalf("RunMTPMultiDraftSpeculativeStep: %v", err)
+	}
+	if !sameInts(result.Drafts.Tokens, []int{1, 0}) {
+		t.Fatalf("draft tokens=%v want [1 0]", result.Drafts.Tokens)
+	}
+	if !result.Verifier.Acceptance.AllDraftsAccepted || result.Verifier.Acceptance.AcceptedPrefixLen != 2 {
+		t.Fatalf("acceptance=%+v, want all accepted two-token draft", result.Verifier.Acceptance)
+	}
+	if !sameInts(result.Verifier.Acceptance.OutputTokens, []int{1, 0, 1}) {
+		t.Fatalf("OutputTokens=%v want [1 0 1]", result.Verifier.Acceptance.OutputTokens)
+	}
+	if result.Stats.Steps != 1 || result.Stats.DraftedTokens != 2 || result.Stats.VerifiedTokens != 2 || result.Stats.BonusTokens != 1 || result.Stats.OutputTokens != 3 {
+		t.Fatalf("stats=%+v", result.Stats)
+	}
+}
+
 func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	d := validProjectionOnlyDrafterForModel(m)

@@ -1753,3 +1753,11 @@ Started the internal multi-draft speculative verification slice:
 - Preserved staged float-KV rollback on post-verifier stats failures.
 - Added tests for a deterministic two-draft projection-only first-rejection case and malformed draft-count validation.
 - Public speculative CLI remains untouched.
+
+## Session 202: Multi-draft all-accepted speculative coverage
+
+Completed the remaining multi-draft speculative behavior coverage:
+
+- Added a zero-layer projection-only fixture where two drafted tokens are both accepted and the verifier emits the bonus token.
+- Covered all-accepted output tokens and LiteRT-style stats (`drafted=2`, `verified=2`, `bonus=1`, `output=3`).
+- Focused speculative tests, no-run all-package gate, vet, and diff checks passed.
