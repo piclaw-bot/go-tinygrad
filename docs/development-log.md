@@ -1693,3 +1693,12 @@ Reviewed and refreshed public project docs after the verifier/drafter/speculativ
 - Updated `docs/mtp-speculative.md` to document current CPU verifier constraints, explicit PLI rejection, q-only drafter execution details, internal `RunMTPSpeculativeStep`, stats rollback behavior, and revised implementation-plan status.
 - Updated `docs/turboquant.md` to clarify that TurboQuant commit/rollback helpers exist but the internal verifier-forward loop is still float-KV CPU-only.
 - Updated `docs/refactor-plan.md` status and Phase 6.8 preservation notes to reflect internal MTP verifier/drafter/speculative-step code rather than the older scaffold-only state.
+
+## Session 195: Post-MTP audit validation closeout
+
+Ran the next validation-policy gate after the recent MTP verifier/drafter/speculative-step audit and documentation batches:
+
+- Full suite passed: `go test ./... -count=1`.
+- CPU generation smokes passed for SmolLM2 and Gemma4 E2B MLX4 with short token budgets.
+- GPU smoke passed for SmolLM2 with a one-token budget.
+- Public speculative CLI remains disabled; the current speculative path is still internal-only.
