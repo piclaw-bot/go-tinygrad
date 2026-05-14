@@ -42,6 +42,7 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 				Weights struct {
 					NumBits   int    `json:"num_bits"`
 					Type      string `json:"type"`
+					Format    string `json:"format"`
 					GroupSize int    `json:"group_size"`
 					Symmetric bool   `json:"symmetric"`
 				} `json:"weights"`
@@ -86,6 +87,8 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 			if md.Format == "" {
 				if group.Format != "" {
 					md.Format = group.Format
+				} else if group.Weights.Format != "" {
+					md.Format = group.Weights.Format
 				} else {
 					md.Format = group.Weights.Type
 				}

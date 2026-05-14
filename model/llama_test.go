@@ -59,8 +59,12 @@ func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
 			qc:   `"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}}`,
 		},
 		{
-			name: "compressed tensors nvfp4 format",
+			name: "compressed tensors nvfp4 group format",
 			qc:   `"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"format":"nvfp4-pack-quantized","weights":{"num_bits":4,"group_size":16}}}}`,
+		},
+		{
+			name: "compressed tensors nvfp4 weight format",
+			qc:   `"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"weights":{"num_bits":4,"format":"nvfp4-pack-quantized","group_size":16}}}}`,
 		},
 	}
 	for _, tc := range cases {
