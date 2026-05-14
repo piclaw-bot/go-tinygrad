@@ -3,6 +3,7 @@ package gpu
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/rcarmo/go-pherence/runtime/quant"
@@ -90,6 +91,41 @@ func (w *GPUNVFP4Weight) Free() {
 	}
 }
 
+// DequantNVFP4ToF32 materializes a GPU-resident NVFP4 weight as row-major F32.
+// It is the correctness fallback used until a native/non-native CUDA dequant
+// kernel is wired in. The current implementation downloads the raw byte buffers
+// and reuses the runtime/quant reference dequantizer, preserving the same API
+// shape that the CUDA kernel will fill later.
+func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
+	if !validGPUNVFP4Weight(w) {
+		return nil, fmt.Errorf("invalid GPU NVFP4 weight")
+	}
+	weightPacked := make([]float32, f32SlotsForBytes(w.WeightBytes))
+	if err := w.Weight.Download(weightPacked); err != nil {
+		return nil, fmt.Errorf("download NVFP4 weight: %w", err)
+	}
+	scalePacked := make([]float32, f32SlotsForBytes(w.ScaleBytes))
+	if err := w.WeightScale.Download(scalePacked); err != nil {
+		return nil, fmt.Errorf("download NVFP4 weight_scale: %w", err)
+	}
+	qw := &quant.NVFP4Weight{
+		Weight:        float32PackedAsBytes(weightPacked, w.WeightBytes),
+		WeightScale:   float32PackedAsBytes(scalePacked, w.ScaleBytes),
+		WeightScale2:  w.WeightScale2,
+		InputScale:    w.InputScale,
+		HasInputScale: w.HasInputScale,
+		OutDim:        w.OutDim,
+		InDim:         w.InDim,
+		Groups:        w.Groups,
+		GroupSize:     w.GroupSize,
+	}
+	out := quant.DequantNVFP4(qw)
+	if out == nil {
+		return nil, fmt.Errorf("dequantize NVFP4 fallback failed")
+	}
+	return out, nil
+}
+
 func validGPUNVFP4Weight(w *GPUNVFP4Weight) bool {
 	if w == nil || w.Weight == nil || w.WeightScale == nil || w.OutDim <= 0 || w.InDim <= 0 || w.Groups <= 0 || w.GroupSize <= 0 {
 		return false
@@ -142,4 +178,15 @@ func bytesAsFloat32Padded(data []byte) []float32 {
 		return nil
 	}
 	return unsafe.Slice((*float32)(unsafe.Pointer(&words[0])), len(words))
+}
+
+func float32PackedAsBytes(data []float32, n int) []byte {
+	if n <= 0 || len(data) == 0 {
+		return nil
+	}
+	out := make([]byte, len(data)*4)
+	for i, f := range data {
+		binary.LittleEndian.PutUint32(out[i*4:i*4+4], math.Float32bits(f))
+	}
+	return out[:n]
 }

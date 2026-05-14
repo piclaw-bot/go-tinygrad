@@ -21,8 +21,9 @@ func TestNVFP4RequiredBytesRejectsBadDims(t *testing.T) {
 	}
 }
 
-func TestBytesAsFloat32Padded(t *testing.T) {
-	got := bytesAsFloat32Padded([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+func TestBytesAsFloat32PaddedRoundTripsRawBytes(t *testing.T) {
+	input := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	got := bytesAsFloat32Padded(input)
 	if len(got) != 2 {
 		t.Fatalf("len=%d want 2", len(got))
 	}
@@ -31,6 +32,9 @@ func TestBytesAsFloat32Padded(t *testing.T) {
 	}
 	if math.Float32bits(got[1]) != 0x00000005 {
 		t.Fatalf("bits[1]=%#x", math.Float32bits(got[1]))
+	}
+	if roundTrip := float32PackedAsBytes(got, len(input)); string(roundTrip) != string(input) {
+		t.Fatalf("roundTrip=%#v want %#v", roundTrip, input)
 	}
 }
 
