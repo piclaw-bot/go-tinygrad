@@ -1735,3 +1735,11 @@ Started the next internal-only MTP integration slice:
 - Added `MTPDrafterRunResult` with drafted tokens, copied logits, copied next activations, and final state.
 - Added tests for projection-only deterministic multi-step behavior, synthetic q-only shape/state coverage, zero-count validation, malformed state validation, and negative draft count rejection.
 - Public speculative CLI remains untouched.
+
+## Session 200: Multi-step MTP drafter validation closeout
+
+Closed the internal multi-step drafter slice:
+
+- Rechecked command front-ends and confirmed no public MTP/speculative CLI flag or command wiring exists.
+- Full suite passed: `go test ./... -count=1`.
+- CPU/GPU generation smokes were not rerun because this slice added internal drafter-only helpers and did not change generation behavior.
