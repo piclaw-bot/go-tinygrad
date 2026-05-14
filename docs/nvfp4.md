@@ -11,8 +11,8 @@ format for large dense and MoE models once loader/runtime/kernel support exists.
 ## Current repository status
 
 - NVFP4/FP4 is detected early from Hugging Face quantization metadata and still
-  rejected for public model loading/generation until CPU and CUDA smoke tests
-  agree on real checkpoint outputs.
+  rejected for public model loading/generation. Synthetic CPU-vs-CUDA dequant
+  smoke now agrees; real checkpoint logits/tokens remain the enablement gate.
 - `loader/config` owns reusable quantization metadata parsing plus NVFP4 tensor
   role/companion-name helpers for Qwen/Gemma layouts.
 - `runtime/quant` has a correctness-first `NVFP4Weight`, FP4 E2M1 and
@@ -93,7 +93,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
   and dot product. This is intentionally correctness-first and allocates
   `OutDim*InDim*4` bytes per call.
 - Pending: packed/native GEMV/GEMM, LM-head if a checkpoint quantizes it, and
-  Qwen3 MoE expert-cache/prefetch redesign.
+  full Qwen3 MoE expert-cache/prefetch integration using the new slot estimates.
 
 ### Memory budgets
 
@@ -121,6 +121,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
 
 - Start with synthetic unit tests and metadata-only inspection.
 - Do not make NVFP4 the default for any model until CPU fallback and CUDA smoke
-  tests agree on logits/tokens for a small prompt.
+  tests agree on logits/tokens for a small prompt. Synthetic dequant parity is
+  necessary but not sufficient for public generation.
 - Gate native NVFP4 CUDA kernels by detected hardware capability; provide clear
   fallback/unsupported messages elsewhere.

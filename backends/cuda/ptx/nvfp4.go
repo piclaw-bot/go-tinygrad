@@ -17,7 +17,7 @@ const NVFP4DequantF32PTX = `.version 7.0
 ) {
     .reg .pred %p<8>;
     .reg .u32 %r<40>;
-    .reg .u64 %rd<12>;
+    .reg .u64 %rd<14>;
     .reg .f32 %f<16>;
 
     mov.u32 %r0, %ctaid.x;
@@ -41,7 +41,8 @@ const NVFP4DequantF32PTX = `.version 7.0
     mad.lo.u32 %r10, %r7, %r9, 0;         // row byte offset
     shr.u32 %r26, %r8, 1;                 // col/2 packed byte within row
     add.u32 %r10, %r10, %r26;             // weight byte offset
-    add.u64 %rd3, %rd0, %r10;
+    cvt.u64.u32 %rd7, %r10;
+    add.u64 %rd3, %rd0, %rd7;
     ld.global.u8 %r11, [%rd3];
     and.b32 %r12, %r8, 1;
     setp.ne.u32 %p1, %r12, 0;
@@ -64,7 +65,8 @@ const NVFP4DequantF32PTX = `.version 7.0
     div.u32 %r15, %r8, %r6;               // group
     div.u32 %r16, %r5, %r6;               // groups per row
     mad.lo.u32 %r17, %r7, %r16, %r15;
-    add.u64 %rd4, %rd1, %r17;
+    cvt.u64.u32 %rd8, %r17;
+    add.u64 %rd4, %rd1, %rd8;
     ld.global.u8 %r18, [%rd4];            // E4M3FN scale code
 
     and.b32 %r19, %r18, 127;
