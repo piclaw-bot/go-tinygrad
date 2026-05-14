@@ -6,11 +6,11 @@ import (
 	"github.com/rcarmo/go-pherence/backends/simd"
 )
 
-// finishCPUDecodeStep applies the model's final decode norm, computes LM-head
+// FinishCPUDecodeStep applies the model's final decode norm, computes LM-head
 // logits, and returns the greedy token. It mutates hidden in the same way the
 // historical Generate path did, and returns a copy of that final activation so
-// verifier/MTP callers can retain it independently of scratch buffers.
-func (m *LlamaModel) finishCPUDecodeStep(hidden []float32) (finalActivation []float32, logits []float32, token int, err error) {
+// callers can retain it independently of scratch buffers.
+func (m *LlamaModel) FinishCPUDecodeStep(hidden []float32) (finalActivation []float32, logits []float32, token int, err error) {
 	if m == nil {
 		return nil, nil, 0, fmt.Errorf("nil model")
 	}
@@ -42,4 +42,10 @@ func (m *LlamaModel) finishCPUDecodeStep(hidden []float32) (finalActivation []fl
 		return nil, nil, 0, err
 	}
 	return append([]float32(nil), hidden...), logits, token, nil
+}
+
+// finishCPUDecodeStep is kept as the internal spelling used by existing decode
+// paths; external orchestration layers should call FinishCPUDecodeStep.
+func (m *LlamaModel) finishCPUDecodeStep(hidden []float32) (finalActivation []float32, logits []float32, token int, err error) {
+	return m.FinishCPUDecodeStep(hidden)
 }

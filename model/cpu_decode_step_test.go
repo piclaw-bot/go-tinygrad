@@ -17,9 +17,9 @@ func TestFinishCPUDecodeStep(t *testing.T) {
 		}, []int{3, 2}),
 	}
 	hidden := []float32{3, 4}
-	activation, logits, tok, err := m.finishCPUDecodeStep(hidden)
+	activation, logits, tok, err := m.FinishCPUDecodeStep(hidden)
 	if err != nil {
-		t.Fatalf("finishCPUDecodeStep: %v", err)
+		t.Fatalf("FinishCPUDecodeStep: %v", err)
 	}
 	if tok != 2 {
 		t.Fatalf("token=%d want 2 logits=%v", tok, logits)
@@ -33,6 +33,31 @@ func TestFinishCPUDecodeStep(t *testing.T) {
 	hidden[0] = 99
 	if activation[0] == 99 {
 		t.Fatal("final activation aliases hidden scratch")
+	}
+}
+
+func TestFinishCPUDecodeStepInternalAliasMatchesExported(t *testing.T) {
+	m := &LlamaModel{
+		Config: LlamaConfig{VocabSize: 3, HiddenSize: 2, RMSNormEps: 0},
+		Norm:   tensor.Ones([]int{2}),
+		LMHead: tensor.FromFloat32([]float32{
+			1, 0,
+			0, 1,
+			1, 1,
+		}, []int{3, 2}),
+	}
+	hiddenA := []float32{3, 4}
+	hiddenB := []float32{3, 4}
+	actA, logitsA, tokA, err := m.finishCPUDecodeStep(hiddenA)
+	if err != nil {
+		t.Fatalf("finishCPUDecodeStep: %v", err)
+	}
+	actB, logitsB, tokB, err := m.FinishCPUDecodeStep(hiddenB)
+	if err != nil {
+		t.Fatalf("FinishCPUDecodeStep: %v", err)
+	}
+	if tokA != tokB || !sameFloat32s(hiddenA, hiddenB) || !sameFloat32s(actA, actB) || !sameFloat32s(logitsA, logitsB) {
+		t.Fatalf("exported mismatch token %d/%d hidden %v/%v act %v/%v logits %v/%v", tokA, tokB, hiddenA, hiddenB, actA, actB, logitsA, logitsB)
 	}
 }
 
