@@ -38,6 +38,7 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 			GroupSize    int    `json:"group_size"`
 			Sym          bool   `json:"sym"`
 			ConfigGroups map[string]struct {
+				Format  string `json:"format"`
 				Weights struct {
 					NumBits   int    `json:"num_bits"`
 					Type      string `json:"type"`
@@ -83,15 +84,18 @@ func ParseQuantizationMetadata(data []byte) (QuantizationMetadata, error) {
 				md.Symmetric = true
 			}
 			if md.Format == "" {
-				md.Format = group.Weights.Type
+				if group.Format != "" {
+					md.Format = group.Format
+				} else {
+					md.Format = group.Weights.Type
+				}
 			}
-			break
 		}
 	}
 
 	algo := strings.ToLower(md.Algo)
 	method := strings.ToLower(md.Method)
 	format := strings.ToLower(md.Format)
-	md.UnsupportedFP4 = strings.Contains(algo, "nvfp4") || strings.Contains(algo, "fp4") || strings.Contains(method, "modelopt") || (md.Bits == 4 && strings.Contains(format, "float"))
+	md.UnsupportedFP4 = strings.Contains(algo, "nvfp4") || strings.Contains(algo, "fp4") || strings.Contains(format, "nvfp4") || strings.Contains(format, "fp4") || strings.Contains(method, "modelopt") || (md.Bits == 4 && strings.Contains(format, "float"))
 	return md, nil
 }

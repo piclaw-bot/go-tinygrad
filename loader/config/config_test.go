@@ -90,6 +90,11 @@ func TestParseQuantizationMetadata(t *testing.T) {
 			wantMethod: "compressed-tensors", wantBits: 4, wantGroup: 32, wantUnsupported: true,
 		},
 		{
+			name:       "compressed tensors nvfp4 group format",
+			json:       `{"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"format":"nvfp4-pack-quantized","weights":{"num_bits":4,"group_size":16}}}}}`,
+			wantMethod: "compressed-tensors", wantBits: 4, wantGroup: 16, wantUnsupported: true,
+		},
+		{
 			name:       "mlx int4 remains supported",
 			json:       `{"quantization":{"bits":4,"group_size":64}}`,
 			wantMethod: "mlx", wantBits: 4, wantGroup: 64, wantUnsupported: false,

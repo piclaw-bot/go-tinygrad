@@ -68,9 +68,9 @@ func DecodeFP4E2M1(code byte) float32 {
 	return mag
 }
 
-// DecodeF8E4M3 decodes finite IEEE-style E4M3 bytes used by safetensors
-// F8_E4M3 scale tensors. NaN/Inf encodings are preserved for diagnostics, but
-// ModelOpt scale tensors are expected to be finite.
+// DecodeF8E4M3 decodes safetensors F8_E4M3FN scale bytes. This finite-only
+// E4M3 variant has bias 7, subnormals at exponent field 0, no infinities, and
+// reserves only all-ones exponent+mantissa as NaN.
 func DecodeF8E4M3(code byte) float32 {
 	sign := code & 0x80
 	exp := (code >> 3) & 0x0f
@@ -82,12 +82,8 @@ func DecodeF8E4M3(code byte) float32 {
 		} else {
 			v = float32(mant) / 8 * float32(math.Ldexp(1, -6))
 		}
-	} else if exp == 0x0f {
-		if mant == 0 {
-			v = float32(math.Inf(1))
-		} else {
-			v = float32(math.NaN())
-		}
+	} else if exp == 0x0f && mant == 0x07 {
+		v = float32(math.NaN())
 	} else {
 		v = (1 + float32(mant)/8) * float32(math.Ldexp(1, int(exp)-7))
 	}

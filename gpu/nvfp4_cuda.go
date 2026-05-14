@@ -3,7 +3,7 @@ package gpu
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
+	"unsafe"
 
 	"github.com/rcarmo/go-pherence/runtime/quant"
 )
@@ -127,18 +127,19 @@ func f32SlotsForBytes(n int) int {
 }
 
 func bytesAsFloat32Padded(data []byte) []float32 {
-	out := make([]float32, f32SlotsForBytes(len(data)))
-	for i := range out {
+	words := make([]uint32, f32SlotsForBytes(len(data)))
+	for i := range words {
 		off := i * 4
-		var bits uint32
 		if off+4 <= len(data) {
-			bits = binary.LittleEndian.Uint32(data[off : off+4])
+			words[i] = binary.LittleEndian.Uint32(data[off : off+4])
 		} else {
 			var tmp [4]byte
 			copy(tmp[:], data[off:])
-			bits = binary.LittleEndian.Uint32(tmp[:])
+			words[i] = binary.LittleEndian.Uint32(tmp[:])
 		}
-		out[i] = math.Float32frombits(bits)
 	}
-	return out
+	if len(words) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*float32)(unsafe.Pointer(&words[0])), len(words))
 }

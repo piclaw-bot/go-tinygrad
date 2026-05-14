@@ -26,6 +26,8 @@ func TestDecodeF8E4M3(t *testing.T) {
 		{0x38, 1},
 		{0x3c, 1.5},
 		{0x40, 2},
+		{0x78, 256},
+		{0x7e, 448},
 		{0xb8, -1},
 	}
 	for _, tc := range cases {
@@ -33,6 +35,9 @@ func TestDecodeF8E4M3(t *testing.T) {
 		if math.Abs(float64(got-tc.want)) > 1e-7 {
 			t.Fatalf("DecodeF8E4M3(%#x)=%v want %v", tc.code, got, tc.want)
 		}
+	}
+	if got := DecodeF8E4M3(0x7f); !math.IsNaN(float64(got)) {
+		t.Fatalf("DecodeF8E4M3(0x7f)=%v, want NaN", got)
 	}
 }
 
