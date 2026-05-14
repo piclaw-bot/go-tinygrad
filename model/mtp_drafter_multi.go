@@ -26,7 +26,11 @@ func (m *LlamaModel) RunMTPDrafterSteps(d *Gemma4MTPDrafter, state MTPDrafterSta
 		if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
 			return MTPDrafterRunResult{}, err
 		}
-		return MTPDrafterRunResult{FinalState: state}, nil
+		finalState, err := NewMTPDrafterState(state.PreviousToken, state.Activation, d.BackboneHiddenSize)
+		if err != nil {
+			return MTPDrafterRunResult{}, err
+		}
+		return MTPDrafterRunResult{FinalState: finalState}, nil
 	}
 	result := MTPDrafterRunResult{
 		Tokens:      make([]int, 0, count),

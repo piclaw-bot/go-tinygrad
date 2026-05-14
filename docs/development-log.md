@@ -1779,3 +1779,11 @@ Continued the multi-draft MTP audit:
 - Added `maxMTPDraftCount` and applied it consistently to `RunMTPDrafterSteps`, `RunMTPMultiDraftSpeculativeStep`, and stats preflight.
 - Avoided unchecked `draftCount+1` accounting by validating the draft count before deriving the maximum output count.
 - Added oversized-count coverage for drafter, speculative, and stats validation paths.
+
+## Session 205: MTP audit — zero-count drafter state aliasing
+
+Continued the bounded drafter-loop audit:
+
+- Found that `RunMTPDrafterSteps(..., count=0)` returned the caller-supplied `MTPDrafterState` directly, so the result activation could alias external state.
+- Fixed the zero-count path to rebuild the final state through `NewMTPDrafterState`, preserving validation and copy semantics.
+- Added regression coverage proving the zero-count final state no longer aliases the caller state.
