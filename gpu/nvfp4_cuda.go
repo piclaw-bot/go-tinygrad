@@ -1,0 +1,144 @@
+package gpu
+
+import (
+	"encoding/binary"
+	"fmt"
+	"math"
+
+	"github.com/rcarmo/go-pherence/runtime/quant"
+)
+
+// GPUNVFP4Weight is the GPU-resident representation for ModelOpt/NVFP4
+// weights. It is deliberately separate from GPTQ/MLX upload structures because
+// NVFP4 uses U8 packed FP4 weights plus F8_E4M3 per-block scales and scalar
+// scale metadata, not affine INT4 or GPTQ group-index metadata.
+type GPUNVFP4Weight struct {
+	Weight        *Buffer // raw U8 packed FP4 bytes, padded to float32 allocation granularity
+	WeightScale   *Buffer // raw F8_E4M3 scale bytes, padded to float32 allocation granularity
+	WeightScale2  float32
+	InputScale    float32
+	HasInputScale bool
+	OutDim        int
+	InDim         int
+	Groups        int
+	GroupSize     int
+	WeightBytes   int
+	ScaleBytes    int
+}
+
+// UploadNVFP4Weight uploads the observed NVFP4 packed representation to GPU
+// memory without converting it to MLX/GPTQ. Kernel dispatch is added separately.
+func UploadNVFP4Weight(qw *quant.NVFP4Weight) (*GPUNVFP4Weight, error) {
+	if err := quant.ValidateNVFP4Weight(qw); err != nil {
+		return nil, err
+	}
+	if !SgemmReady() {
+		return nil, fmt.Errorf("GPU not available")
+	}
+	EnsureContext()
+
+	weightBytes, scaleBytes, err := nvfp4RequiredBytes(qw.OutDim, qw.InDim, qw.Groups)
+	if err != nil {
+		return nil, err
+	}
+	w := &GPUNVFP4Weight{
+		WeightScale2:  qw.WeightScale2,
+		InputScale:    qw.InputScale,
+		HasInputScale: qw.HasInputScale,
+		OutDim:        qw.OutDim,
+		InDim:         qw.InDim,
+		Groups:        qw.Groups,
+		GroupSize:     qw.GroupSize,
+		WeightBytes:   weightBytes,
+		ScaleBytes:    scaleBytes,
+	}
+
+	wb, err := Malloc(f32SlotsForBytes(weightBytes))
+	if err != nil {
+		return nil, fmt.Errorf("alloc NVFP4 weight (%d bytes): %w", weightBytes, err)
+	}
+	w.Weight = wb
+	if err := wb.Upload(bytesAsFloat32Padded(qw.Weight[:weightBytes])); err != nil {
+		w.Free()
+		return nil, fmt.Errorf("upload NVFP4 weight: %w", err)
+	}
+
+	sb, err := Malloc(f32SlotsForBytes(scaleBytes))
+	if err != nil {
+		w.Free()
+		return nil, fmt.Errorf("alloc NVFP4 weight_scale (%d bytes): %w", scaleBytes, err)
+	}
+	w.WeightScale = sb
+	if err := sb.Upload(bytesAsFloat32Padded(qw.WeightScale[:scaleBytes])); err != nil {
+		w.Free()
+		return nil, fmt.Errorf("upload NVFP4 weight_scale: %w", err)
+	}
+	return w, nil
+}
+
+func (w *GPUNVFP4Weight) Free() {
+	if w == nil {
+		return
+	}
+	if w.Weight != nil {
+		w.Weight.Free()
+		w.Weight = nil
+	}
+	if w.WeightScale != nil {
+		w.WeightScale.Free()
+		w.WeightScale = nil
+	}
+}
+
+func validGPUNVFP4Weight(w *GPUNVFP4Weight) bool {
+	if w == nil || w.Weight == nil || w.WeightScale == nil || w.OutDim <= 0 || w.InDim <= 0 || w.Groups <= 0 || w.GroupSize <= 0 {
+		return false
+	}
+	if w.InDim%2 != 0 || w.InDim%w.GroupSize != 0 || w.Groups != w.InDim/w.GroupSize {
+		return false
+	}
+	weightBytes, scaleBytes, err := nvfp4RequiredBytes(w.OutDim, w.InDim, w.Groups)
+	if err != nil || w.WeightBytes != weightBytes || w.ScaleBytes != scaleBytes {
+		return false
+	}
+	return w.Weight.Size >= f32SlotsForBytes(weightBytes)*4 && w.WeightScale.Size >= f32SlotsForBytes(scaleBytes)*4
+}
+
+func nvfp4RequiredBytes(outDim, inDim, groups int) (int, int, error) {
+	if outDim <= 0 || inDim <= 0 || groups <= 0 || inDim%2 != 0 {
+		return 0, 0, fmt.Errorf("invalid NVFP4 byte dims out=%d in=%d groups=%d", outDim, inDim, groups)
+	}
+	weightBytes, ok := checkedMulInt(outDim, inDim/2)
+	if !ok {
+		return 0, 0, fmt.Errorf("NVFP4 weight byte size overflows out=%d in=%d", outDim, inDim)
+	}
+	scaleBytes, ok := checkedMulInt(outDim, groups)
+	if !ok {
+		return 0, 0, fmt.Errorf("NVFP4 scale byte size overflows out=%d groups=%d", outDim, groups)
+	}
+	return weightBytes, scaleBytes, nil
+}
+
+func f32SlotsForBytes(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return (n + 3) / 4
+}
+
+func bytesAsFloat32Padded(data []byte) []float32 {
+	out := make([]float32, f32SlotsForBytes(len(data)))
+	for i := range out {
+		off := i * 4
+		var bits uint32
+		if off+4 <= len(data) {
+			bits = binary.LittleEndian.Uint32(data[off : off+4])
+		} else {
+			var tmp [4]byte
+			copy(tmp[:], data[off:])
+			bits = binary.LittleEndian.Uint32(tmp[:])
+		}
+		out[i] = math.Float32frombits(bits)
+	}
+	return out
+}
