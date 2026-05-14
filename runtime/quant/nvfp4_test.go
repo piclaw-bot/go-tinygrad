@@ -1,6 +1,95 @@
 package quant
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+func TestDecodeFP4E2M1Codebook(t *testing.T) {
+	want := []float32{0, 0.5, 1, 1.5, 2, 3, 4, 6, -0, -0.5, -1, -1.5, -2, -3, -4, -6}
+	for code, w := range want {
+		got := DecodeFP4E2M1(byte(code))
+		if got != w {
+			t.Fatalf("DecodeFP4E2M1(%#x)=%v want %v", code, got, w)
+		}
+	}
+}
+
+func TestDecodeF8E4M3(t *testing.T) {
+	cases := []struct {
+		code byte
+		want float32
+	}{
+		{0x00, 0},
+		{0x01, 1.0 / 512},
+		{0x08, 1.0 / 64},
+		{0x38, 1},
+		{0x3c, 1.5},
+		{0x40, 2},
+		{0xb8, -1},
+	}
+	for _, tc := range cases {
+		got := DecodeF8E4M3(tc.code)
+		if math.Abs(float64(got-tc.want)) > 1e-7 {
+			t.Fatalf("DecodeF8E4M3(%#x)=%v want %v", tc.code, got, tc.want)
+		}
+	}
+}
+
+func TestUnpackNVFP4LowNibbleFirst(t *testing.T) {
+	got := UnpackNVFP4([]byte{0x10, 0x32, 0xba}, 6)
+	want := []float32{0, 0.5, 1, 1.5, -1, -1.5}
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDequantNVFP4Synthetic(t *testing.T) {
+	qw := syntheticNVFP4Weight()
+	got := DequantNVFP4(qw)
+	want := []float32{0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 0, -0.25, -0.5, -0.75, -1, -1.5, -2, -3}
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%v want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestGemvNVFP4MatchesDequantizedReference(t *testing.T) {
+	qw := syntheticNVFP4Weight()
+	x := []float32{1, -1, 2, -2, 0.5, -0.5, 3, -3, 1, 1, 1, 1, -1, -1, -1, -1}
+	wantWeights := DequantNVFP4(qw)
+	want := float32(0)
+	for i, w := range wantWeights {
+		want += w * x[i]
+	}
+	got := []float32{123}
+	GemvNVFP4(got, x, qw)
+	if math.Abs(float64(got[0]-want)) > 1e-6 {
+		t.Fatalf("GemvNVFP4=%v want %v", got[0], want)
+	}
+}
+
+func syntheticNVFP4Weight() *NVFP4Weight {
+	return &NVFP4Weight{
+		// Low nibble first: codes 0..15 across one 16-value group.
+		Weight:       []byte{0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe},
+		WeightScale:  []byte{0x40}, // E4M3 2.0
+		WeightScale2: 0.25,
+		OutDim:       1,
+		InDim:        16,
+		Groups:       1,
+		GroupSize:    16,
+	}
+}
 
 func TestValidateNVFP4WeightObservedLayouts(t *testing.T) {
 	cases := []struct {
