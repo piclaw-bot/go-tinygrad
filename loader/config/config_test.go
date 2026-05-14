@@ -69,6 +69,38 @@ func TestReadModelAndQuantizeConfig(t *testing.T) {
 	}
 }
 
+func TestClassifyNVFP4TensorPrefix(t *testing.T) {
+	cases := []struct {
+		prefix string
+		want   NVFP4TensorRole
+	}{
+		{"model.layers.0.self_attn.q_proj", NVFP4RoleAttentionQ},
+		{"model.layers.0.self_attn.k_proj", NVFP4RoleAttentionK},
+		{"model.layers.0.self_attn.v_proj", NVFP4RoleAttentionV},
+		{"model.layers.0.self_attn.o_proj", NVFP4RoleAttentionO},
+		{"model.layers.0.mlp.gate_proj", NVFP4RoleMLPGate},
+		{"model.layers.0.mlp.up_proj", NVFP4RoleMLPUp},
+		{"model.layers.0.mlp.down_proj", NVFP4RoleMLPDown},
+		{"model.layers.0.mlp.experts.7.gate_proj", NVFP4RoleMoEExpertGate},
+		{"model.layers.0.mlp.experts.7.up_proj", NVFP4RoleMoEExpertUp},
+		{"model.layers.0.mlp.experts.7.down_proj", NVFP4RoleMoEExpertDown},
+		{"model.language_model.layers.0.experts.7.down_proj", NVFP4RoleMoEExpertDown},
+		{"lm_head", NVFP4RoleUnknown},
+	}
+	for _, tc := range cases {
+		if got := ClassifyNVFP4TensorPrefix(tc.prefix); got != tc.want {
+			t.Fatalf("ClassifyNVFP4TensorPrefix(%q)=%q want %q", tc.prefix, got, tc.want)
+		}
+	}
+}
+
+func TestNVFP4CompanionNames(t *testing.T) {
+	w, s, s2, in := NVFP4CompanionNames("model.layers.0.self_attn.q_proj")
+	if w != "model.layers.0.self_attn.q_proj.weight" || s != "model.layers.0.self_attn.q_proj.weight_scale" || s2 != "model.layers.0.self_attn.q_proj.weight_scale_2" || in != "model.layers.0.self_attn.q_proj.input_scale" {
+		t.Fatalf("companions=%q %q %q %q", w, s, s2, in)
+	}
+}
+
 func TestParseQuantizationMetadata(t *testing.T) {
 	cases := []struct {
 		name            string

@@ -62,6 +62,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
 - Embeddings and inspected LM heads remain `BF16` in NVIDIA Qwen3 NVFP4 checkpoints.
 - Prefixes differ by family: Qwen uses `model.layers...`; NVIDIA/Red Hat Gemma4 use `model.language_model.layers...`.
 - Example observed layouts: Qwen3-8B `q_proj.weight U8 [4096,2048]` + `weight_scale F8_E4M3 [4096,256]`; Qwen3-30B-A3B expert `down_proj.weight U8 [2048,384]` + scale `[2048,48]`; Gemma4 dense `down_proj.weight U8 [5376,10752]` + scale `[5376,1344]`.
+- Qwen3 dense mapping (`nvidia/Qwen3-8B-NVFP4`): every decoder layer has seven quantized linear prefixes, `self_attn.{q,k,v,o}_proj` and `mlp.{gate,up,down}_proj`. Each prefix has `.weight`, `.weight_scale`, `.weight_scale_2`, and `.input_scale`. K/V projections additionally expose `.k_scale` / `.v_scale` for KV-cache scaling. Embeddings and `lm_head.weight` are BF16, not NVFP4, in the inspected NVIDIA checkpoint.
 
 ### CPU fallback
 
