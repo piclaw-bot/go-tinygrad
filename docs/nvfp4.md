@@ -58,7 +58,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
 
 - Quantized linear tensors use `<prefix>.weight` as safetensors `U8` with shape `[outDim, inDim/2]`.
 - `<prefix>.weight_scale` is `F8_E4M3` with shape `[outDim, inDim/16]`, confirming 16-value groups for inspected Qwen3/Gemma4 tensors.
-- `<prefix>.weight_scale_2` is scalar `F32`; `<prefix>.input_scale` is scalar `F32` on inspected Qwen3 tensors and many Gemma tensors.
+- `<prefix>.weight_scale_2` is scalar `F32`; `<prefix>.input_scale` is scalar `F32` on inspected NVIDIA Qwen3 and Gemma4 quantized tensors.
 - Embeddings and inspected LM heads remain `BF16` in NVIDIA Qwen3 NVFP4 checkpoints.
 - Prefixes differ by family: Qwen uses `model.layers...`; NVIDIA/Red Hat Gemma4 use `model.language_model.layers...`.
 - Example observed layouts: Qwen3-8B `q_proj.weight U8 [4096,2048]` + `weight_scale F8_E4M3 [4096,256]`; Qwen3-30B-A3B expert `down_proj.weight U8 [2048,384]` + scale `[2048,48]`; Gemma4 dense `down_proj.weight U8 [5376,10752]` + scale `[5376,1344]`.

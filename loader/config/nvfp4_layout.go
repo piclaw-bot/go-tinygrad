@@ -16,7 +16,7 @@ const (
 	NVFP4RoleMLPGate       NVFP4TensorRole = "mlp_gate"
 	NVFP4RoleMLPUp         NVFP4TensorRole = "mlp_up"
 	NVFP4RoleMLPDown       NVFP4TensorRole = "mlp_down"
-	NVFP4RoleMoERouter     NVFP4TensorRole = "moe_router"
+	NVFP4RoleRouter        NVFP4TensorRole = "router"
 	NVFP4RoleMoEExpertGate NVFP4TensorRole = "moe_expert_gate"
 	NVFP4RoleMoEExpertUp   NVFP4TensorRole = "moe_expert_up"
 	NVFP4RoleMoEExpertDown NVFP4TensorRole = "moe_expert_down"
@@ -52,14 +52,14 @@ func ClassifyNVFP4TensorPrefix(prefix string) NVFP4TensorRole {
 	case strings.HasSuffix(prefix, ".mlp.down_proj"):
 		return NVFP4RoleMLPDown
 	case strings.HasSuffix(prefix, ".mlp.gate"):
-		return NVFP4RoleMoERouter
+		return NVFP4RoleRouter
 	default:
 		return NVFP4RoleUnknown
 	}
 }
 
 func isNVFP4MoEExpertPrefix(prefix string) bool {
-	return strings.Contains(prefix, ".mlp.experts.") || strings.Contains(prefix, ".layers.") && strings.Contains(prefix, ".experts.")
+	return strings.Contains(prefix, ".mlp.experts.") || (strings.Contains(prefix, ".layers.") && strings.Contains(prefix, ".experts."))
 }
 
 // NVFP4CompanionNames returns the ModelOpt companion tensor names for a

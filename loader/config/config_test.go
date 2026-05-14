@@ -78,6 +78,7 @@ func TestClassifyNVFP4TensorPrefix(t *testing.T) {
 		{"model.layers.0.self_attn.k_proj", NVFP4RoleAttentionK},
 		{"model.layers.0.self_attn.v_proj", NVFP4RoleAttentionV},
 		{"model.layers.0.self_attn.o_proj", NVFP4RoleAttentionO},
+		{"model.language_model.layers.0.self_attn.q_proj", NVFP4RoleAttentionQ},
 		{"model.layers.0.mlp.gate_proj", NVFP4RoleMLPGate},
 		{"model.layers.0.mlp.up_proj", NVFP4RoleMLPUp},
 		{"model.layers.0.mlp.down_proj", NVFP4RoleMLPDown},
@@ -89,7 +90,8 @@ func TestClassifyNVFP4TensorPrefix(t *testing.T) {
 		{"model.layers.0.mlp.experts.7.down_proj", NVFP4RoleMoEExpertDown},
 		{"model.language_model.layers.0.experts.7.down_proj", NVFP4RoleMoEExpertDown},
 		{"adapter.experts.7.down_proj", NVFP4RoleUnknown},
-		{"model.layers.0.mlp.gate", NVFP4RoleMoERouter},
+		{"model.layers.0.mlp.gate", NVFP4RoleRouter},
+		{"model.language_model.layers.0.mlp.gate", NVFP4RoleRouter},
 		{"lm_head", NVFP4RoleUnknown},
 	}
 	for _, tc := range cases {
