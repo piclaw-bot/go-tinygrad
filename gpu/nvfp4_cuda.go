@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"unsafe"
 
 	"github.com/rcarmo/go-pherence/runtime/quant"
 )
@@ -54,23 +53,25 @@ func UploadNVFP4Weight(qw *quant.NVFP4Weight) (*GPUNVFP4Weight, error) {
 		ScaleBytes:    scaleBytes,
 	}
 
-	wb, err := Malloc(f32SlotsForBytes(weightBytes))
+	weightUpload := bytesAsFloat32Padded(qw.Weight[:weightBytes])
+	wb, err := Malloc(len(weightUpload))
 	if err != nil {
 		return nil, fmt.Errorf("alloc NVFP4 weight (%d bytes): %w", weightBytes, err)
 	}
 	w.Weight = wb
-	if err := wb.Upload(bytesAsFloat32Padded(qw.Weight[:weightBytes])); err != nil {
+	if err := wb.Upload(weightUpload); err != nil {
 		w.Free()
 		return nil, fmt.Errorf("upload NVFP4 weight: %w", err)
 	}
 
-	sb, err := Malloc(f32SlotsForBytes(scaleBytes))
+	scaleUpload := bytesAsFloat32Padded(qw.WeightScale[:scaleBytes])
+	sb, err := Malloc(len(scaleUpload))
 	if err != nil {
 		w.Free()
 		return nil, fmt.Errorf("alloc NVFP4 weight_scale (%d bytes): %w", scaleBytes, err)
 	}
 	w.WeightScale = sb
-	if err := sb.Upload(bytesAsFloat32Padded(qw.WeightScale[:scaleBytes])); err != nil {
+	if err := sb.Upload(scaleUpload); err != nil {
 		w.Free()
 		return nil, fmt.Errorf("upload NVFP4 weight_scale: %w", err)
 	}
@@ -163,21 +164,18 @@ func f32SlotsForBytes(n int) int {
 }
 
 func bytesAsFloat32Padded(data []byte) []float32 {
-	words := make([]uint32, f32SlotsForBytes(len(data)))
-	for i := range words {
+	out := make([]float32, f32SlotsForBytes(len(data)))
+	for i := range out {
 		off := i * 4
 		if off+4 <= len(data) {
-			words[i] = binary.LittleEndian.Uint32(data[off : off+4])
+			out[i] = math.Float32frombits(binary.LittleEndian.Uint32(data[off : off+4]))
 		} else {
 			var tmp [4]byte
 			copy(tmp[:], data[off:])
-			words[i] = binary.LittleEndian.Uint32(tmp[:])
+			out[i] = math.Float32frombits(binary.LittleEndian.Uint32(tmp[:]))
 		}
 	}
-	if len(words) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*float32)(unsafe.Pointer(&words[0])), len(words))
+	return out
 }
 
 func float32PackedAsBytes(data []float32, n int) []byte {
