@@ -36,6 +36,48 @@ func TestRunMTPSpeculativeStepProjectionOnly(t *testing.T) {
 	}
 }
 
+func TestRunMTPMultiDraftSpeculativeStepProjectionOnlyFirstRejection(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	d := validProjectionOnlyDrafterForModel(m)
+	state, err := NewMTPDrafterState(0, []float32{1, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	kvCacheK := make([][]float32, len(m.Layers))
+	kvCacheV := make([][]float32, len(m.Layers))
+	result, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, 2, kvCacheK, kvCacheV, MTPSpeculationStats{})
+	if err != nil {
+		t.Fatalf("RunMTPMultiDraftSpeculativeStep: %v", err)
+	}
+	if !sameInts(result.Drafts.Tokens, []int{1, 0}) {
+		t.Fatalf("draft tokens=%v want [1 0]", result.Drafts.Tokens)
+	}
+	if !sameInts(result.Plan.VerifierTokens, []int{0, 1, 0}) {
+		t.Fatalf("verifier tokens=%v want [0 1 0]", result.Plan.VerifierTokens)
+	}
+	if result.Verifier.Acceptance.AllDraftsAccepted || result.Verifier.Acceptance.AcceptedPrefixLen != 0 || result.Verifier.Acceptance.DraftedCount != 2 {
+		t.Fatalf("acceptance=%+v, want first rejection for two drafts", result.Verifier.Acceptance)
+	}
+	if result.Stats.Steps != 1 || result.Stats.DraftedTokens != 2 || result.Stats.VerifiedTokens != 0 || result.Stats.BonusTokens != 1 {
+		t.Fatalf("stats=%+v", result.Stats)
+	}
+}
+
+func TestRunMTPMultiDraftSpeculativeStepValidation(t *testing.T) {
+	m := newSingleLayerVerifierModel()
+	d := validProjectionOnlyDrafterForModel(m)
+	state, err := NewMTPDrafterState(0, []float32{1, 0}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, 0, nil, nil, MTPSpeculationStats{}); err == nil {
+		t.Fatal("accepted zero draft count")
+	}
+	if _, err := m.RunMTPMultiDraftSpeculativeStep(d, state, nil, 0, -1, nil, nil, MTPSpeculationStats{}); err == nil {
+		t.Fatal("accepted negative draft count")
+	}
+}
+
 func TestRunMTPSpeculativeStepRestoresKVOnPostVerifierStatsFailure(t *testing.T) {
 	m := newSingleLayerVerifierModel()
 	d := validProjectionOnlyDrafterForModel(m)

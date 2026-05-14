@@ -1743,3 +1743,13 @@ Closed the internal multi-step drafter slice:
 - Rechecked command front-ends and confirmed no public MTP/speculative CLI flag or command wiring exists.
 - Full suite passed: `go test ./... -count=1`.
 - CPU/GPU generation smokes were not rerun because this slice added internal drafter-only helpers and did not change generation behavior.
+
+## Session 201: Internal multi-draft speculative step
+
+Started the internal multi-draft speculative verification slice:
+
+- Added `RunMTPMultiDraftSpeculativeStep`, a sibling helper that runs `RunMTPDrafterSteps`, builds one verifier plan from all drafted tokens, runs `RunMTPVerifierForward` once over `[input]+drafted`, and records stats for the full draft count.
+- Kept `RunMTPSpeculativeStep` compatible by delegating to the multi-draft helper with `draftCount=1`.
+- Preserved staged float-KV rollback on post-verifier stats failures.
+- Added tests for a deterministic two-draft projection-only first-rejection case and malformed draft-count validation.
+- Public speculative CLI remains untouched.
