@@ -68,3 +68,47 @@ func TestReadModelAndQuantizeConfig(t *testing.T) {
 		t.Fatalf("ok=%v q=%+v", ok, q)
 	}
 }
+
+func TestParseQuantizationMetadata(t *testing.T) {
+	cases := []struct {
+		name            string
+		json            string
+		wantMethod      string
+		wantAlgo        string
+		wantBits        int
+		wantGroup       int
+		wantUnsupported bool
+	}{
+		{
+			name:       "modelopt nvfp4",
+			json:       `{"quantization_config":{"quant_algo":"NVFP4","quant_method":"modelopt","config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}}}`,
+			wantMethod: "modelopt", wantAlgo: "NVFP4", wantBits: 4, wantGroup: 16, wantUnsupported: true,
+		},
+		{
+			name:       "compressed tensors fp4",
+			json:       `{"quantization_config":{"quant_method":"compressed-tensors","config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":32}}}}}`,
+			wantMethod: "compressed-tensors", wantBits: 4, wantGroup: 32, wantUnsupported: true,
+		},
+		{
+			name:       "mlx int4 remains supported",
+			json:       `{"quantization":{"bits":4,"group_size":64}}`,
+			wantMethod: "mlx", wantBits: 4, wantGroup: 64, wantUnsupported: false,
+		},
+		{
+			name:       "gptq style hf int4 remains supported",
+			json:       `{"quantization_config":{"quant_method":"gptq","bits":4,"group_size":128,"sym":true}}`,
+			wantMethod: "gptq", wantBits: 4, wantGroup: 128, wantUnsupported: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseQuantizationMetadata([]byte(tc.json))
+			if err != nil {
+				t.Fatalf("ParseQuantizationMetadata: %v", err)
+			}
+			if got.Method != tc.wantMethod || got.Algo != tc.wantAlgo || got.Bits != tc.wantBits || got.GroupSize != tc.wantGroup || got.UnsupportedFP4 != tc.wantUnsupported {
+				t.Fatalf("got=%+v", got)
+			}
+		})
+	}
+}
