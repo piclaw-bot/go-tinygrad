@@ -149,6 +149,38 @@ func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
 	return out, nil
 }
 
+// GemvNVFP4 computes dense out[outDim] = W_nvfp4[outDim,inDim] · x[inDim].
+// The initial integration path materializes W through the F32 dequant fallback;
+// native packed GEMV/GEMM kernels can replace this behind the same entry point.
+func GemvNVFP4(out, x []float32, w *GPUNVFP4Weight) error {
+	if !validGPUNVFP4Weight(w) {
+		return fmt.Errorf("invalid GPU NVFP4 weight")
+	}
+	if len(out) < w.OutDim || len(x) < w.InDim {
+		return fmt.Errorf("invalid NVFP4 GEMV buffers out=%d/%d x=%d/%d", len(out), w.OutDim, len(x), w.InDim)
+	}
+	weights, err := DequantNVFP4ToF32(w)
+	if err != nil {
+		return err
+	}
+	return gemvNVFP4F32(out, x, w.OutDim, w.InDim, weights)
+}
+
+func gemvNVFP4F32(out, x []float32, outDim, inDim int, weights []float32) error {
+	if outDim <= 0 || inDim <= 0 || len(out) < outDim || len(x) < inDim || len(weights) < outDim*inDim {
+		return fmt.Errorf("invalid NVFP4 F32 GEMV buffers out=%d/%d x=%d/%d weights=%d/%d", len(out), outDim, len(x), inDim, len(weights), outDim*inDim)
+	}
+	for row := 0; row < outDim; row++ {
+		sum := float32(0)
+		rowOff := row * inDim
+		for col := 0; col < inDim; col++ {
+			sum += weights[rowOff+col] * x[col]
+		}
+		out[row] = sum
+	}
+	return nil
+}
+
 func dequantNVFP4ToF32CUDA(w *GPUNVFP4Weight) ([]float32, bool) {
 	if fnNVFP4DequantF32 == 0 || !megaModuleOK {
 		return nil, false

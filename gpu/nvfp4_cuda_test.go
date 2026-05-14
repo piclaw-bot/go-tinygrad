@@ -3,6 +3,8 @@ package gpu
 import (
 	"math"
 	"testing"
+
+	"github.com/rcarmo/go-pherence/runtime/quant"
 )
 
 func TestSupportsNativeNVFP4TensorCore(t *testing.T) {
@@ -54,6 +56,57 @@ func TestBytesAsFloat32PaddedRoundTripsRawBytes(t *testing.T) {
 	}
 	if roundTrip := float32PackedAsBytes(got, len(input)); string(roundTrip) != string(input) {
 		t.Fatalf("roundTrip=%#v want %#v", roundTrip, input)
+	}
+}
+
+func TestGemvNVFP4RejectsInvalidBuffers(t *testing.T) {
+	w := &GPUNVFP4Weight{
+		Weight:      &Buffer{Size: f32SlotsForBytes(8) * 4},
+		WeightScale: &Buffer{Size: f32SlotsForBytes(2) * 4},
+		OutDim:      2,
+		InDim:       8,
+		Groups:      1,
+		GroupSize:   8,
+		WeightBytes: 8,
+		ScaleBytes:  2,
+	}
+	if err := GemvNVFP4(make([]float32, 1), make([]float32, 8), w); err == nil {
+		t.Fatal("GemvNVFP4 accepted short output")
+	}
+	if err := GemvNVFP4(make([]float32, 2), make([]float32, 7), w); err == nil {
+		t.Fatal("GemvNVFP4 accepted short input")
+	}
+}
+
+func TestGemvNVFP4F32WithReferenceDequant(t *testing.T) {
+	qw := &quant.NVFP4Weight{
+		Weight: []byte{
+			0x10, 0x32, 0x54, 0x76,
+			0x98, 0xba, 0xdc, 0xfe,
+		},
+		WeightScale:  []byte{0x38, 0x40}, // 1.0, 2.0
+		WeightScale2: 0.5,
+		OutDim:       2,
+		InDim:        8,
+		Groups:       1,
+		GroupSize:    8,
+	}
+	weights := quant.DequantNVFP4(qw)
+	x := []float32{1, -1, 2, -2, 0.5, -0.5, 3, -3}
+	want := make([]float32, 2)
+	for row := 0; row < qw.OutDim; row++ {
+		for col := 0; col < qw.InDim; col++ {
+			want[row] += weights[row*qw.InDim+col] * x[col]
+		}
+	}
+	got := make([]float32, 2)
+	if err := gemvNVFP4F32(got, x, qw.OutDim, qw.InDim, weights); err != nil {
+		t.Fatalf("gemvNVFP4F32: %v", err)
+	}
+	for i := range want {
+		if math.Abs(float64(got[i]-want[i])) > 1e-6 {
+			t.Fatalf("got[%d]=%v want %v", i, got[i], want[i])
+		}
 	}
 }
 
