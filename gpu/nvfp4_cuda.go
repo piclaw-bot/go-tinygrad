@@ -112,10 +112,8 @@ func (w *GPUNVFP4Weight) Free() {
 }
 
 // DequantNVFP4ToF32 materializes a GPU-resident NVFP4 weight as row-major F32.
-// It is the correctness fallback used until a native/non-native CUDA dequant
-// kernel is wired in. The current implementation downloads the raw byte buffers
-// and reuses the runtime/quant reference dequantizer, preserving the same API
-// shape that the CUDA kernel will fill later.
+// It first tries the CUDA dequant kernel, then falls back to downloading raw
+// buffers and reusing the runtime/quant reference dequantizer.
 func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
 	if !validGPUNVFP4Weight(w) {
 		return nil, fmt.Errorf("invalid GPU NVFP4 weight")
@@ -150,8 +148,8 @@ func DequantNVFP4ToF32(w *GPUNVFP4Weight) ([]float32, error) {
 }
 
 // GemvNVFP4 computes dense out[outDim] = W_nvfp4[outDim,inDim] · x[inDim].
-// The initial integration path materializes W through the F32 dequant fallback;
-// native packed GEMV/GEMM kernels can replace this behind the same entry point.
+// WARNING: this fallback materializes OutDim*InDim F32 weights per call; native
+// packed GEMV/GEMM kernels can replace this behind the same entry point.
 func GemvNVFP4(out, x []float32, w *GPUNVFP4Weight) error {
 	if !validGPUNVFP4Weight(w) {
 		return fmt.Errorf("invalid GPU NVFP4 weight")
@@ -167,8 +165,9 @@ func GemvNVFP4(out, x []float32, w *GPUNVFP4Weight) error {
 }
 
 func gemvNVFP4F32(out, x []float32, outDim, inDim int, weights []float32) error {
-	if outDim <= 0 || inDim <= 0 || len(out) < outDim || len(x) < inDim || len(weights) < outDim*inDim {
-		return fmt.Errorf("invalid NVFP4 F32 GEMV buffers out=%d/%d x=%d/%d weights=%d/%d", len(out), outDim, len(x), inDim, len(weights), outDim*inDim)
+	wantWeights, ok := checkedMulInt(outDim, inDim)
+	if outDim <= 0 || inDim <= 0 || !ok || len(out) < outDim || len(x) < inDim || len(weights) < wantWeights {
+		return fmt.Errorf("invalid NVFP4 F32 GEMV buffers out=%d/%d x=%d/%d weights=%d/%d", len(out), outDim, len(x), inDim, len(weights), wantWeights)
 	}
 	for row := 0; row < outDim; row++ {
 		sum := float32(0)

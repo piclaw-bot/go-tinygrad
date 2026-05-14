@@ -78,6 +78,13 @@ func TestGemvNVFP4RejectsInvalidBuffers(t *testing.T) {
 	}
 }
 
+func TestGemvNVFP4F32RejectsOverflowShape(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	if err := gemvNVFP4F32(make([]float32, 1), make([]float32, 1), maxInt/2+1, 3, make([]float32, 1)); err == nil {
+		t.Fatal("gemvNVFP4F32 accepted overflowing shape")
+	}
+}
+
 func TestGemvNVFP4F32WithReferenceDequant(t *testing.T) {
 	qw := &quant.NVFP4Weight{
 		Weight: []byte{

@@ -16,7 +16,6 @@ const NVFP4DequantF32PTX = `.version 7.0
     .param .u32 GROUP_SIZE
 ) {
     .reg .pred %p<8>;
-    .reg .u16 %h<4>;
     .reg .u32 %r<40>;
     .reg .u64 %rd<12>;
     .reg .f32 %f<16>;
