@@ -1711,3 +1711,11 @@ Started the next MTP integration slice against local Gemma4 assets:
 - Added a real-asset contract test that loads `models/gemma4-e2b-mtp-drafter` and `models/gemma4-e2b-mlx4` when present, otherwise skips with a clear resource message.
 - The test builds a minimal zero external-KV view from the loaded drafter layer/head dimensions, runs one `RunMTPDrafterStepWithExternalKV` step with deterministic synthetic state, and asserts token/logit/activation/state shapes without running the main verifier path.
 - Focused drafter tests passed with local assets, followed by the no-run all-package gate, vet, and diff checks.
+
+## Session 197: MTP real-asset slice closeout
+
+Closed the current real-asset MTP drafter slice:
+
+- Rechecked command front-ends and confirmed no public MTP/speculative CLI flag or command wiring exists.
+- Refreshed the README MTP documentation link label from scaffold wording to current internal implementation status.
+- No resource skip occurred in the focused real-asset test on this workspace because the local Gemma4 main and MTP drafter assets were present; the test still has clear skip messages for workspaces without those assets.
