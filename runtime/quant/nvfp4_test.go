@@ -41,6 +41,15 @@ func TestDecodeF8E4M3(t *testing.T) {
 	}
 }
 
+func TestUnpackNVFP4RejectsOutOfRangeCountWithoutOverflow(t *testing.T) {
+	if got := UnpackNVFP4([]byte{0x12}, 3); got != nil {
+		t.Fatalf("UnpackNVFP4 count beyond packed bytes=%v want nil", got)
+	}
+	if got := UnpackNVFP4(nil, int(^uint(0)>>1)); got != nil {
+		t.Fatalf("UnpackNVFP4 huge count len=%d want nil", len(got))
+	}
+}
+
 func TestUnpackNVFP4LowNibbleFirst(t *testing.T) {
 	got := UnpackNVFP4([]byte{0x10, 0x32, 0xba}, 6)
 	want := []float32{0, 0.5, 1, 1.5, -1, -1.5}

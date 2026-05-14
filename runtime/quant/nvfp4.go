@@ -97,7 +97,7 @@ func DecodeF8E4M3(code byte) float32 {
 // values. It is primarily a test/prototype helper; production paths should
 // dequantize directly from packed bytes.
 func UnpackNVFP4(packed []byte, count int) []float32 {
-	if count < 0 || count > len(packed)*2 {
+	if count < 0 || countExceedsPackedNibbles(count, len(packed)) {
 		return nil
 	}
 	out := make([]float32, count)
@@ -146,6 +146,17 @@ func GemvNVFP4(out, x []float32, qw *NVFP4Weight) {
 		}
 		out[row] = sum
 	}
+}
+
+func countExceedsPackedNibbles(count, packedBytes int) bool {
+	if packedBytes < 0 {
+		return true
+	}
+	fullBytes := count / 2
+	if fullBytes > packedBytes {
+		return true
+	}
+	return count%2 != 0 && fullBytes >= packedBytes
 }
 
 func nvfp4At(qw *NVFP4Weight, row, col int) float32 {
