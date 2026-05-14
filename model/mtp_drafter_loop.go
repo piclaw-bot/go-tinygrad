@@ -31,6 +31,30 @@ type MTPDrafterExternalKV struct {
 	SeqLen       int
 }
 
+// NewMTPDrafterExternalKV builds the default one-to-one q-only source mapping
+// for a Gemma4 MTP drafter: drafter layer i reads external K/V source i. This
+// is the native local assistant layout; callers with packed/shared source views
+// can still construct MTPDrafterExternalKV manually.
+func NewMTPDrafterExternalKV(d *Gemma4MTPDrafter, k, v [][]float32, seqLen int) (*MTPDrafterExternalKV, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil drafter")
+	}
+	if d.Config.NumLayers < 0 {
+		return nil, fmt.Errorf("invalid drafter layer count %d", d.Config.NumLayers)
+	}
+	sources := make([]int, d.Config.NumLayers)
+	for i := range sources {
+		sources[i] = i
+	}
+	externalKV := &MTPDrafterExternalKV{K: k, V: v, SourceLayers: sources, SeqLen: seqLen}
+	if d.Config.NumLayers > 0 {
+		if err := validateMTPDrafterExternalKV(d, externalKV); err != nil {
+			return nil, err
+		}
+	}
+	return externalKV, nil
+}
+
 // NewMTPDrafterState validates and copies the activation carry for one drafter
 // loop. The activation width is the main/backbone model hidden size, not the
 // assistant hidden size.

@@ -1702,3 +1702,12 @@ Ran the next validation-policy gate after the recent MTP verifier/drafter/specul
 - CPU generation smokes passed for SmolLM2 and Gemma4 E2B MLX4 with short token budgets.
 - GPU smoke passed for SmolLM2 with a one-token budget.
 - Public speculative CLI remains disabled; the current speculative path is still internal-only.
+
+## Session 196: Real-asset MTP drafter contract
+
+Started the next MTP integration slice against local Gemma4 assets:
+
+- Added `NewMTPDrafterExternalKV`, a default one-to-one external-KV source mapping helper for q-only drafter layers.
+- Added a real-asset contract test that loads `models/gemma4-e2b-mtp-drafter` and `models/gemma4-e2b-mlx4` when present, otherwise skips with a clear resource message.
+- The test builds a minimal zero external-KV view from the loaded drafter layer/head dimensions, runs one `RunMTPDrafterStepWithExternalKV` step with deterministic synthetic state, and asserts token/logit/activation/state shapes without running the main verifier path.
+- Focused drafter tests passed with local assets, followed by the no-run all-package gate, vet, and diff checks.

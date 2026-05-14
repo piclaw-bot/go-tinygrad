@@ -1,6 +1,8 @@
 package model
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -142,6 +144,75 @@ func TestRunMTPDrafterStepAppliesFinalNormBeforePostProjection(t *testing.T) {
 	}
 	if sameFloat32s(got.NextActivation, withNorm.NextActivation) {
 		t.Fatalf("final norm did not affect next activation: %v", got.NextActivation)
+	}
+}
+
+func TestNewMTPDrafterExternalKVDefaultMapping(t *testing.T) {
+	d := validDrafterStepScaffold()
+	externalKV, err := NewMTPDrafterExternalKV(d, [][]float32{{1, 0}}, [][]float32{{0, 1}}, 1)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterExternalKV: %v", err)
+	}
+	if !sameInts(externalKV.SourceLayers, []int{0}) {
+		t.Fatalf("SourceLayers=%v want [0]", externalKV.SourceLayers)
+	}
+	if _, err := NewMTPDrafterExternalKV(nil, nil, nil, 0); err == nil {
+		t.Fatal("accepted nil drafter")
+	}
+}
+
+func TestRunMTPDrafterStepRealAssetContract(t *testing.T) {
+	drafterDir := filepath.Join("..", "models", "gemma4-e2b-mtp-drafter")
+	mainDir := filepath.Join("..", "models", "gemma4-e2b-mlx4")
+	if _, errSingle := os.Stat(filepath.Join(drafterDir, "model.safetensors")); errSingle != nil {
+		if _, errSharded := os.Stat(filepath.Join(drafterDir, "model.safetensors.index.json")); errSharded != nil {
+			t.Skipf("local Gemma4 MTP drafter asset not available: single=%v sharded=%v", errSingle, errSharded)
+		}
+	}
+	if _, errSingle := os.Stat(filepath.Join(mainDir, "model.safetensors")); errSingle != nil {
+		if _, errSharded := os.Stat(filepath.Join(mainDir, "model.safetensors.index.json")); errSharded != nil {
+			t.Skipf("local Gemma4 main asset not available: single=%v sharded=%v", errSingle, errSharded)
+		}
+	}
+	d, err := LoadGemma4MTPDrafter(drafterDir)
+	if err != nil {
+		t.Fatalf("LoadGemma4MTPDrafter: %v", err)
+	}
+	m, err := LoadLlama(mainDir)
+	if err != nil {
+		t.Fatalf("LoadLlama: %v", err)
+	}
+	if m.Config.HiddenSize != d.BackboneHiddenSize || m.Config.VocabSize != d.Config.VocabSize {
+		t.Fatalf("model/drafter mismatch h/vocab=%d/%d backbone/vocab=%d/%d", m.Config.HiddenSize, m.Config.VocabSize, d.BackboneHiddenSize, d.Config.VocabSize)
+	}
+	k := make([][]float32, d.Config.NumLayers)
+	v := make([][]float32, d.Config.NumLayers)
+	for i := range d.Layers {
+		headDim := d.Config.HeadDim
+		if d.Layers[i].HeadDimLocal > 0 {
+			headDim = d.Layers[i].HeadDimLocal
+		}
+		kvDim := d.Config.NumKVHeads * headDim
+		k[i] = make([]float32, kvDim)
+		v[i] = make([]float32, kvDim)
+	}
+	externalKV, err := NewMTPDrafterExternalKV(d, k, v, 1)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterExternalKV: %v", err)
+	}
+	state, err := NewMTPDrafterState(0, make([]float32, d.BackboneHiddenSize), d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	result, err := m.RunMTPDrafterStepWithExternalKV(d, state, externalKV)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterStepWithExternalKV: %v", err)
+	}
+	if result.Token < 0 || result.Token >= m.Config.VocabSize {
+		t.Fatalf("draft token=%d out of range [0,%d)", result.Token, m.Config.VocabSize)
+	}
+	if len(result.Logits) != m.Config.VocabSize || len(result.NextActivation) != d.BackboneHiddenSize || len(result.NextState.Activation) != d.BackboneHiddenSize {
+		t.Fatalf("result shapes logits/activation/state=%d/%d/%d", len(result.Logits), len(result.NextActivation), len(result.NextState.Activation))
 	}
 }
 
