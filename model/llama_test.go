@@ -33,6 +33,32 @@ func gemma4Path() string {
 	return p
 }
 
+func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
+	dir := t.TempDir()
+	cfg := `{
+		"model_type":"qwen3",
+		"vocab_size":1024,
+		"hidden_size":128,
+		"intermediate_size":256,
+		"num_hidden_layers":1,
+		"num_attention_heads":4,
+		"num_key_value_heads":1,
+		"head_dim":32,
+		"quantization_config":{
+			"quant_algo":"NVFP4",
+			"quant_method":"modelopt",
+			"config_groups":{"group_0":{"weights":{"num_bits":4,"type":"float","group_size":16}}}
+		}
+	}`
+	if err := os.WriteFile(dir+"/config.json", []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadLlama(dir)
+	if err == nil || !strings.Contains(err.Error(), "unsupported FP4/NVFP4") {
+		t.Fatalf("LoadLlama err=%v, want unsupported FP4/NVFP4", err)
+	}
+}
+
 func TestGenerateRejectsMalformedConfigBeforeAllocation(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)
 	cases := []struct {

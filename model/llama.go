@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -214,6 +215,23 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	cfg.TensorPrefix = ""
 	if cfg.ModelType == "gemma4_text" || cfg.ModelType == "gemma4" {
 		cfg.TensorPrefix = "language_model."
+	}
+
+	// Detect unsupported Model Optimizer / NVFP4-style quantization before
+	// falling through into normal/MLX/GPTQ tensor loading. This keeps FP4
+	// checkpoints from failing later with misleading missing-tensor errors.
+	var hfQuantCfg struct {
+		QuantizationConfig struct {
+			QuantAlgo   string `json:"quant_algo"`
+			QuantMethod string `json:"quant_method"`
+		} `json:"quantization_config"`
+	}
+	if err := json.Unmarshal(cfgData, &hfQuantCfg); err == nil {
+		algo := strings.ToLower(hfQuantCfg.QuantizationConfig.QuantAlgo)
+		method := strings.ToLower(hfQuantCfg.QuantizationConfig.QuantMethod)
+		if strings.Contains(algo, "nvfp4") || strings.Contains(algo, "fp4") || strings.Contains(method, "modelopt") {
+			return nil, fmt.Errorf("unsupported FP4/NVFP4 quantization: quant_algo=%q quant_method=%q", hfQuantCfg.QuantizationConfig.QuantAlgo, hfQuantCfg.QuantizationConfig.QuantMethod)
+		}
 	}
 
 	// Try sharded first, then single file

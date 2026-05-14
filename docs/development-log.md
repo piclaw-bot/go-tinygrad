@@ -1852,3 +1852,12 @@ Added NVFP4/FP4 to the Gemma/Qwen efficiency roadmap:
 - Searched for public Gemma/Qwen NVFP4 checkpoints and found relevant Hugging Face artifacts including `nvidia/Qwen3-8B-NVFP4`, `NVFP4/Qwen3-32B-FP4`, `nvidia/Qwen3-30B-A3B-NVFP4`, `nvidia/Qwen3-235B-A22B-Instruct-2507-NVFP4`, `nvidia/Gemma-4-31B-IT-NVFP4`, and community Gemma4 26B-A4B NVFP4 checkpoints.
 - Added `docs/nvfp4.md` with current repo status, model-weight findings, loader/CPU/CUDA/memory-budget fit gaps, and a staged implementation plan.
 - Updated performance, GPU options, weight-budget, README, and refactor docs to include NVFP4 as a CUDA-focused roadmap format distinct from MLX/GPTQ.
+
+## Session 214: FP4/NVFP4 metadata inspection and early loader guard
+
+Started preparing the FP4/NVFP4 compute approach:
+
+- Inspected Hugging Face metadata for representative NVFP4 checkpoints without downloading full weights. NVIDIA ModelOpt Qwen checkpoints expose `quantization_config.quant_algo=NVFP4`, 4-bit float weights/activations with group size 16, FP8 KV cache metadata, and ModelOpt producer metadata. Some Gemma checkpoints expose `format=nvfp4-pack-quantized` and community metadata variants.
+- Confirmed current go-pherence MLX4 is not directly compatible with these NVFP4 layouts; NVFP4 should be a distinct quantization family.
+- Added early `LoadLlama` detection for FP4/NVFP4/ModelOpt configs so unsupported checkpoints fail clearly before opening/missing weight files.
+- Added a regression test for early unsupported NVFP4 detection.
