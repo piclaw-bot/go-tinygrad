@@ -1827,3 +1827,11 @@ Continued MTP code-smell auditing:
 - Found stale comments still describing q-only drafter execution as not implemented after the synthetic/contract q-only path had landed.
 - Updated `RunMTPDrafterStep` comments to describe it as the projection-only convenience wrapper and direct q-only users to `RunMTPDrafterStepWithExternalKV`.
 - Refreshed the MTP docs implementation-plan wording from verifier-forward scaffold to verifier-forward contract.
+
+## Session 211: MTP audit — Gemma drafter attention scale
+
+Continued q-only drafter math auditing:
+
+- Found that the drafter q-only attention path always used the default GQA score scale (`1/sqrt(headDim)`), while Gemma4 CPU layers use unscaled attention scores (`scale=1.0`).
+- Added `drafterGQAAttention` to select Gemma4's unscaled attention path for Gemma-style drafter configs and preserve default scaling for other configs.
+- Added regression coverage that the Gemma4 drafter attention path uses the Gemma scale and differs from the default scaled helper on a discriminating fixture.

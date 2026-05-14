@@ -113,6 +113,23 @@ func TestRunMTPDrafterStepContractValidation(t *testing.T) {
 	}
 }
 
+func TestMTPDrafterGQAAttentionUsesGemmaScale(t *testing.T) {
+	d := validDrafterStepScaffold()
+	d.Config.ModelType = "gemma4_text"
+	q := []float32{1, 0}
+	k := []float32{0, 1, 2, 0}
+	v := []float32{1, 10, 100, 1000}
+	got := drafterGQAAttention(d, q, k, v, 2, 1, 1, 2)
+	want := gqaAttentionScale(q, k, v, 2, 1, 1, 2, 1.0)
+	if !sameFloat32s(got, want) {
+		t.Fatalf("drafter attention=%v want Gemma scale %v", got, want)
+	}
+	defaultScaled := gqaAttention(q, k, v, 2, 1, 1, 2)
+	if sameFloat32s(got, defaultScaled) {
+		t.Fatalf("Gemma drafter attention unexpectedly matched default scaled path: %v", got)
+	}
+}
+
 func TestMTPDrafterRMSNormUsesGemmaBF16Path(t *testing.T) {
 	d := validDrafterStepScaffold()
 	d.Config.ModelType = "gemma4_text"

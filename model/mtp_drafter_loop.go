@@ -195,7 +195,7 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 	for head := 0; head < d.Config.NumHeads; head++ {
 		drafterRMSNormInPlace(d, q[head*headDim:(head+1)*headDim], qNorm)
 	}
-	attnOut := gqaAttention(q, externalKV.K[source], externalKV.V[source], externalKV.SeqLen, d.Config.NumHeads, d.Config.NumKVHeads, headDim)
+	attnOut := drafterGQAAttention(d, q, externalKV.K[source], externalKV.V[source], externalKV.SeqLen, d.Config.NumHeads, d.Config.NumKVHeads, headDim)
 	if attnOut == nil {
 		return nil, fmt.Errorf("drafter layer %d external attention failed", layerIdx)
 	}
@@ -240,6 +240,13 @@ func runMTPDrafterQOnlyLayer(d *Gemma4MTPDrafter, hidden []float32, layerIdx int
 		}
 	}
 	return hidden, nil
+}
+
+func drafterGQAAttention(d *Gemma4MTPDrafter, q, kCache, vCache []float32, seqLen, numHeads, numKVHeads, headDim int) []float32 {
+	if d != nil && d.Config.ModelType == "gemma4_text" {
+		return gqaAttentionScale(q, kCache, vCache, seqLen, numHeads, numKVHeads, headDim, 1.0)
+	}
+	return gqaAttention(q, kCache, vCache, seqLen, numHeads, numKVHeads, headDim)
 }
 
 func drafterRMSNormInPlace(d *Gemma4MTPDrafter, x, weight []float32) {
