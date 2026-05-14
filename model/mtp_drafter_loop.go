@@ -127,7 +127,7 @@ func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state 
 	return MTPDrafterStepResult{Token: tok, Logits: logits, NextActivation: append([]float32(nil), nextActivation...), NextState: nextState}, nil
 }
 
-func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) error {
+func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPDrafterState) error {
 	if m == nil {
 		return fmt.Errorf("nil model")
 	}
@@ -166,7 +166,7 @@ func (m *LlamaModel) validateMTPDrafterStepModelShell(d *Gemma4MTPDrafter, state
 }
 
 func (m *LlamaModel) validateMTPDrafterStepModelFull(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) error {
-	if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
+	if err := m.validateMTPDrafterStepModel(d, state); err != nil {
 		return err
 	}
 	if d.Config.NumLayers == 0 {

@@ -23,7 +23,7 @@ func (m *LlamaModel) RunMTPDrafterSteps(d *Gemma4MTPDrafter, state MTPDrafterSta
 		return MTPDrafterRunResult{}, fmt.Errorf("draft count %d out of range [0,%d]", count, maxMTPDraftCount)
 	}
 	if count == 0 {
-		if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
+		if err := m.validateMTPDrafterStepModel(d, state); err != nil {
 			return MTPDrafterRunResult{}, err
 		}
 		finalState, err := NewMTPDrafterState(state.PreviousToken, state.Activation, d.BackboneHiddenSize)

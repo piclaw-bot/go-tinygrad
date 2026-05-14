@@ -1803,3 +1803,11 @@ Continued edge-case auditing for the bounded drafter loop:
 - Found that `RunMTPDrafterSteps(..., count=0)` still required q-only external KV for q-only drafter models even though no q-only layer executes.
 - Split drafter validation into a shell/state path and a full one-step execution path so zero-count validation does not over-require external KV, while actual q-only one-step execution still requires it.
 - Added coverage for zero-count q-only drafter runs without external KV.
+
+## Session 208: MTP audit — drafter validation split cleanup
+
+Continued code-smell auditing after the zero-count validation split:
+
+- Removed the stale `externalKV` parameter from the base drafter validation helper after zero-count q-only handling split shell validation from full execution validation.
+- Kept full q-only execution validation as the only path that receives and validates external KV.
+- Focused drafter tests, no-run all-package gate, vet, and diff checks passed.
