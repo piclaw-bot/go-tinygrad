@@ -102,6 +102,7 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
   NVIDIA checkpoints.
 - Done: placement plans report NVFP4 resident, GPU-layer, and per-layer expert-set MB separately from the generic MLX/GPTQ totals.
 - Done: expert-slot sizing is now based on one NVFP4 expert's gate/up/down projection bytes and exposes a budget-to-slot recommendation helper for Qwen3 MoE cache policy experiments.
+- Done: metadata-only Qwen3-30B-A3B-NVFP4 placement sizing estimates about 1188 MB resident, 324 MB for a full layer expert set, 2.53 MB per expert slot, and about 202 slots in a 512 MiB expert cache, without downloading weight shards.
 
 ## Roadmap insertion
 

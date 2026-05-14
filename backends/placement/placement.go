@@ -103,13 +103,19 @@ func EstimateLayerWeightBytes(info ModelSizeInfo, layerIdx int) int64 {
 		// NVFP4: two FP4 values per byte plus one F8 scale per 16 input values
 		// and one scalar F32 secondary scale per tensor.
 		pack := func(inD, outD int64) int64 { return estimateNVFP4MatrixBytes(inD, outD) }
-		add(pack(h, qDim))       // Q proj
-		add(pack(h, kvDim))      // K proj
-		add(pack(h, kvDim))      // V proj
-		add(pack(qDim, h))       // O proj
-		add(pack(h, layerInter)) // Gate proj
-		add(pack(h, layerInter)) // Up proj
-		add(pack(layerInter, h)) // Down proj
+		add(pack(h, qDim))  // Q proj
+		add(pack(h, kvDim)) // K proj
+		add(pack(h, kvDim)) // V proj
+		add(pack(qDim, h))  // O proj
+		if isMoE(info) {
+			// Qwen3 MoE keeps the router/gate in BF16; expert projection bytes are
+			// tracked separately by EstimateNVFP4ExpertBytes/SlotBytes.
+			add(saturatingMulInt64(saturatingMulInt64(h, nonNegativeInt64(info.NumExperts)), 2))
+		} else {
+			add(pack(h, layerInter)) // Gate proj
+			add(pack(h, layerInter)) // Up proj
+			add(pack(layerInter, h)) // Down proj
+		}
 	} else if info.QuantBits == 4 {
 		// INT4 quantized: packed weights + scales + biases
 		// Packed: inDim * outDim / 8 bytes (4-bit)
@@ -374,6 +380,10 @@ func bytesToMB(v int64) float64 { return float64(v) / (1024 * 1024) }
 
 func isNVFP4(info ModelSizeInfo) bool {
 	return info.QuantFormat == "nvfp4"
+}
+
+func isMoE(info ModelSizeInfo) bool {
+	return info.NumExperts > 0 && info.MoEIntermediate > 0
 }
 
 func estimateNVFP4MatrixBytes(inD, outD int64) int64 {

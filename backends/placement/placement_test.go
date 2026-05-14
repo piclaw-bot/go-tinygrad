@@ -79,6 +79,27 @@ func TestEstimateNVFP4MatrixBytes(t *testing.T) {
 	}
 }
 
+func TestQwen3MoENVFP4MetadataPlacementSizing(t *testing.T) {
+	// nvidia/Qwen3-30B-A3B-NVFP4 config metadata, no weight shards required.
+	info := ModelSizeInfo{NumLayers: 48, HiddenSize: 2048, Intermediate: 6144, MoEIntermediate: 768, NumHeads: 32, NumKVHeads: 4, HeadDim: 128, VocabSize: 151936, QuantBits: 4, QuantFormat: "nvfp4", NumExperts: 128}
+	plan := PlanLayerPlacement(info, -1, testAvailGPUBytes)
+	if plan.NVFP4ResidentMB < 1188 || plan.NVFP4ResidentMB > 1189 {
+		t.Fatalf("resident MB=%f, want Qwen3 MoE metadata estimate around 1188 MB", plan.NVFP4ResidentMB)
+	}
+	if slotMB := bytesToMB(EstimateNVFP4ExpertSlotBytes(info)); slotMB < 2.5 || slotMB > 2.6 {
+		t.Fatalf("expert slot MB=%f, want around 2.53 MB", slotMB)
+	}
+	if expertsMB := bytesToMB(EstimateNVFP4ExpertBytes(info)); expertsMB < 323 || expertsMB > 325 {
+		t.Fatalf("expert set MB=%f, want around 324 MB", expertsMB)
+	}
+	if layerMB := bytesToMB(EstimateLayerWeightBytes(info, 0)); layerMB >= 15 {
+		t.Fatalf("MoE layer MB=%f unexpectedly includes dense MLP bytes", layerMB)
+	}
+	if slots := RecommendNVFP4ExpertSlots(info, 512*1024*1024); slots != 202 {
+		t.Fatalf("512MiB expert slots=%d want 202", slots)
+	}
+}
+
 func TestPlanLayerPlacementReportsNVFP4Breakdown(t *testing.T) {
 	info := ModelSizeInfo{NumLayers: 2, HiddenSize: 4096, Intermediate: 12288, NumHeads: 32, NumKVHeads: 8, HeadDim: 128, VocabSize: 151936, QuantBits: 4, QuantFormat: "nvfp4", NumExperts: 128, MoEIntermediate: 768}
 	plan := PlanLayerPlacement(info, 1, testAvailGPUBytes)
