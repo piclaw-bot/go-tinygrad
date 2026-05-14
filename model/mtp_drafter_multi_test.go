@@ -28,6 +28,22 @@ func TestRunMTPDrafterStepsProjectionOnly(t *testing.T) {
 	}
 }
 
+func TestRunMTPDrafterStepsZeroCountQOnlyDoesNotRequireExternalKV(t *testing.T) {
+	m := validDrafterStepBackboneModel()
+	d := validDrafterStepScaffold()
+	state, err := NewMTPDrafterState(1, []float32{0.5, 0.25}, d.BackboneHiddenSize)
+	if err != nil {
+		t.Fatalf("NewMTPDrafterState: %v", err)
+	}
+	got, err := m.RunMTPDrafterSteps(d, state, nil, 0)
+	if err != nil {
+		t.Fatalf("RunMTPDrafterSteps zero-count q-only: %v", err)
+	}
+	if got.FinalState.PreviousToken != state.PreviousToken || !sameFloat32s(got.FinalState.Activation, state.Activation) {
+		t.Fatalf("FinalState=%+v want copied initial state", got.FinalState)
+	}
+}
+
 func TestRunMTPDrafterStepsQOnlySynthetic(t *testing.T) {
 	m := validDrafterStepBackboneModel()
 	d := validDrafterStepScaffold()

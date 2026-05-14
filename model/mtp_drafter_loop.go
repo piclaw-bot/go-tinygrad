@@ -83,7 +83,7 @@ func (m *LlamaModel) RunMTPDrafterStep(d *Gemma4MTPDrafter, state MTPDrafterStat
 // RunMTPDrafterStepWithExternalKV is RunMTPDrafterStep plus the explicit
 // external/main-model KV view needed by q-only drafter layers.
 func (m *LlamaModel) RunMTPDrafterStepWithExternalKV(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) (MTPDrafterStepResult, error) {
-	if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
+	if err := m.validateMTPDrafterStepModelFull(d, state, externalKV); err != nil {
 		return MTPDrafterStepResult{}, err
 	}
 	backboneEmbedding := make([]float32, d.BackboneHiddenSize)
@@ -149,6 +149,10 @@ func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPD
 	if len(d.PreProjection) == 0 || len(d.PostProjection) == 0 {
 		return fmt.Errorf("drafter projection weights are not loaded")
 	}
+	return m.validateMTPDrafterStepModelShell(d, state)
+}
+
+func (m *LlamaModel) validateMTPDrafterStepModelShell(d *Gemma4MTPDrafter, state MTPDrafterState) error {
 	if d.Config.NumLayers != len(d.Layers) {
 		return fmt.Errorf("drafter layer count=%d, want %d", len(d.Layers), d.Config.NumLayers)
 	}
@@ -157,6 +161,16 @@ func (m *LlamaModel) validateMTPDrafterStepModel(d *Gemma4MTPDrafter, state MTPD
 	}
 	if d.Norm == nil || len(d.Norm.Data()) < d.Config.HiddenSize {
 		return fmt.Errorf("drafter final norm is not loaded or too small")
+	}
+	return nil
+}
+
+func (m *LlamaModel) validateMTPDrafterStepModelFull(d *Gemma4MTPDrafter, state MTPDrafterState, externalKV *MTPDrafterExternalKV) error {
+	if err := m.validateMTPDrafterStepModel(d, state, externalKV); err != nil {
+		return err
+	}
+	if d.Config.NumLayers == 0 {
+		return nil
 	}
 	return validateMTPDrafterExternalKV(d, externalKV)
 }

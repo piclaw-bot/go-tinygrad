@@ -1795,3 +1795,11 @@ Continued speculative error-path auditing:
 - Found that `RunMTPMultiDraftSpeculativeStep` checkpointed float KV before verifier forward but only restored it on post-verifier stats failures.
 - Fixed verifier-forward error handling to restore staged KV as well, covering failures that occur after partial verifier KV appends (for example decode-finish validation after a layer has staged K/V).
 - Added regression coverage using a missing final norm to force a verifier-forward error after staging and asserting K/V is restored.
+
+## Session 207: MTP audit — zero-count q-only drafter validation
+
+Continued edge-case auditing for the bounded drafter loop:
+
+- Found that `RunMTPDrafterSteps(..., count=0)` still required q-only external KV for q-only drafter models even though no q-only layer executes.
+- Split drafter validation into a shell/state path and a full one-step execution path so zero-count validation does not over-require external KV, while actual q-only one-step execution still requires it.
+- Added coverage for zero-count q-only drafter runs without external KV.
