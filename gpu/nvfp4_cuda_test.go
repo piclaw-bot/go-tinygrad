@@ -147,6 +147,18 @@ func syntheticNVFP4Weight() *quant.NVFP4Weight {
 	}
 }
 
+func TestDequantNVFP4ToF32CUDARejectsUint32Overflow(t *testing.T) {
+	oldFn, oldOK := fnNVFP4DequantF32, megaModuleOK
+	defer func() { fnNVFP4DequantF32, megaModuleOK = oldFn, oldOK }()
+	fnNVFP4DequantF32 = 1
+	megaModuleOK = true
+	maxUint32 := int(^uint32(0))
+	w := &GPUNVFP4Weight{OutDim: maxUint32/2 + 1, InDim: 3}
+	if out, ok := dequantNVFP4ToF32CUDA(w); ok || out != nil {
+		t.Fatalf("dequantNVFP4ToF32CUDA accepted >uint32 element count")
+	}
+}
+
 func TestValidGPUNVFP4Weight(t *testing.T) {
 	w := &GPUNVFP4Weight{
 		Weight:      &Buffer{Size: f32SlotsForBytes(8) * 4},
