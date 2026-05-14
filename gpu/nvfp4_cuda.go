@@ -11,6 +11,36 @@ import (
 
 var fnNVFP4DequantF32 CUfunction
 
+// NVFP4KernelKind identifies the packed NVFP4 kernel family a caller wants.
+// The interface is intentionally defined before native dispatch exists so the
+// fallback and future tensor-core paths agree on dimensions and buffer layout.
+type NVFP4KernelKind int
+
+const (
+	NVFP4KernelGEMV NVFP4KernelKind = iota
+	NVFP4KernelGEMM
+)
+
+// NVFP4KernelSpec describes a packed NVFP4 multiply request.
+//
+// Layout contract:
+//   - W is row-major [OutDim, InDim] packed as U8 [OutDim, InDim/2]
+//   - WeightScale is row-major F8_E4M3 [OutDim, InDim/GroupSize]
+//   - X is F32 row-major [Batch, InDim] for GEMM, or [1, InDim] for GEMV
+//   - Out is F32 row-major [Batch, OutDim]
+//   - GroupSize is currently required to be 16 for ModelOpt NVFP4 native paths
+//
+// Native Blackwell/tensor-core dispatch can use this spec without changing the
+// public fallback entry points.
+type NVFP4KernelSpec struct {
+	Kind      NVFP4KernelKind
+	OutDim    int
+	InDim     int
+	Batch     int
+	Groups    int
+	GroupSize int
+}
+
 // NativeNVFP4TensorCoreSupported reports whether the active CUDA device is new
 // enough for native NVFP4 tensor-core work. Blackwell-class GPUs are expected to
 // expose compute capability 10.x or newer. This is a capability gate only; the
@@ -25,6 +55,39 @@ func NativeNVFP4TensorCoreSupported() bool {
 
 func supportsNativeNVFP4TensorCore(major, minor int) bool {
 	return major >= 10
+}
+
+// ValidateNVFP4KernelSpec checks packed NVFP4 GEMV/GEMM dimensions without
+// requiring GPU buffers. It is the shared shape gate for future native kernels.
+func ValidateNVFP4KernelSpec(spec NVFP4KernelSpec) error {
+	if spec.Kind != NVFP4KernelGEMV && spec.Kind != NVFP4KernelGEMM {
+		return fmt.Errorf("invalid NVFP4 kernel kind %d", spec.Kind)
+	}
+	if spec.OutDim <= 0 || spec.InDim <= 0 || spec.Batch <= 0 || spec.Groups <= 0 || spec.GroupSize <= 0 {
+		return fmt.Errorf("invalid NVFP4 kernel dims out=%d in=%d batch=%d groups=%d groupSize=%d", spec.OutDim, spec.InDim, spec.Batch, spec.Groups, spec.GroupSize)
+	}
+	if spec.Kind == NVFP4KernelGEMV && spec.Batch != 1 {
+		return fmt.Errorf("NVFP4 GEMV batch=%d, want 1", spec.Batch)
+	}
+	if spec.InDim%2 != 0 || spec.InDim%spec.GroupSize != 0 || spec.Groups != spec.InDim/spec.GroupSize {
+		return fmt.Errorf("NVFP4 kernel group layout mismatch in=%d groups=%d groupSize=%d", spec.InDim, spec.Groups, spec.GroupSize)
+	}
+	if spec.GroupSize != 16 {
+		return fmt.Errorf("NVFP4 native kernels require groupSize=16, got %d", spec.GroupSize)
+	}
+	if _, ok := checkedMulInt(spec.OutDim, spec.InDim/2); !ok {
+		return fmt.Errorf("NVFP4 packed weight bytes overflow out=%d in=%d", spec.OutDim, spec.InDim)
+	}
+	if _, ok := checkedMulInt(spec.OutDim, spec.Groups); !ok {
+		return fmt.Errorf("NVFP4 scale bytes overflow out=%d groups=%d", spec.OutDim, spec.Groups)
+	}
+	if _, ok := checkedMulInt(spec.Batch, spec.InDim); !ok {
+		return fmt.Errorf("NVFP4 input elements overflow batch=%d in=%d", spec.Batch, spec.InDim)
+	}
+	if _, ok := checkedMulInt(spec.Batch, spec.OutDim); !ok {
+		return fmt.Errorf("NVFP4 output elements overflow batch=%d out=%d", spec.Batch, spec.OutDim)
+	}
+	return nil
 }
 
 // GPUNVFP4Weight is the GPU-resident representation for ModelOpt/NVFP4

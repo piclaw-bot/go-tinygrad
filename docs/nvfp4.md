@@ -92,7 +92,10 @@ Metadata-only inspection on 2026-05-14 confirmed the common ModelOpt NVFP4 tenso
 - Done: dense GEMV has a first integration point via dequantized F32 materialize
   and dot product. This is intentionally correctness-first and allocates
   `OutDim*InDim*4` bytes per call.
-- Pending: packed/native GEMV/GEMM, LM-head if a checkpoint quantizes it, and
+- Done: packed GEMV/GEMM shape/interface contract is defined as `NVFP4KernelSpec`
+  with row-major packed weights, F8 scales, F32 inputs/outputs, batch semantics,
+  and group-size/overflow validation before any native dispatch is enabled.
+- Pending: packed/native GEMV/GEMM implementation, LM-head if a checkpoint quantizes it, and
   full Qwen3 MoE expert-cache/prefetch integration using the new slot estimates.
 
 ### Memory budgets

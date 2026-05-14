@@ -26,6 +26,24 @@ func TestSupportsNativeNVFP4TensorCore(t *testing.T) {
 	}
 }
 
+func TestValidateNVFP4KernelSpec(t *testing.T) {
+	good := NVFP4KernelSpec{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4096, Batch: 4, Groups: 256, GroupSize: 16}
+	if err := ValidateNVFP4KernelSpec(good); err != nil {
+		t.Fatalf("ValidateNVFP4KernelSpec: %v", err)
+	}
+	bad := []NVFP4KernelSpec{
+		{Kind: NVFP4KernelGEMV, OutDim: 4096, InDim: 4096, Batch: 2, Groups: 256, GroupSize: 16},
+		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4095, Batch: 1, Groups: 256, GroupSize: 16},
+		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4096, Batch: 1, Groups: 128, GroupSize: 16},
+		{Kind: NVFP4KernelGEMM, OutDim: 4096, InDim: 4096, Batch: 1, Groups: 64, GroupSize: 64},
+	}
+	for _, spec := range bad {
+		if err := ValidateNVFP4KernelSpec(spec); err == nil {
+			t.Fatalf("ValidateNVFP4KernelSpec accepted %+v", spec)
+		}
+	}
+}
+
 func TestNVFP4RequiredBytes(t *testing.T) {
 	weightBytes, scaleBytes, err := nvfp4RequiredBytes(4096, 4096, 256)
 	if err != nil {
