@@ -95,7 +95,7 @@ models/
   qwen3/
   gemma3/
   gemma4/
-    mtp/               # Gemma4 assistant drafter/verifier scaffold
+    mtp/               # Gemma4 assistant drafter/verifier internals
   bert/                # GTE/BERT embedding path
   moe/                 # MoE architecture components and routing policy
 
@@ -262,7 +262,7 @@ These larger moves are deliberately deferred out of Phase 6.5 into follow-up ref
 
 - **LLaMA/Gemma/Qwen/MoE/MTP model package split → Phase 6.8 (`models/*`).**
   - Rationale: transitional `model` still combines loader normalization, architecture-specific fields, CPU forward, GPU orchestration hooks, MoE, Gemma4 PLI/KV-sharing, internal MTP verifier/drafter/speculative-step code, and generation. Recent audits hardened helper entrypoints, but splitting files now would be mostly mechanical churn until shared model/backend interfaces are clearer.
-  - Preservation plan: keep resumed MTP work small and focused in `model` until the Phase 6.8 split; when splitting, move helpers with their focused tests and preserve MTP verifier dimension/shared-KV checks, acceptance/KV commit validation, MTP drafter projection/external-KV/q-only validation, stats rollback behavior, MoE loader/forward edge guards, inference helper sizing, CPU forward-layer entrypoint checks, and diagnostic build tags.
+  - Preservation plan: keep resumed MTP work small and focused in `model` until the Phase 6.8 split; when splitting, move helpers with their focused tests and preserve MTP verifier dimension/shared-KV checks, acceptance/KV commit validation, MTP drafter projection/external-KV/q-only validation, bounded multi-draft count checks, zero-count state copy semantics, verifier/stat rollback behavior, MoE loader/forward edge guards, inference helper sizing, CPU forward-layer entrypoint checks, and diagnostic build tags.
 
 - **Generation runtime split → Phase 6.9 (`runtime/generation`).**
   - Rationale: generation currently depends on model-specific CPU/GPU paths, tokenizer behavior, KV cache semantics, TurboQuant, MTP acceptance, and future speculative decode loops. Extracting it before model/backend interfaces settle would likely create temporary bridges.

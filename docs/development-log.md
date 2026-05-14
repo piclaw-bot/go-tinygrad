@@ -1835,3 +1835,12 @@ Continued q-only drafter math auditing:
 - Found that the drafter q-only attention path always used the default GQA score scale (`1/sqrt(headDim)`), while Gemma4 CPU layers use unscaled attention scores (`scale=1.0`).
 - Added `drafterGQAAttention` to select Gemma4's unscaled attention path for Gemma-style drafter configs and preserve default scaling for other configs.
 - Added regression coverage that the Gemma4 drafter attention path uses the Gemma scale and differs from the default scaled helper on a discriminating fixture.
+
+## Session 212: Documentation refresh after multi-draft MTP audits
+
+Reviewed and refreshed documentation after the multi-step/multi-draft MTP implementation and follow-up audit fixes:
+
+- Updated `README.md` to include the bounded multi-step drafter loop, multi-draft drafter→verifier seam, real-asset q-only contract tests, and bounded/rollback hardening.
+- Updated `docs/architecture.md` to describe the current multi-step/multi-draft internal seams and refined remaining architecture work.
+- Updated `docs/mtp-speculative.md` with current q-only drafter behavior, Gemma attention scaling, real-asset contract coverage, bounded multi-step drafting, multi-draft speculative verification, and verifier/stat rollback behavior.
+- Updated `docs/refactor-plan.md` preservation notes so future model-package moves keep bounded count checks, zero-count state copy semantics, and rollback behavior.

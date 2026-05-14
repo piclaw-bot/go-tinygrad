@@ -42,9 +42,10 @@ Current implementation status (resumed after Phase 6.5 closeout; model package s
 - `MTPVerifierResult` validates verifier logits/activation outputs, derives acceptance, and can commit the accepted KV prefix for float or TurboQuant-backed caches. `NewMTPVerifierResultForModel` additionally checks token IDs against vocab size, logits rows against vocab width, and final activation against hidden size for the real verifier path.
 - `MTPAcceptance.KVKeepTokens` plus `CommitAccepted*KV` helpers apply accept/reject results directly to staged verifier KV caches; `runtime/kv` owns the generic staging state while `LayerKVDims` derives the correct per-layer widths for Gemma4 variable/shared KV layouts.
 - Drafter layers mark `KVSourceLayer=-1` because their K/V source is external. `MTPDrafterExternalKV` is the explicit read-only main-model KV view for q-only drafter layers; validation checks source mapping, source sequence width, q-only projection dimensions, MLP dimensions, and all required norms.
-- `RunMTPDrafterStepWithExternalKV` runs the projection shell plus the current CPU q-only layer path: Gemma-aware BF16/FP32 norms, q projection, q norm, external GQA attention, output projection, residual/post-attention handling, pre/post-FFN norms, MLP, layer scalar, final drafter norm, post-projection, main LM-head logits, and next-state construction. Zero-layer projection-only fixtures remain supported.
-- `MTPSpeculationStats` tracks LiteRT-style drafted/verified/bonus/output counters, and `RunMTPSpeculativeStep` provides an internal one-token drafter→verifier→stats seam. It checkpoints float KV before verifier forward and restores staged KV if post-verifier stats accounting fails.
-- Remaining gap: extend the verifier path to full Gemma4 per-layer-input/batched semantics, prove the q-only drafter path against real assistant assets, add adaptive/multi-token speculative loops, and run CPU/GPU smokes before exposing any public speculative-decoding CLI flag.
+- `RunMTPDrafterStepWithExternalKV` runs the projection shell plus the current CPU q-only layer path: Gemma-aware BF16/FP32 norms, q projection, q norm, Gemma-scaled external GQA attention, output projection, residual/post-attention handling, pre/post-FFN norms, MLP, layer scalar, final drafter norm, post-projection, main LM-head logits, and next-state construction. Zero-layer projection-only fixtures remain supported.
+- `RunMTPDrafterSteps` runs a bounded internal multi-step drafter-only loop, carrying copied state between draft steps and returning drafted tokens, logits, activations, and final state. The real-asset contract test now loads the local Gemma4 main and MTP drafter assets when present, builds a minimal external-KV view, and proves one q-only drafter step reaches correctly shaped outputs.
+- `MTPSpeculationStats` tracks LiteRT-style drafted/verified/bonus/output counters. `RunMTPSpeculativeStep` provides the compatibility one-token drafter→verifier→stats seam, while `RunMTPMultiDraftSpeculativeStep` drafts multiple tokens before one verifier pass. Both remain internal-only; the multi-draft path checkpoints float KV before verifier forward and restores staged KV on verifier or post-verifier stats errors.
+- Remaining gap: extend the verifier path to full Gemma4 per-layer-input/batched semantics, prove q-only drafter numerical parity against real assistant assets, add adaptive draft-count policy, and run CPU/GPU smokes before exposing any public speculative-decoding CLI flag.
 
 ### Data flow
 
@@ -55,10 +56,11 @@ Main model decode step N:
 Drafter loop (K iterations):
   hidden_draft = pre_projection(embedding(prev_token) || activation) [256]
   for layer in drafter_layers:
-    hidden_draft = layer(hidden_draft, KV=main_model_KV)
+    hidden_draft = q-only layer(hidden_draft, KV=external main-model KV)
   hidden_main = post_projection(hidden_draft)                         [1536]
   logits = LM_head(hidden_main)                   [vocab]
   draft_token = argmax(logits)
+  carry projected activation and drafted token into the next iteration
   → candidate_tokens[K]
 
 Verifier (current internal CPU path):
@@ -89,8 +91,8 @@ Verifier (target batched path):
 7. **Main-model verifier result contract** ✅ — `MTPVerifierTokens`/`MTPVerifierPlan`/`MTPVerifierResult` define `[input_token]+drafted`, verifier positions, logits rows, final activation, acceptance, and KV commit hooks; model-aware construction validates vocab/logit/activation dimensions.
 8. **Verifier-forward contract** ✅ — `RunMTPVerifierForward` validates model/plan/KV-cache contract and rejects unsupported PLI/batched semantics explicitly.
 9. **Initial CPU verifier path** ✅ — run a short sequential CPU forward over `[input_token] + drafted_tokens`, return per-position logits and final activation, and stage candidate float KV updates. The current implementation deliberately reuses `ForwardLayer` plus `finishCPUDecodeStep` rather than extracting a larger shared decode-step helper; a fuller helper should wait until Gemma4 PLI and batched verifier semantics are implemented so the shared boundary matches `Generate` completely.
-10. **Drafter forward loop** ✅/internal — projection-only and synthetic q-only CPU steps now run with explicit external KV, Gemma-aware norms, q-only attention, MLP, final norm, post-projection, and main LM-head logits. Remaining work is real-asset parity and multi-step/adaptive loops.
-11. **End-to-end speculative decode** ✅/internal — `RunMTPSpeculativeStep` integrates one drafter step, verifier forward, and stats without CLI exposure. Remaining work is KV commit policy inside generation, adaptive K, and smoke-validated public wiring.
+10. **Drafter forward loop** ✅/internal — projection-only, synthetic q-only, and local real-asset contract paths now run with explicit external KV, Gemma-aware norms/attention scale, q-only attention, MLP, final norm, post-projection, and main LM-head logits. `RunMTPDrafterSteps` carries state across bounded multi-step drafts. Remaining work is numerical parity against real assistant outputs and adaptive policy.
+11. **End-to-end speculative decode** ✅/internal — `RunMTPSpeculativeStep` integrates one drafter step, verifier forward, and stats without CLI exposure; `RunMTPMultiDraftSpeculativeStep` does the same for multiple drafted tokens in one verifier pass. Remaining work is KV commit policy inside generation, adaptive K, and smoke-validated public wiring.
 12. **Adaptive K** — track acceptance rate by task/prompt class and adjust draft length.
 
 ## Reference Implementations
