@@ -245,17 +245,16 @@ func Malloc(n int) (*Buffer, error) {
 	if n <= 0 {
 		return &Buffer{}, nil
 	}
-	maxInt := int(^uint(0) >> 1)
-	if n > maxInt/4 {
+	size, err := checkedByteSize(n, -1)
+	if err != nil {
 		return nil, fmt.Errorf("cuMemAlloc size overflow for %d float32s", n)
 	}
 	EnsureContext()
 	var ptr CUdeviceptr
-	size := uint64(n * 4)
 	if r := cuMemAlloc(&ptr, size); r != CUDA_SUCCESS {
 		return nil, fmt.Errorf("cuMemAlloc(%d): error %d", size, r)
 	}
-	return &Buffer{Ptr: ptr, Size: n * 4}, nil
+	return &Buffer{Ptr: ptr, Size: int(size)}, nil
 }
 
 // Free releases GPU memory.
