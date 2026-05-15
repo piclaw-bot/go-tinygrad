@@ -579,6 +579,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	profileDecode := os.Getenv("GO_PHERENCE_PROFILE_DECODE") != ""
 	var totalLayerTime, totalLogitTime time.Duration
 	logitSteps := 0
+	var expertStartHits, expertStartMisses, expertStartEvicts uint64
+	if profileDecode && g.Experts != nil {
+		expertStartHits = g.Experts.Hits.Load()
+		expertStartMisses = g.Experts.Misses.Load()
+		expertStartEvicts = g.Experts.Evicts.Load()
+	}
 	profileStart := func() time.Time {
 		if !profileDecode {
 			return time.Time{}
@@ -1242,7 +1248,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 		fmt.Printf("[decode-profile] steps=%d logit_steps=%d layers=%s logits=%s total=%s\n", steps, logitSteps, totalLayerTime.Round(time.Millisecond), totalLogitTime.Round(time.Millisecond), (totalLayerTime + totalLogitTime).Round(time.Millisecond))
 		if g.Experts != nil {
-			fmt.Printf("[decode-profile] %s\n", g.Experts.Report())
+			hits := g.Experts.Hits.Load()
+			misses := g.Experts.Misses.Load()
+			evicts := g.Experts.Evicts.Load()
+			fmt.Printf("[decode-profile] expert_delta hits=%d misses=%d evicts=%d; %s\n",
+				hits-expertStartHits, misses-expertStartMisses, evicts-expertStartEvicts, g.Experts.Report())
 		}
 	}
 	if len(output) > len(tokenIDs)+1 {
