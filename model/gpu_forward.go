@@ -619,14 +619,14 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		if !profileDecode {
 			return time.Time{}
 		}
-		gpu.Sync()
+		gpu.SyncForTiming()
 		return time.Now()
 	}
 	profileAdd := func(acc *time.Duration, start time.Time) {
 		if !profileDecode || start.IsZero() {
 			return
 		}
-		gpu.Sync()
+		gpu.SyncForTiming()
 		*acc += time.Since(start)
 	}
 	checkGPU := func(stage string) {

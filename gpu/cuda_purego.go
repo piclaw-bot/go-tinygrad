@@ -326,13 +326,24 @@ func (b *Buffer) Download(data []float32) error {
 	return nil
 }
 
-// Sync waits for all GPU operations to complete.
-func Sync() {
+func syncCounted(count bool) {
 	EnsureContext()
-	if gpuStatsEnabled.Load() {
+	if count && gpuStatsEnabled.Load() {
 		gpuStatsSyncs.Add(1)
 	}
 	cuCtxSynchronize()
+}
+
+// Sync waits for all GPU operations to complete.
+func Sync() {
+	syncCounted(true)
+}
+
+// SyncForTiming waits for GPU operations before/after a timed section without
+// incrementing GPU operation counters. Use this for profiling fences so the
+// diagnostic sync counter reflects model work, not measurement overhead.
+func SyncForTiming() {
+	syncCounted(false)
 }
 
 // SyncErr waits for all GPU operations and reports CUDA driver errors.
