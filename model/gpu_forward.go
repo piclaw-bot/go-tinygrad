@@ -580,6 +580,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	var totalLayerTime, totalLogitTime time.Duration
 	logitSteps := 0
 	var expertStartHits, expertStartMisses, expertStartEvicts uint64
+	var expertDecodeStartHits, expertDecodeStartMisses, expertDecodeStartEvicts uint64
+	expertDecodeStartCaptured := false
 	if profileDecode && g.Experts != nil {
 		expertStartHits = g.Experts.Hits.Load()
 		expertStartMisses = g.Experts.Misses.Load()
@@ -625,6 +627,12 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	}
 
 	for step := prefillStart; step < len(tokenIDs)+maxTokens-1; step++ {
+		if profileDecode && g.Experts != nil && !expertDecodeStartCaptured && step >= len(tokenIDs) {
+			expertDecodeStartHits = g.Experts.Hits.Load()
+			expertDecodeStartMisses = g.Experts.Misses.Load()
+			expertDecodeStartEvicts = g.Experts.Evicts.Load()
+			expertDecodeStartCaptured = true
+		}
 		var tokID int
 		if step < len(tokenIDs) {
 			tokID = tokenIDs[step]
@@ -1251,8 +1259,15 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			hits := g.Experts.Hits.Load()
 			misses := g.Experts.Misses.Load()
 			evicts := g.Experts.Evicts.Load()
-			fmt.Printf("[decode-profile] expert_delta hits=%d misses=%d evicts=%d; %s\n",
-				hits-expertStartHits, misses-expertStartMisses, evicts-expertStartEvicts, g.Experts.Report())
+			if !expertDecodeStartCaptured {
+				expertDecodeStartHits = hits
+				expertDecodeStartMisses = misses
+				expertDecodeStartEvicts = evicts
+			}
+			fmt.Printf("[decode-profile] expert_delta hits=%d misses=%d evicts=%d prompt_hits=%d prompt_misses=%d prompt_evicts=%d decode_hits=%d decode_misses=%d decode_evicts=%d; %s\n",
+				hits-expertStartHits, misses-expertStartMisses, evicts-expertStartEvicts,
+				expertDecodeStartHits-expertStartHits, expertDecodeStartMisses-expertStartMisses, expertDecodeStartEvicts-expertStartEvicts,
+				hits-expertDecodeStartHits, misses-expertDecodeStartMisses, evicts-expertDecodeStartEvicts, g.Experts.Report())
 		}
 	}
 	if len(output) > len(tokenIDs)+1 {
