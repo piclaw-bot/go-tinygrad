@@ -213,7 +213,10 @@ func TestDevBufBoundsDoNotPanic(t *testing.T) {
 	DevSoftmax(long, 100)
 	DevGELUTanhMul(short, long, 100)
 	_ = long.Slice(-1, 2)
-	_ = long.Slice(3, 100)
+	tail := long.Slice(3, 100)
+	if tail.Len() != 1 || len(tail.Data()) != 1 {
+		t.Fatalf("clamped tail slice = len %d data %v, want len 1", tail.Len(), tail.Data())
+	}
 	if neg := NewDevBuf(-10); neg.Len() != 0 {
 		t.Fatalf("negative buffer len=%d, want 0", neg.Len())
 	}

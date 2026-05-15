@@ -628,7 +628,7 @@ func (b *DevBuf) Slice(offset, n int) *DevBuf {
 	if b == nil || offset < 0 || n < 0 || offset > b.n {
 		return NewDevBuf(0)
 	}
-	if offset+n > b.n {
+	if n > b.n-offset {
 		n = b.n - offset
 	}
 	s := &DevBuf{n: n, dev: b.dev, ownGPU: false}
@@ -636,9 +636,13 @@ func (b *DevBuf) Slice(offset, n int) *DevBuf {
 		s.cpu = b.cpu[offset : offset+n]
 	}
 	if b.gpu != nil {
-		s.gpu = &Buffer{
-			Ptr:  b.gpu.Ptr + CUdeviceptr(uint64(offset)*4),
-			Size: n * 4,
+		offsetBytes, errOffset := checkedByteSize(offset, 0)
+		sizeBytes, errSize := checkedByteSize(n, 0)
+		if errOffset == nil && errSize == nil {
+			s.gpu = &Buffer{
+				Ptr:  b.gpu.Ptr + CUdeviceptr(offsetBytes),
+				Size: int(sizeBytes),
+			}
 		}
 	}
 	return s
