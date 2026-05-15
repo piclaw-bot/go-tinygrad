@@ -61,6 +61,53 @@ func TestDequantMLX(t *testing.T) {
 	t.Log("DequantMLX: OK")
 }
 
+func TestGemvMLQ4FastPathMatchesGeneric(t *testing.T) {
+	outDim, inDim := 3, 16
+	groupSize := 8
+	bits := 4
+	weight := make([]uint32, outDim*(inDim/8))
+	for row := 0; row < outDim; row++ {
+		for p := 0; p < inDim/8; p++ {
+			var packed uint32
+			for i := 0; i < 8; i++ {
+				val := uint32((row*11 + p*7 + i*3) & 0xF)
+				packed |= val << (uint(i) * 4)
+			}
+			weight[row*(inDim/8)+p] = packed
+		}
+	}
+	numGroups := inDim / groupSize
+	scales := make([]float32, outDim*numGroups)
+	biases := make([]float32, outDim*numGroups)
+	for i := range scales {
+		scales[i] = 0.03 * float32(i+1)
+		biases[i] = -0.2 + 0.01*float32(i)
+	}
+	x := []float32{1, -2, 3, -4, 5, -6, 7, -8, 0.5, -0.25, 1.5, -1.25, 2.5, -2.25, 3.5, -3.25}
+	fast := &MLXQuantWeight{Weight: weight, Scales: scales, Biases: biases, OutDim: outDim, InDim: inDim, Groups: numGroups, GroupSize: groupSize, Bits: bits}
+	generic := *fast
+	generic.GroupSize = 4
+	generic.Groups = inDim / generic.GroupSize
+	generic.Scales = make([]float32, outDim*generic.Groups)
+	generic.Biases = make([]float32, outDim*generic.Groups)
+	for row := 0; row < outDim; row++ {
+		for g := 0; g < generic.Groups; g++ {
+			src := row*numGroups + g/2
+			generic.Scales[row*generic.Groups+g] = scales[src]
+			generic.Biases[row*generic.Groups+g] = biases[src]
+		}
+	}
+	got := make([]float32, outDim)
+	want := make([]float32, outDim)
+	GemvMLQ(got, x, fast)
+	GemvMLQ(want, x, &generic)
+	for i := range got {
+		if diff := math.Abs(float64(got[i] - want[i])); diff > 1e-5 {
+			t.Fatalf("row %d: fast=%f generic=%f diff=%g", i, got[i], want[i], diff)
+		}
+	}
+}
+
 func TestGemvMLQ(t *testing.T) {
 	// Test MLX on-the-fly GEMV
 	outDim, inDim := 4, 8
