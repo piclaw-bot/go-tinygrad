@@ -28,27 +28,35 @@ type GPUMLXWeight struct {
 	Correction *Buffer         // [outDim * numGroups] f32: 8*scale+bias per group
 }
 
+func validateMLXUploadInputs(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int) (numGroups, packedPerRow, wantWeight, wantScale int, err error) {
+	if inDim <= 0 || outDim <= 0 || groupSize <= 0 || inDim%groupSize != 0 || inDim%8 != 0 {
+		return 0, 0, 0, 0, fmt.Errorf("invalid MLX dims inDim=%d outDim=%d groupSize=%d", inDim, outDim, groupSize)
+	}
+	numGroups = inDim / groupSize
+	packedPerRow = inDim / 8
+	wantWeight, ok := checkedMulInt(outDim, packedPerRow)
+	if !ok {
+		return 0, 0, 0, 0, fmt.Errorf("MLX weight size overflow outDim=%d packedPerRow=%d", outDim, packedPerRow)
+	}
+	wantScale, ok = checkedMulInt(outDim, numGroups)
+	if !ok {
+		return 0, 0, 0, 0, fmt.Errorf("MLX scale size overflow outDim=%d groups=%d", outDim, numGroups)
+	}
+	if len(weight) < wantWeight {
+		return 0, 0, 0, 0, fmt.Errorf("weight length=%d, want at least %d", len(weight), wantWeight)
+	}
+	if len(scales) < wantScale || len(biases) < wantScale {
+		return 0, 0, 0, 0, fmt.Errorf("scale/bias length=%d/%d, want at least %d", len(scales), len(biases), wantScale)
+	}
+	return numGroups, packedPerRow, wantWeight, wantScale, nil
+}
+
 // UploadMLXWeight uploads MLX quantized weight to GPU VRAM.
 // It can upload the GPTQ-transposed fast path, native MLX buffers, or both.
 func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int, wantNative bool) (*GPUMLXWeight, error) {
-	if inDim <= 0 || outDim <= 0 || groupSize <= 0 || inDim%groupSize != 0 || inDim%8 != 0 {
-		return nil, fmt.Errorf("invalid MLX dims inDim=%d outDim=%d groupSize=%d", inDim, outDim, groupSize)
-	}
-	numGroups := inDim / groupSize
-	packedPerRow := inDim / 8
-	wantWeight, ok := checkedMulInt(outDim, packedPerRow)
-	if !ok {
-		return nil, fmt.Errorf("MLX weight size overflow outDim=%d packedPerRow=%d", outDim, packedPerRow)
-	}
-	wantScale, ok := checkedMulInt(outDim, numGroups)
-	if !ok {
-		return nil, fmt.Errorf("MLX scale size overflow outDim=%d groups=%d", outDim, numGroups)
-	}
-	if len(weight) < wantWeight {
-		return nil, fmt.Errorf("weight length=%d, want at least %d", len(weight), wantWeight)
-	}
-	if len(scales) < wantScale || len(biases) < wantScale {
-		return nil, fmt.Errorf("scale/bias length=%d/%d, want at least %d", len(scales), len(biases), wantScale)
+	numGroups, packedPerRow, wantWeight, wantScale, err := validateMLXUploadInputs(weight, scales, biases, inDim, outDim, groupSize)
+	if err != nil {
+		return nil, err
 	}
 	if !SgemmReady() {
 		return nil, fmt.Errorf("GPU not available")
@@ -170,6 +178,56 @@ func UploadMLXWeight(weight []uint32, scales, biases []float32, inDim, outDim, g
 		return nil, err
 	}
 
+	return w, nil
+}
+
+// UploadMLXWeightNative uploads only the native MLX buffers. Use this when the
+// caller will use GemvMLXDirect and does not need the transposed GPTQ fast path.
+func UploadMLXWeightNative(weight []uint32, scales, biases []float32, inDim, outDim, groupSize int) (*GPUMLXWeight, error) {
+	numGroups, _, _, _, err := validateMLXUploadInputs(weight, scales, biases, inDim, outDim, groupSize)
+	if err != nil {
+		return nil, err
+	}
+	if !SgemmReady() {
+		return nil, fmt.Errorf("GPU not available")
+	}
+	EnsureContext()
+	w := &GPUMLXWeight{InDim: inDim, OutDim: outDim, Groups: numGroups, GroupSz: groupSize}
+	qwBuf, err := Malloc(len(weight))
+	if err != nil {
+		return nil, err
+	}
+	w.QWeight = qwBuf
+	if err := qwBuf.Upload(reinterpretI32asF32(func() []int32 {
+		r := make([]int32, len(weight))
+		for i, v := range weight {
+			r[i] = int32(v)
+		}
+		return r
+	}())); err != nil {
+		w.Free()
+		return nil, err
+	}
+	sBuf, err := Malloc(len(scales))
+	if err != nil {
+		w.Free()
+		return nil, err
+	}
+	w.Scales = sBuf
+	if err := sBuf.Upload(scales); err != nil {
+		w.Free()
+		return nil, err
+	}
+	bBuf, err := Malloc(len(biases))
+	if err != nil {
+		w.Free()
+		return nil, err
+	}
+	w.Biases = bBuf
+	if err := bBuf.Upload(biases); err != nil {
+		w.Free()
+		return nil, err
+	}
 	return w, nil
 }
 

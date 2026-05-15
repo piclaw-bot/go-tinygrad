@@ -193,11 +193,11 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		}
 		entry := &gpu.ExpertEntry{ExpertID: cand.poolKey}
 		ew := layer.ExpertGateW[cand.expertID]
-		gw, err1 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		gw, err1 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
 		ew = layer.ExpertUpW[cand.expertID]
-		uw, err2 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		uw, err2 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
 		ew = layer.ExpertDownW[cand.expertID]
-		dw, err3 := gpu.UploadMLXWeight(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize, true)
+		dw, err3 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
 		if err1 == nil && err2 == nil && err3 == nil {
 			entry.GateW = gw
 			entry.UpW = uw
@@ -207,6 +207,8 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			if evicted != nil {
 				gpu.FreeExpertEntry(evicted)
 			}
+		} else {
+			gpu.FreeExpertEntry(&gpu.ExpertEntry{GateW: gw, UpW: uw, DownW: dw})
 		}
 	}
 
