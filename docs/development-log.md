@@ -1933,3 +1933,13 @@ Latest local Qwen3-30B-A3B MLX4 16-token repeat profile:
 | 3 | warm route set | ~2.9s | stable repeat |
 
 Warm-run GPU counters after removing the pre-sync before direct device copies, counting only model syncs, and fusing MoE add-scaled accumulation are roughly `kernels=123680 h2d=44 d2h=1388 d2d=6720 syncs=32`, so the next major gains require reducing kernel launch and copy count (for example selected-expert fusion, route-aware batched MoE prefill, or attention/KV copy fusion), not more CPU GEMV tuning.
+
+### CUDA/DevBuf hardening follow-up
+
+A follow-up audit tightened the transitional `gpu`/`model` boundary before deeper MoE fusion work:
+
+- Scoped GPU operation counters to `GO_PHERENCE_PROFILE_DECODE=1`; `StatsSnapshot` is now side-effect-free and generation restores the previous counter state after profiling.
+- Hardened `DevBuf` transfer semantics: failed device copies fall back safely, failed GPU-to-CPU downloads keep GPU contents authoritative, slice views use overflow-safe bounds/byte math, and non-empty copies to zero-sized CUDA buffers are rejected before driver calls.
+- Centralized CUDA byte-size validation across allocation, upload/download, D2D copies, SGEMM/JIT dispatch, and Q4/MLX buffer-capacity checks to avoid unchecked `n*4` arithmetic.
+- Preserved complete MoE output if adding CPU fallback work back into a GPU accumulator fails; the CPU return path now includes already-computed GPU expert contributions.
+- Hardened GPU model byte-size arithmetic and KV-cache copy failure handling so allocation/copy failures fall back instead of silently marking stale state authoritative.

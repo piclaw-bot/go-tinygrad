@@ -95,14 +95,14 @@ Library/backend progress diagnostics are quiet by default. Opt in when debugging
 
 During the Phase 6.5 refactor audit, the transitional `gpu` package has been hardened before the eventual CUDA runtime split:
 
-- `DevBuf` receiver helpers are nil-safe and `ToGPU`/`GPUPtr` propagate upload failures instead of marking stale GPU state authoritative.
-- CUDA allocation rejects host-side byte-size overflow before driver calls.
+- `DevBuf` receiver helpers are nil-safe; `ToGPU`/`GPUPtr` propagate upload failures, failed downloads keep GPU contents authoritative, slice views use overflow-safe byte math, and copy helpers fall back instead of marking stale state authoritative.
+- CUDA allocation/upload/download/copy helpers share checked byte-size arithmetic, reject non-empty copies to zero-sized buffers, and validate D2D copies before driver calls.
 - Stream/graph helpers validate nil graph executables, nil kernel arguments, and invalid launch dimensions before CUDA calls.
 - Q4/MLX quantized weight upload/dispatch validates packed-weight and scale product arithmetic, buffer byte sizes, group consistency/indices, batched dimensions, and download errors in CPU fallback.
 - Expert-pool helpers reject nil pools and invalid expert IDs without leaking caller-owned GPU resources.
 - Experimental direct-NVIDIA ioctl/memory/query/GPFIFO helpers validate nil receivers, size arithmetic, fd/argument state, class-list sizes, and release partially allocated resources on setup failure.
 - Dense SGEMM/LM-head dispatch validates dimensions, buffer byte sizes, and product overflow before kernel launch.
-- CUDA JIT helpers validate kernel specs and launch buffers before PTX generation or dispatch.
+- CUDA JIT helpers validate kernel specs and launch buffers with the same checked byte-size helper before PTX generation or dispatch.
 - BF16 CUDA wrappers validate nil/undersized buffers and length overflow before emulated/native dispatch.
 - RoPE, partial RoPE, softmax-row, and GQA attention wrappers validate dimensions, sequence windows, tensor lengths, and product overflow before launch.
 
