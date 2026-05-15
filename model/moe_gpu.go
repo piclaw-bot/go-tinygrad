@@ -10,6 +10,31 @@ import (
 	"github.com/rcarmo/go-pherence/gpu"
 )
 
+func uploadExpertNativeToPool(pool *gpu.ExpertPool, layer *LlamaLayer, expertID, poolKey, moeInter, hidden int) *gpu.ExpertEntry {
+	if pool == nil || layer == nil || expertID < 0 || expertID >= len(layer.ExpertGateW) || expertID >= len(layer.ExpertUpW) || expertID >= len(layer.ExpertDownW) {
+		return nil
+	}
+	entry := &gpu.ExpertEntry{ExpertID: poolKey}
+	ew := layer.ExpertGateW[expertID]
+	gw, err1 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
+	ew = layer.ExpertUpW[expertID]
+	uw, err2 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
+	ew = layer.ExpertDownW[expertID]
+	dw, err3 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
+	if err1 != nil || err2 != nil || err3 != nil {
+		gpu.FreeExpertEntry(&gpu.ExpertEntry{GateW: gw, UpW: uw, DownW: dw})
+		return nil
+	}
+	entry.GateW = gw
+	entry.UpW = uw
+	entry.DownW = dw
+	entry.SizeBytes = int64(3 * moeInter * hidden / 2)
+	if evicted := pool.Put(entry); evicted != nil {
+		gpu.FreeExpertEntry(evicted)
+	}
+	return entry
+}
+
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
 // Falls back to CPU quant.GemvMLQ for cold experts not in the pool.
 func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int) []float32 {
@@ -149,6 +174,9 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		var gpuEntry *gpu.ExpertEntry
 		if pool != nil {
 			gpuEntry = pool.Get(poolKey)
+			if gpuEntry == nil && xBuf != nil {
+				gpuEntry = uploadExpertNativeToPool(pool, layer, eid, poolKey, moeInter, h)
+			}
 		}
 
 		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil {
@@ -167,7 +195,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			// after wg.Wait(); the CUDA driver context is thread-local and the expert
 			// pool may evict GPU buffers, so doing this inside worker goroutines can
 			// race with in-flight GPU work.
-			if pool != nil {
+			if pool != nil && gpuEntry == nil {
 				uploadAfterCPU = append(uploadAfterCPU, uploadCandidate{expertID: eid, poolKey: poolKey})
 			}
 			wg.Add(1)
@@ -191,25 +219,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		if pool.Peek(cand.poolKey) != nil {
 			continue
 		}
-		entry := &gpu.ExpertEntry{ExpertID: cand.poolKey}
-		ew := layer.ExpertGateW[cand.expertID]
-		gw, err1 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
-		ew = layer.ExpertUpW[cand.expertID]
-		uw, err2 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
-		ew = layer.ExpertDownW[cand.expertID]
-		dw, err3 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
-		if err1 == nil && err2 == nil && err3 == nil {
-			entry.GateW = gw
-			entry.UpW = uw
-			entry.DownW = dw
-			entry.SizeBytes = int64(3 * moeInter * h / 2)
-			evicted := pool.Put(entry)
-			if evicted != nil {
-				gpu.FreeExpertEntry(evicted)
-			}
-		} else {
-			gpu.FreeExpertEntry(&gpu.ExpertEntry{GateW: gw, UpW: uw, DownW: dw})
-		}
+		uploadExpertNativeToPool(pool, layer, cand.expertID, cand.poolKey, moeInter, h)
 	}
 
 	for _, r := range results {
