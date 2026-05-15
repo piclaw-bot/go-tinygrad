@@ -448,11 +448,11 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 	// enough VRAM; use compact MLX there when available.
 	if useGPU && gpu.SgemmReady() {
 		free, _ := gpu.MemInfo()
-		lmBytes := uint64(len(g.lmHead) * 4)
+		lmBytes := uint64(len(g.lmHead)) * 4
 		if shouldUseCompactMLXLMHead(m.LMHeadMLX != nil, lmBytes, free) {
 			if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
 				g.lmHeadMLXGPU = w
-				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB, f32 %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6, float64(lmBytes)/1e6)
+				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB, f32 %.0f MB)\n", float64(uint64(len(m.LMHeadMLX.Weight))*4)/1e6, float64(lmBytes)/1e6)
 			} else {
 				loaderDebugf("[model] MLX LM head GPU upload failed: %v\n", err)
 			}
@@ -470,7 +470,7 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 			} else if m.LMHeadMLX != nil {
 				if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
 					g.lmHeadMLXGPU = w
-					loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB; F32 need %.0f MB, free %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6, float64(lmBytes)/1e6, float64(free)/1e6)
+					loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB; F32 need %.0f MB, free %.0f MB)\n", float64(uint64(len(m.LMHeadMLX.Weight))*4)/1e6, float64(lmBytes)/1e6, float64(free)/1e6)
 				}
 			} else {
 				loaderDebugf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
@@ -980,10 +980,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				if cpuLayer.HasKV && kvKPtr != nil && kvVPtr != nil && g.k.ToGPU() == nil && g.v.ToGPU() == nil {
 					kPtr := g.k.GPUPtr()
 					vPtr := g.v.GPUPtr()
-					kOff := gpu.CUdeviceptr(uint64(pos) * uint64(layerKVDim) * 4)
+					kvBytes := uint64(layerKVDim) * 4
+					kOff := gpu.CUdeviceptr(uint64(pos) * kvBytes)
 					if kPtr != nil && vPtr != nil {
-						_ = gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, uint64(layerKVDim*4))
-						_ = gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, uint64(layerKVDim*4))
+						_ = gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes)
+						_ = gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, kvBytes)
 					}
 					if forceCPUAttn {
 						kd = g.k.Data()
