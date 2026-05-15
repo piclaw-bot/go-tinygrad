@@ -1914,3 +1914,22 @@ Representative local short-run results after this pass:
 | `qwen3-30b-a3b-mlx4` warmed | 16 | ~3.5s total after expert cache warm |
 
 Remaining Qwen3 MoE bottlenecks are mostly CUDA driver/kernel overhead and sequential expert execution once the route set is warm. The next meaningful improvements are likely route-aware/batched MoE prefill, fused selected-expert kernels, or reducing KV/attention launch counts.
+
+### MLX4 MoE follow-up — GPU-resident router/activations and diagnostics
+
+Followed up the Session 213 performance pass with additional Qwen3 MoE audits:
+
+- Added decode-profile GPU operation counters (`kernels`, `h2d`, `d2h`, `d2d`, `syncs`) to make CUDA launch/copy pressure visible alongside layer/logit timing.
+- Moved the MoE router to GPU when resident by uploading router weights as native MLX and using `GemvMLXDirect` with CPU fallback.
+- Kept MoE activations resident on GPU across router and expert execution, avoiding the previous download/re-upload of `g.normed` and the final `g.down` copyback in the all-GPU path.
+- Hardened `moeForwardGPU` guards for nil/short inputs, invalid expert/intermediate counts, and `NumExpertsPerTok > NumExperts`; fixed a lazy CPU-fallback input capture race.
+
+Latest local Qwen3-30B-A3B MLX4 16-token repeat profile:
+
+| Run | State | Time | Notes |
+|---:|---|---:|---|
+| 1 | cold route set | ~4.1s | ~2653 expert misses uploaded/used on GPU |
+| 2 | warm route set | ~2.9s | zero expert misses |
+| 3 | warm route set | ~2.9s | stable repeat |
+
+Warm-run GPU counters are now roughly `kernels=133088 h2d=44 d2h=1388 d2d=8064 syncs=2808`, so the next major gains require reducing launch/sync/copy count (for example selected-expert fusion, route-aware batched MoE prefill, or attention/KV copy fusion), not more CPU GEMV tuning.
