@@ -185,7 +185,6 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			gpu.GemvMLXDirect(upBuf, xBuf, gpuEntry.UpW)
 			gpu.DevSiLUMul(gateBuf, gateBuf, upBuf)
 			gpu.GemvMLXDirect(downBuf, gateBuf, gpuEntry.DownW)
-			gpu.Sync()
 			results[si] = expertResult{
 				down:   append([]float32(nil), downBuf.Data()[:h]...),
 				weight: exp.score,
