@@ -117,6 +117,16 @@ func GemvMLQ(out, x []float32, qw *MLXQuantWeight) {
 func gemvMLQ4(out, x []float32, qw *MLXQuantWeight) {
 	packedPerRow := qw.InDim / 8
 	packsPerGroup := qw.GroupSize / 8
+	groupXSums := make([]float32, qw.Groups)
+	for g := 0; g < qw.Groups; g++ {
+		xBase := g * qw.GroupSize
+		xsum := float32(0)
+		for p := 0; p < packsPerGroup; p++ {
+			xi := xBase + p*8
+			xsum += x[xi] + x[xi+1] + x[xi+2] + x[xi+3] + x[xi+4] + x[xi+5] + x[xi+6] + x[xi+7]
+		}
+		groupXSums[g] = xsum
+	}
 	for row := 0; row < qw.OutDim; row++ {
 		packedOff := row * packedPerRow
 		scaleOff := row * qw.Groups
@@ -127,7 +137,6 @@ func gemvMLQ4(out, x []float32, qw *MLXQuantWeight) {
 			packBase := packedOff + g*packsPerGroup
 			xBase := g * qw.GroupSize
 			gsum := float32(0)
-			xsum := float32(0)
 			for p := 0; p < packsPerGroup; p++ {
 				packed := qw.Weight[packBase+p]
 				xi := xBase + p*8
@@ -141,9 +150,8 @@ func gemvMLQ4(out, x []float32, qw *MLXQuantWeight) {
 				x7 := x[xi+7]
 				gsum += float32(packed&0xF)*x0 + float32((packed>>4)&0xF)*x1 + float32((packed>>8)&0xF)*x2 + float32((packed>>12)&0xF)*x3 +
 					float32((packed>>16)&0xF)*x4 + float32((packed>>20)&0xF)*x5 + float32((packed>>24)&0xF)*x6 + float32((packed>>28)&0xF)*x7
-				xsum += x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7
 			}
-			sum += gsum*scale + xsum*bias
+			sum += gsum*scale + groupXSums[g]*bias
 		}
 		out[row] = sum
 	}
