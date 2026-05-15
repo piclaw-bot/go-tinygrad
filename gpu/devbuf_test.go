@@ -38,6 +38,49 @@ func TestDevBufAdd(t *testing.T) {
 	t.Log("DevAdd OK")
 }
 
+func TestDevBufAddScaled(t *testing.T) {
+	a := NewDevBufFrom([]float32{1, 2, 3, 4})
+	b := NewDevBufFrom([]float32{10, -10, 0.5, -0.5})
+	out := NewDevBuf(4)
+	want := []float32{6, -3, 3.25, 3.75}
+
+	DevAddScaled(out, a, b, 0.5)
+	for i, v := range out.Data() {
+		if math.Abs(float64(v-want[i])) > 1e-6 {
+			t.Fatalf("CPU addscaled[%d]=%v want %v", i, v, want[i])
+		}
+	}
+
+	// In-place accumulation is the main MoE use case: out = out + b * s.
+	DevAddScaled(out, out, b, -1)
+	want = []float32{-4, 7, 2.75, 4.25}
+	for i, v := range out.Data() {
+		if math.Abs(float64(v-want[i])) > 1e-6 {
+			t.Fatalf("CPU inplace addscaled[%d]=%v want %v", i, v, want[i])
+		}
+	}
+
+	if SgemmReady() {
+		initKernels()
+		if kernelsLoaded && fnVecAddScaled != 0 {
+			a = NewDevBufFrom([]float32{1, 2, 3, 4})
+			b = NewDevBufFrom([]float32{10, -10, 0.5, -0.5})
+			out = NewDevBuf(4)
+			a.ToGPU()
+			b.ToGPU()
+			out.ToGPU()
+			DevAddScaled(out, a, b, 0.5)
+			Sync()
+			want = []float32{6, -3, 3.25, 3.75}
+			for i, v := range out.Data() {
+				if math.Abs(float64(v-want[i])) > 1e-6 {
+					t.Fatalf("GPU addscaled[%d]=%v want %v", i, v, want[i])
+				}
+			}
+		}
+	}
+}
+
 func TestDevBufSiLU(t *testing.T) {
 	a := NewDevBufFrom([]float32{-2, -1, 0, 1, 2})
 	out := NewDevBuf(5)
@@ -154,6 +197,11 @@ func TestDevBufBoundsDoNotPanic(t *testing.T) {
 	DevScale(out, long, 0.5)
 	if got := out.Data(); got[0] != 5 || got[1] != 10 {
 		t.Fatalf("bounded scale = %v", got)
+	}
+
+	DevAddScaled(out, short, long, 0.25)
+	if got := out.Data(); got[0] != 4.5 || got[1] != 9 {
+		t.Fatalf("bounded addscaled = %v", got)
 	}
 
 	DevCopy(out, long)
