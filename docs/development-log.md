@@ -1932,4 +1932,4 @@ Latest local Qwen3-30B-A3B MLX4 16-token repeat profile:
 | 2 | warm route set | ~2.9s | zero expert misses |
 | 3 | warm route set | ~2.9s | stable repeat |
 
-Warm-run GPU counters are now roughly `kernels=133088 h2d=44 d2h=1388 d2d=8064 syncs=2808`, so the next major gains require reducing launch/sync/copy count (for example selected-expert fusion, route-aware batched MoE prefill, or attention/KV copy fusion), not more CPU GEMV tuning.
+Warm-run GPU counters after removing the pre-sync before direct device copies are roughly `kernels=133088 h2d=44 d2h=1388 d2d=8064 syncs=120`, so the next major gains require reducing kernel launch and copy count (for example selected-expert fusion, route-aware batched MoE prefill, or attention/KV copy fusion), not more CPU GEMV tuning.
