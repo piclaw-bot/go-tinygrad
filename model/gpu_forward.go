@@ -561,6 +561,23 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	forceCPUAttn := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_CPU_ATTN") == "1"
 	forceFastDown := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_FAST_DOWN") == "1"
 	syncDebug := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_GPU_SYNC_DEBUG") == "1"
+	profileDecode := os.Getenv("GO_PHERENCE_PROFILE_DECODE") != ""
+	var totalLayerTime, totalLogitTime time.Duration
+	logitSteps := 0
+	profileStart := func() time.Time {
+		if !profileDecode {
+			return time.Time{}
+		}
+		gpu.Sync()
+		return time.Now()
+	}
+	profileAdd := func(acc *time.Duration, start time.Time) {
+		if !profileDecode || start.IsZero() {
+			return
+		}
+		gpu.Sync()
+		*acc += time.Since(start)
+	}
 	checkGPU := func(stage string) {
 		if !syncDebug {
 			return
@@ -598,6 +615,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		skipLayers := (step == prefillStart && prefillStart > 0)
 		var hd []float32
 
+		layerTimer := profileStart()
 		if !skipLayers {
 			// Embedding (CPU — vocab too large for VRAM on small GPUs)
 			embData := m.EmbedTokens.Data()
@@ -1146,10 +1164,18 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			}
 
 		} // end !skipLayers
+		profileAdd(&totalLayerTime, layerTimer)
+
+		// Prompt-only positions only need to update hidden/KV state. Avoid the
+		// large-vocab LM-head projection until the last prompt token or decode.
+		if step < len(tokenIDs)-1 {
+			continue
+		}
 
 		// Sync GPU → CPU for final norm + sampling
 		gpu.Sync() // drain all queued GPU work before readback
 
+		logitTimer := profileStart()
 		if g.lmHeadGPU != nil {
 			// GPU path: RMSNorm + GEMV on GPU, download logits
 			gpu.DevRMSNorm(g.hidden, g.hidden, g.normGPU, float32(cfg.RMSNormEps))
@@ -1167,6 +1193,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			if !g.chunkedGPULMHead(logits, hd, g.vocabSize, h) {
 				gemvNTParallel(logits, hd, g.lmHead, h, g.vocabSize)
 			}
+		}
+		profileAdd(&totalLogitTime, logitTimer)
+		if profileDecode {
+			logitSteps++
 		}
 
 		// Greedy sampling
@@ -1186,6 +1216,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		}
 	}
 
+	if profileDecode {
+		steps := len(tokenIDs) + maxTokens - 1 - prefillStart
+		if steps < 0 {
+			steps = 0
+		}
+		fmt.Printf("[decode-profile] steps=%d logit_steps=%d layers=%s logits=%s total=%s\n", steps, logitSteps, totalLayerTime.Round(time.Millisecond), totalLogitTime.Round(time.Millisecond), (totalLayerTime + totalLogitTime).Round(time.Millisecond))
+	}
 	if len(output) > len(tokenIDs)+1 {
 	}
 	return output[len(tokenIDs):]
