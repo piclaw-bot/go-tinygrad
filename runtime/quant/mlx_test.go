@@ -61,6 +61,56 @@ func TestDequantMLX(t *testing.T) {
 	t.Log("DequantMLX: OK")
 }
 
+func makeBenchMLXWeight(outDim, inDim, groupSize int) *MLXQuantWeight {
+	weight := make([]uint32, outDim*(inDim/8))
+	for row := 0; row < outDim; row++ {
+		for p := 0; p < inDim/8; p++ {
+			var packed uint32
+			for i := 0; i < 8; i++ {
+				val := uint32((row*13 + p*7 + i*3) & 0xF)
+				packed |= val << (uint(i) * 4)
+			}
+			weight[row*(inDim/8)+p] = packed
+		}
+	}
+	numGroups := inDim / groupSize
+	scales := make([]float32, outDim*numGroups)
+	biases := make([]float32, outDim*numGroups)
+	for i := range scales {
+		scales[i] = 0.001 * float32((i%17)+1)
+		biases[i] = -0.01 + 0.001*float32(i%19)
+	}
+	return &MLXQuantWeight{Weight: weight, Scales: scales, Biases: biases, OutDim: outDim, InDim: inDim, Groups: numGroups, GroupSize: groupSize, Bits: 4}
+}
+
+func BenchmarkGemvMLQ4QwenMoEGate(b *testing.B) {
+	qw := makeBenchMLXWeight(768, 2048, 64)
+	x := make([]float32, qw.InDim)
+	out := make([]float32, qw.OutDim)
+	for i := range x {
+		x[i] = float32((i%31)-15) * 0.01
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GemvMLQ(out, x, qw)
+	}
+}
+
+func BenchmarkGemvMLQ4QwenMoEDown(b *testing.B) {
+	qw := makeBenchMLXWeight(2048, 768, 64)
+	x := make([]float32, qw.InDim)
+	out := make([]float32, qw.OutDim)
+	for i := range x {
+		x[i] = float32((i%31)-15) * 0.01
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GemvMLQ(out, x, qw)
+	}
+}
+
 func TestGemvMLQ4FastPathMatchesGeneric(t *testing.T) {
 	outDim, inDim := 3, 16
 	groupSize := 8
