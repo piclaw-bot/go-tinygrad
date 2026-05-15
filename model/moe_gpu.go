@@ -41,7 +41,13 @@ func uploadExpertNativeToPool(pool *gpu.ExpertPool, layer *LlamaLayer, expertID,
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
 // Falls back to CPU quant.GemvMLQ for cold experts not in the pool.
 func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int, routerGPU *gpu.GPUMLXWeight) []float32 {
+	if layer == nil || xDev == nil || cfg.HiddenSize <= 0 || cfg.NumExperts <= 0 || cfg.MoEIntermediate <= 0 || xDev.Len() < cfg.HiddenSize {
+		return nil
+	}
 	h := cfg.HiddenSize
+	if outDev != nil && outDev.Len() < h {
+		outDev = nil
+	}
 	var xCPU []float32
 	getXCPU := func() []float32 {
 		if xCPU == nil && xDev != nil {
@@ -53,6 +59,9 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 	numActive := cfg.NumExpertsPerTok
 	if numActive <= 0 {
 		numActive = 8
+	}
+	if numActive > numExperts {
+		numActive = numExperts
 	}
 
 	// Router: compute logits for each expert.
@@ -228,18 +237,19 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 			if pool != nil && gpuEntry == nil {
 				uploadAfterCPU = append(uploadAfterCPU, uploadCandidate{expertID: eid, poolKey: poolKey})
 			}
+			xForCPU := getXCPU()
 			wg.Add(1)
-			go func(idx int, expertID int, w float32) {
+			go func(idx int, expertID int, w float32, xIn []float32) {
 				defer wg.Done()
 				gate := make([]float32, moeInter)
 				up := make([]float32, moeInter)
-				quant.GemvMLQ(gate, getXCPU(), layer.ExpertGateW[expertID])
-				quant.GemvMLQ(up, getXCPU(), layer.ExpertUpW[expertID])
+				quant.GemvMLQ(gate, xIn, layer.ExpertGateW[expertID])
+				quant.GemvMLQ(up, xIn, layer.ExpertUpW[expertID])
 				simd.VecSiLUMul(gate, gate, up)
 				down := make([]float32, h)
 				quant.GemvMLQ(down, gate, layer.ExpertDownW[expertID])
 				results[idx] = expertResult{down: down, weight: w}
-			}(si, eid, exp.score)
+			}(si, eid, exp.score, xForCPU)
 		}
 	}
 	wg.Wait()
