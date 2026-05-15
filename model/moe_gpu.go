@@ -93,7 +93,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	hasGPUExperts := false
 	for _, exp := range selected {
 		poolKey := layerIdx*cfg.NumExperts + exp.id
-		if pool != nil && pool.Get(poolKey) != nil {
+		if pool != nil && pool.Peek(poolKey) != nil {
 			hasGPUExperts = true
 			break
 		}
@@ -188,7 +188,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 
 	// Warm the GPU expert pool sequentially after CPU fallback work completes.
 	for _, cand := range uploadAfterCPU {
-		if pool.Get(cand.poolKey) != nil {
+		if pool.Peek(cand.poolKey) != nil {
 			continue
 		}
 		entry := &gpu.ExpertEntry{ExpertID: cand.poolKey}

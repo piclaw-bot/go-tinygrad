@@ -41,6 +41,17 @@ func NewExpertPool(slots int, budget *placement.BudgetManager) *ExpertPool {
 	}
 }
 
+// Peek returns the cached expert without changing hit/miss/eviction stats or
+// LRU order. Use it for planning checks; use Get for actual expert use.
+func (p *ExpertPool) Peek(expertID int) *ExpertEntry {
+	if p == nil || expertID < 0 {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cache[expertID]
+}
+
 // Get returns the cached expert, or nil if not present (miss).
 // On hit, the expert is moved to the most-recently-used position.
 func (p *ExpertPool) Get(expertID int) *ExpertEntry {

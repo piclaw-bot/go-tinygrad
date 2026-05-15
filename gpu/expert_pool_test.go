@@ -61,6 +61,32 @@ func TestExpertPoolBasic(t *testing.T) {
 	t.Log(pool.Report())
 }
 
+func TestExpertPoolPeekDoesNotMutateStatsOrLRU(t *testing.T) {
+	pool := NewExpertPool(2, nil)
+	pool.Put(&ExpertEntry{ExpertID: 0, SizeBytes: 100})
+	pool.Put(&ExpertEntry{ExpertID: 1, SizeBytes: 100})
+
+	if got := pool.Peek(0); got == nil || got.ExpertID != 0 {
+		t.Fatalf("Peek(0)=%#v, want expert 0", got)
+	}
+	if got := pool.Peek(99); got != nil {
+		t.Fatalf("Peek missing expert=%#v, want nil", got)
+	}
+	if pool.Hits.Load() != 0 || pool.Misses.Load() != 0 || pool.Evicts.Load() != 0 {
+		t.Fatalf("Peek mutated stats: hits=%d misses=%d evicts=%d", pool.Hits.Load(), pool.Misses.Load(), pool.Evicts.Load())
+	}
+
+	// If Peek updated LRU order, expert 1 would be evicted here. It must not.
+	evicted := pool.Put(&ExpertEntry{ExpertID: 2, SizeBytes: 100})
+	if evicted == nil || evicted.ExpertID != 0 {
+		id := -1
+		if evicted != nil {
+			id = evicted.ExpertID
+		}
+		t.Fatalf("Peek should not update LRU; evicted %d, want 0", id)
+	}
+}
+
 func TestExpertPoolWithBudget(t *testing.T) {
 	budget := placement.NewBudgetManager(0, 0, 0, 10) // 10MB expert budget
 	pool := NewExpertPool(5, budget)
