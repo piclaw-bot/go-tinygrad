@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -57,6 +58,38 @@ var (
 	cuMemcpyDtoD             func(CUdeviceptr, CUdeviceptr, uint64) CUresult
 	cuMemcpyDtoDAsync        func(CUdeviceptr, CUdeviceptr, uint64, uintptr) CUresult
 )
+
+type Stats struct {
+	KernelLaunches uint64
+	HostToDevice   uint64
+	DeviceToHost   uint64
+	DeviceToDevice uint64
+	Syncs          uint64
+}
+
+var gpuStatsEnabled atomic.Bool
+var gpuStatsKernelLaunches atomic.Uint64
+var gpuStatsHostToDevice atomic.Uint64
+var gpuStatsDeviceToHost atomic.Uint64
+var gpuStatsDeviceToDevice atomic.Uint64
+var gpuStatsSyncs atomic.Uint64
+
+func StatsSnapshot() Stats {
+	gpuStatsEnabled.Store(true)
+	return Stats{
+		KernelLaunches: gpuStatsKernelLaunches.Load(),
+		HostToDevice:   gpuStatsHostToDevice.Load(),
+		DeviceToHost:   gpuStatsDeviceToHost.Load(),
+		DeviceToDevice: gpuStatsDeviceToDevice.Load(),
+		Syncs:          gpuStatsSyncs.Load(),
+	}
+}
+
+func recordDeviceToDeviceCopy() {
+	if gpuStatsEnabled.Load() {
+		gpuStatsDeviceToDevice.Add(1)
+	}
+}
 
 var (
 	gpuOnce    sync.Once
@@ -240,6 +273,9 @@ func (b *Buffer) Upload(data []float32) error {
 		return nil
 	}
 	EnsureContext()
+	if gpuStatsEnabled.Load() {
+		gpuStatsHostToDevice.Add(1)
+	}
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
 	if r != CUDA_SUCCESS {
@@ -259,6 +295,9 @@ func (b *Buffer) UploadUint32(data []uint32) error {
 		return nil
 	}
 	EnsureContext()
+	if gpuStatsEnabled.Load() {
+		gpuStatsHostToDevice.Add(1)
+	}
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
@@ -276,6 +315,9 @@ func (b *Buffer) Download(data []float32) error {
 		return nil
 	}
 	EnsureContext()
+	if gpuStatsEnabled.Load() {
+		gpuStatsDeviceToHost.Add(1)
+	}
 	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
@@ -287,12 +329,18 @@ func (b *Buffer) Download(data []float32) error {
 // Sync waits for all GPU operations to complete.
 func Sync() {
 	EnsureContext()
+	if gpuStatsEnabled.Load() {
+		gpuStatsSyncs.Add(1)
+	}
 	cuCtxSynchronize()
 }
 
 // SyncErr waits for all GPU operations and reports CUDA driver errors.
 func SyncErr() error {
 	EnsureContext()
+	if gpuStatsEnabled.Load() {
+		gpuStatsSyncs.Add(1)
+	}
 	if r := cuCtxSynchronize(); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuCtxSynchronize: error %d", r)
 	}
@@ -343,6 +391,9 @@ func LaunchKernel(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, blockZ uin
 	var argPtrs unsafe.Pointer
 	if len(args) > 0 {
 		argPtrs = unsafe.Pointer(&args[0])
+	}
+	if gpuStatsEnabled.Load() {
+		gpuStatsKernelLaunches.Add(1)
 	}
 	if r := cuLaunchKernel(fn, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMem, 0, argPtrs, nil); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuLaunchKernel: error %d", r)

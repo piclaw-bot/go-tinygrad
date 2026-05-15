@@ -603,6 +603,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	profileDecode := os.Getenv("GO_PHERENCE_PROFILE_DECODE") != ""
 	var totalLayerTime, totalLogitTime time.Duration
 	logitSteps := 0
+	gpuStatsStart := gpu.Stats{}
+	if profileDecode {
+		gpuStatsStart = gpu.StatsSnapshot()
+	}
 	var expertStartHits, expertStartMisses, expertStartEvicts uint64
 	var expertDecodeStartHits, expertDecodeStartMisses, expertDecodeStartEvicts uint64
 	expertDecodeStartCaptured := false
@@ -1279,6 +1283,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			steps = 0
 		}
 		fmt.Printf("[decode-profile] steps=%d logit_steps=%d layers=%s logits=%s total=%s\n", steps, logitSteps, totalLayerTime.Round(time.Millisecond), totalLogitTime.Round(time.Millisecond), (totalLayerTime + totalLogitTime).Round(time.Millisecond))
+		gpuStatsEnd := gpu.StatsSnapshot()
+		fmt.Printf("[decode-profile] gpu_ops kernels=%d h2d=%d d2h=%d d2d=%d syncs=%d\n",
+			gpuStatsEnd.KernelLaunches-gpuStatsStart.KernelLaunches,
+			gpuStatsEnd.HostToDevice-gpuStatsStart.HostToDevice,
+			gpuStatsEnd.DeviceToHost-gpuStatsStart.DeviceToHost,
+			gpuStatsEnd.DeviceToDevice-gpuStatsStart.DeviceToDevice,
+			gpuStatsEnd.Syncs-gpuStatsStart.Syncs)
 		if g.Experts != nil {
 			hits := g.Experts.Hits.Load()
 			misses := g.Experts.Misses.Load()

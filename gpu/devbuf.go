@@ -454,6 +454,7 @@ func DevCopy(dst, src *DevBuf) {
 	if src.gpu != nil && dst.gpu != nil && n >= 2048 {
 		src.ToGPU()
 		dst.ToGPU()
+		recordDeviceToDeviceCopy()
 		cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(n*4), 0) // stream 0 = default
 		dst.dev = GPU_DEVICE
 		return
@@ -523,6 +524,7 @@ func CopyDtoD(dst, src CUdeviceptr, bytes uint64) error {
 	}
 	EnsureContext()
 	Sync() // ensure pending ops complete before copy
+	recordDeviceToDeviceCopy()
 	if r := cuMemcpyDtoD(dst, src, bytes); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyDtoD: error %d", r)
 	}
