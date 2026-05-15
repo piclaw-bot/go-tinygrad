@@ -426,19 +426,22 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 		return nil, fmt.Errorf("upload GPU layer weights: %w", uploadErr)
 	}
 
-	// Upload LM head to GPU — prefer compact MLX form when available, otherwise F32.
+	// Upload LM head to GPU. The F32 LM-head kernel is faster for moderate heads,
+	// but very large vocab×hidden matrices are bandwidth-heavy and may not leave
+	// enough VRAM; use compact MLX there when available.
 	if useGPU && gpu.SgemmReady() {
 		free, _ := gpu.MemInfo()
-		if m.LMHeadMLX != nil {
+		lmBytes := uint64(len(g.lmHead) * 4)
+		useCompactMLXHead := m.LMHeadMLX != nil && lmBytes > 1536*1024*1024
+		if useCompactMLXHead {
 			if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
 				g.lmHeadMLXGPU = w
-				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6)
+				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB, f32 %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6, float64(lmBytes)/1e6)
 			} else {
 				loaderDebugf("[model] MLX LM head GPU upload failed: %v\n", err)
 			}
 		}
 		if g.lmHeadMLXGPU == nil {
-			lmBytes := uint64(len(g.lmHead) * 4)
 			if free > lmBytes+64*1024*1024 { // need LM head + 64MB headroom
 				g.lmHeadGPU = gpu.NewDevBuf(len(g.lmHead))
 				copy(g.lmHeadGPU.Data(), g.lmHead)
@@ -447,6 +450,11 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 					loaderDebugf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
 				} else {
 					g.lmHeadGPU = nil
+				}
+			} else if m.LMHeadMLX != nil {
+				if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
+					g.lmHeadMLXGPU = w
+					loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB; F32 need %.0f MB, free %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6, float64(lmBytes)/1e6, float64(free)/1e6)
 				}
 			} else {
 				loaderDebugf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
