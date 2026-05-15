@@ -980,13 +980,21 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				if cpuLayer.HasKV && kvKPtr != nil && kvVPtr != nil && g.k.ToGPU() == nil && g.v.ToGPU() == nil {
 					kPtr := g.k.GPUPtr()
 					vPtr := g.v.GPUPtr()
-					kvBytes := uint64(layerKVDim) * 4
-					kOff := gpu.CUdeviceptr(uint64(pos) * kvBytes)
-					if kPtr != nil && vPtr != nil {
-						_ = gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes)
-						_ = gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, kvBytes)
+					copyOK := kPtr != nil && vPtr != nil
+					if copyOK {
+						kvBytes := uint64(layerKVDim) * 4
+						kOff := gpu.CUdeviceptr(uint64(pos) * kvBytes)
+						if err := gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes); err != nil {
+							copyOK = false
+						}
+						if copyOK {
+							if err := gpu.CopyDtoD(kvVPtr.Ptr+kOff, vPtr.Ptr, kvBytes); err != nil {
+								copyOK = false
+							}
+						}
 					}
-					if forceCPUAttn {
+					if forceCPUAttn || !copyOK {
+						forceCPUAttn = true
 						kd = g.k.Data()
 						vd = g.v.Data()
 						g.kvCacheK[l] = append(g.kvCacheK[l], kd[:layerKVDim]...)
