@@ -283,6 +283,14 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 				return nil
 			}
 			cpuOut.Free()
+			// If re-uploading the CPU fallback contribution fails, return a complete
+			// CPU result rather than dropping the GPU experts already accumulated in
+			// gpuOutBuf. The caller will copy this back into the model buffer.
+			gpuOut := gpuOutBuf.Data()
+			for i := range out {
+				out[i] += gpuOut[i]
+			}
+			return out
 		}
 		return nil
 	}
