@@ -121,7 +121,12 @@ func (b *DevBuf) ToCPU() {
 		b.cpu = make([]float32, b.n)
 	}
 	if b.gpu != nil && b.dev == GPU_DEVICE {
-		_ = b.gpu.Download(b.cpu)
+		if err := b.gpu.Download(b.cpu); err != nil {
+			// Keep GPU as authoritative if the download fails; callers may still inspect
+			// the CPU backing slice, but a later GPU op must not treat stale CPU data as
+			// newer and re-upload it over valid device contents.
+			return
+		}
 	}
 	b.dev = CPU
 }
