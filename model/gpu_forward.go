@@ -56,11 +56,12 @@ type GPUModel struct {
 	normWeight []float32
 
 	// GPU LM head
-	lmHeadGPU *gpu.DevBuf // [vocab × h] F32 on GPU
-	normGPU   *gpu.DevBuf // final norm weights on GPU
-	logitsGPU *gpu.DevBuf // [vocab] logits output on GPU
-	lmHead    []float32   // [vocab, h]
-	vocabSize int
+	lmHeadGPU    *gpu.DevBuf       // [vocab × h] F32 on GPU
+	lmHeadMLXGPU *gpu.GPUMLXWeight // optional quantized LM head on GPU
+	normGPU      *gpu.DevBuf       // final norm weights on GPU
+	logitsGPU    *gpu.DevBuf       // [vocab] logits output on GPU
+	lmHead       []float32         // [vocab, h]
+	vocabSize    int
 }
 
 type gpuLayerBufs struct {
@@ -122,6 +123,10 @@ func (g *GPUModel) Close() {
 	freeDevBufs(g.hidden, g.residual, g.normed, g.q, g.k, g.v, g.attnOut, g.oOut, g.gate, g.up, g.down,
 		g.perLayerProjBuf, g.perLayerEmbedBuf, g.pliGateBuf, g.pliProjBuf, g.perLayerModelProj, g.perLayerProjNorm,
 		g.ropeCosSin, g.ropeCosSinSWA, g.ropeCosSinFull, g.lmHeadGPU, g.normGPU, g.logitsGPU)
+	if g.lmHeadMLXGPU != nil {
+		g.lmHeadMLXGPU.Free()
+		g.lmHeadMLXGPU = nil
+	}
 	for _, b := range g.kvGPU_K {
 		if b != nil {
 			b.Free()
@@ -421,21 +426,31 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 		return nil, fmt.Errorf("upload GPU layer weights: %w", uploadErr)
 	}
 
-	// Upload LM head to GPU — may need to split if VRAM is limited
+	// Upload LM head to GPU — prefer compact MLX form when available, otherwise F32.
 	if useGPU && gpu.SgemmReady() {
 		free, _ := gpu.MemInfo()
-		lmBytes := uint64(len(g.lmHead) * 4)
-		if free > lmBytes+64*1024*1024 { // need LM head + 64MB headroom
-			g.lmHeadGPU = gpu.NewDevBuf(len(g.lmHead))
-			copy(g.lmHeadGPU.Data(), g.lmHead)
-			g.lmHeadGPU.MarkDirty()
-			if err := g.lmHeadGPU.ToGPU(); err == nil {
-				loaderDebugf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
+		if m.LMHeadMLX != nil {
+			if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
+				g.lmHeadMLXGPU = w
+				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6)
 			} else {
-				g.lmHeadGPU = nil
+				loaderDebugf("[model] MLX LM head GPU upload failed: %v\n", err)
 			}
-		} else {
-			loaderDebugf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
+		}
+		if g.lmHeadMLXGPU == nil {
+			lmBytes := uint64(len(g.lmHead) * 4)
+			if free > lmBytes+64*1024*1024 { // need LM head + 64MB headroom
+				g.lmHeadGPU = gpu.NewDevBuf(len(g.lmHead))
+				copy(g.lmHeadGPU.Data(), g.lmHead)
+				g.lmHeadGPU.MarkDirty()
+				if err := g.lmHeadGPU.ToGPU(); err == nil {
+					loaderDebugf("[model] LM head on GPU (%.0f MB)\n", float64(lmBytes)/1e6)
+				} else {
+					g.lmHeadGPU = nil
+				}
+			} else {
+				loaderDebugf("[model] LM head stays on CPU (need %.0f MB, free %.0f MB)\n", float64(lmBytes)/1e6, float64(free)/1e6)
+			}
 		}
 	}
 
@@ -1176,14 +1191,18 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 		gpu.Sync() // drain all queued GPU work before readback
 
 		logitTimer := profileStart()
-		if g.lmHeadGPU != nil {
+		if g.lmHeadMLXGPU != nil || g.lmHeadGPU != nil {
 			// GPU path: RMSNorm + GEMV on GPU, download logits
 			gpu.DevRMSNorm(g.hidden, g.hidden, g.normGPU, float32(cfg.RMSNormEps))
 			if cfg.ModelType == "gemma4_text" {
 				gpu.DevToBF16(g.hidden, h)
 			}
-			// logits = lmHead[vocab,h] × hidden[h] → [vocab]
-			gpu.DevLMHead(g.logitsGPU, g.hidden, g.lmHeadGPU, g.vocabSize, h)
+			if g.lmHeadMLXGPU != nil {
+				gpu.GemvMLX(g.logitsGPU, g.hidden, g.lmHeadMLXGPU)
+			} else {
+				// logits = lmHead[vocab,h] × hidden[h] → [vocab]
+				gpu.DevLMHead(g.logitsGPU, g.hidden, g.lmHeadGPU, g.vocabSize, h)
+			}
 			gpu.Sync()
 			copy(logits, g.logitsGPU.Data())
 		} else {

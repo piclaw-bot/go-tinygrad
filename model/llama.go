@@ -80,14 +80,15 @@ type LlamaModel struct {
 	EmbedTokens *tensor.Tensor // [vocab, hidden]
 
 	// Gemma4 per-layer input gating (model-level weights)
-	EmbedPerLayer      []float32      // [vocabPerLayer, numLayers * hiddenPerLayer] dequantized
-	PerLayerModelProj  []float32      // [numLayers * hiddenPerLayer, hidden] F32
-	PerLayerProjNorm   []float32      // [hiddenPerLayer] F32
-	PerLayerInputScale float32        // 2^-0.5
-	PerLayerProjScale  float32        // hidden^-0.5
-	EmbedPerLayerScale float32        // hiddenPerLayer^0.5
-	Norm               *tensor.Tensor // [hidden]
-	LMHead             *tensor.Tensor // [vocab, hidden] (may share with embed)
+	EmbedPerLayer      []float32             // [vocabPerLayer, numLayers * hiddenPerLayer] dequantized
+	PerLayerModelProj  []float32             // [numLayers * hiddenPerLayer, hidden] F32
+	PerLayerProjNorm   []float32             // [hiddenPerLayer] F32
+	PerLayerInputScale float32               // 2^-0.5
+	PerLayerProjScale  float32               // hidden^-0.5
+	EmbedPerLayerScale float32               // hiddenPerLayer^0.5
+	Norm               *tensor.Tensor        // [hidden]
+	LMHead             *tensor.Tensor        // [vocab, hidden] (may share with embed)
+	LMHeadMLX          *quant.MLXQuantWeight // optional quantized lm_head for GPU decode
 
 	Layers []LlamaLayer
 
@@ -440,6 +441,7 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	// LM head: often tied to embed_tokens. MLX may quantize it too.
 	if cfg.QuantFormat == "mlx" {
 		if lm, err := quant.LoadMLXWeight(f, prefix+"lm_head", cfg.VocabSize, h, cfg.QuantGroup, cfg.QuantBits); err == nil {
+			m.LMHeadMLX = lm
 			data := quant.DequantMLX(lm)
 			m.LMHead = tensor.FromFloat32(data, []int{cfg.VocabSize, h})
 		} else {
