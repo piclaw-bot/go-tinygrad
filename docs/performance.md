@@ -6,14 +6,14 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 
 | Model | Arch | Format | GPU tok/s | GPU ms/tok | CPU tok/s | CPU ms/tok |
 |---|---|---|---|---|---|---|
-| Qwen2.5-7B | qwen2 | MLX 4-bit | **~120** | ~8 | 1.1 | 912 |
+| Qwen2.5-7B | qwen2 | MLX 4-bit | **~120–158** | ~6–8 | 1.1 | 912 |
 | SmolLM2-135M | llama | BF16 | **86** | 11.6 | 35.5 | 28 |
 | Gemma3-1B | gemma3 | MLX 4-bit | **~72** | ~14 | 4.9 | 203 |
 | Qwen2.5-7B | qwen2 | GPTQ 4-bit | **51** | 19.7 | 0.9 | 1060 |
 | Qwen2.5-0.5B | qwen2 | MLX 4-bit | **31** | 32.0 | 7.2 | 140 |
 | Qwen3-0.6B | qwen3 | MLX 4-bit | **25** | 39.6 | 7.2 | 138 |
-| Gemma4-E2B | gemma4 | MLX 4-bit | **~18–21** | ~47–57 | — | — |
-| Qwen3-30B MoE | qwen3_moe | MLX 4-bit | **~4 cold / ~5.5 warm** | ~180–245 | 0.6 | 1648 |
+| Gemma4-E2B | gemma4 | MLX 4-bit | **~21–22** | ~46–57 | — | — |
+| Qwen3-30B MoE | qwen3_moe | MLX 4-bit | **~5.2 cold / ~5.5 warm** | ~180–195 | 0.6 | 1648 |
 | Qwen3-0.6B | qwen3 | BF16 | — | — | 7.8 | 129 |
 | Gemma3-1B | gemma3 | BF16 | — | — | 4.9 | 203 |
 
@@ -46,7 +46,7 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | 28 transformer layers | ~0.17–0.2s per 16-token short run | ~850 ms/token |
 | LM head (152K vocab) | ~1ms total with compact MLX head on short runs | ~60 ms/token (parallel SIMD) |
 | Embedding + sampling | ~0.1 ms/token | ~0.1 ms/token |
-| **Total** | **~110–130 tok/s short-run decode** | **~1 tok/s** |
+| **Total** | **~120 tok/s no-profile, up to ~158 tok/s profiled short run** | **~1 tok/s** |
 
 ## NVFP4 / FP4 watchlist
 
@@ -63,7 +63,7 @@ current bottleneck is cold-miss upload rather than only arithmetic throughput.
 
 ## MLX vs GPTQ on GPU
 
-MLX 4-bit is **faster** than GPTQ 4-bit for the same model in the current CUDA path (roughly 120 vs 51 tok/s for short 7B runs):
+MLX 4-bit is **faster** than GPTQ 4-bit for the same model in the current CUDA path (roughly 120+ vs 51 tok/s for short 7B runs):
 
 - MLX uses `group_size=64` (vs GPTQ's 128) → better cache utilization
 - MLX weights transposed to GPTQ layout at upload → reuses fast tiled kernel
@@ -78,7 +78,7 @@ MLX 4-bit is **faster** than GPTQ 4-bit for the same model in the current CUDA p
 | CPU sequential experts | ~0.1 tok/s | baseline |
 | CPU parallel experts (8 goroutines) | ~0.6 tok/s | pre-GPU-cache CPU fallback |
 | Early GPU attention + CPU experts | ~0.4 tok/s | historical, before GPU expert cache hot path |
-| Current GPU router + GPU expert cache, cold route set | ~4 tok/s, ~4.1–4.5s for 16 tokens | cold route set uploads selected experts and uses them immediately |
+| Current GPU router + GPU expert cache, cold route set | ~5.2 tok/s, ~4.0–4.5s for 16 tokens | cold route set uploads selected experts and uses them immediately |
 | Current GPU router + GPU expert cache, warm route set | ~5.5 tok/s, ~2.9s for 16 tokens | zero expert misses on repeated prompt |
 
 Per-expert VRAM is about 2.3 MB for Qwen3-30B-A3B MLX4 gate/up/down projections. Expert pool capacity is about 4072 slots with an F32 LM head resident on the 12GB RTX 3060 test system. Warm-run `GO_PHERENCE_PROFILE_DECODE=1` counters are roughly `kernels=123680 h2d=44 d2h=1388 d2d=6720 syncs=32` for a 16-token repeat, so the next major bottleneck is launch/copy count rather than CPU expert GEMV.

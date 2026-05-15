@@ -12,14 +12,14 @@ Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantize
 
 | Model | Arch | Format | GPU tok/s | CPU tok/s |
 |---|---|---|---|---|
-| **Qwen2.5-7B** | qwen2 | MLX 4-bit | **~120** | 1.1 |
+| **Qwen2.5-7B** | qwen2 | MLX 4-bit | **~120–158** | 1.1 |
 | **SmolLM2-135M** | llama | BF16 | **86** | 35.5 |
 | **Gemma3-1B** | gemma3 | MLX 4-bit | **~72** | 4.9 |
 | **Qwen2.5-7B** | qwen2 | GPTQ 4-bit | **51** | 0.9 |
 | **Qwen2.5-0.5B** | qwen2 | MLX 4-bit | **31** | 7.2 |
 | **Qwen3-0.6B** | qwen3 | MLX 4-bit | **25** | 7.2 |
-| **Gemma4-E2B** | gemma4 | MLX 4-bit | **~18–21** | — |
-| **Qwen3-30B MoE** | qwen3_moe | MLX 4-bit | **~4 cold / ~5.5 warm** | 0.6 |
+| **Gemma4-E2B** | gemma4 | MLX 4-bit | **~21–22** | — |
+| **Qwen3-30B MoE** | qwen3_moe | MLX 4-bit | **~5.2 cold / ~5.5 warm** | 0.6 |
 
 *RTX 3060 12GB + i7-12700 6-core. Pure Go, zero CGo. Short-run decode rates vary with prompt length, route-set warmth, and VRAM headroom.*
 *MoE: 128 experts/layer, 8 active/token. CUDA runs attention, router, and selected experts via a GPU-resident expert cache; cold route sets pay one-time expert upload cost.*
