@@ -28,8 +28,21 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 	B := len(tokenIDs)
 	m := g.CPU
 
-	if B <= 1 || h <= 0 || numHeads <= 0 || numKVHeads <= 0 || h%numHeads != 0 || cfg.Intermediate <= 0 || !gpu.BatchGEMMReady() {
+	if B <= 1 {
+		prefillDebugf("[prefill] skip: batch=%d\n", B)
+		return nil
+	}
+	if cfg.NumExperts > 0 || cfg.ModelType == "qwen3_moe" {
+		prefillDebugf("[prefill] skip: MoE prefill is not implemented for model_type=%s experts=%d\n", cfg.ModelType, cfg.NumExperts)
+		return nil
+	}
+	if h <= 0 || numHeads <= 0 || numKVHeads <= 0 || h%numHeads != 0 || cfg.Intermediate <= 0 {
+		prefillDebugf("[prefill] skip: invalid dims h=%d heads=%d kvHeads=%d intermediate=%d\n", h, numHeads, numKVHeads, cfg.Intermediate)
 		return nil // fall back to sequential
+	}
+	if !gpu.BatchGEMMReady() {
+		prefillDebugf("[prefill] skip: batch GEMM kernels unavailable\n")
+		return nil
 	}
 	headDim := h / numHeads
 	if headDim <= 0 {
