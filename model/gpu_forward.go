@@ -605,6 +605,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 	logitSteps := 0
 	gpuStatsStart := gpu.Stats{}
 	if profileDecode {
+		previousStatsEnabled := gpu.SetStatsEnabled(true)
+		defer gpu.SetStatsEnabled(previousStatsEnabled)
 		gpuStatsStart = gpu.StatsSnapshot()
 	}
 	var expertStartHits, expertStartMisses, expertStartEvicts uint64

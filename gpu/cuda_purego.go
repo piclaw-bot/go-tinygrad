@@ -74,8 +74,11 @@ var gpuStatsDeviceToHost atomic.Uint64
 var gpuStatsDeviceToDevice atomic.Uint64
 var gpuStatsSyncs atomic.Uint64
 
+func SetStatsEnabled(enabled bool) bool {
+	return gpuStatsEnabled.Swap(enabled)
+}
+
 func StatsSnapshot() Stats {
-	gpuStatsEnabled.Store(true)
 	return Stats{
 		KernelLaunches: gpuStatsKernelLaunches.Load(),
 		HostToDevice:   gpuStatsHostToDevice.Load(),
