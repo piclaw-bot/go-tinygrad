@@ -198,13 +198,7 @@ func UploadMLXWeightNative(weight []uint32, scales, biases []float32, inDim, out
 		return nil, err
 	}
 	w.QWeight = qwBuf
-	if err := qwBuf.Upload(reinterpretI32asF32(func() []int32 {
-		r := make([]int32, len(weight))
-		for i, v := range weight {
-			r[i] = int32(v)
-		}
-		return r
-	}())); err != nil {
+	if err := qwBuf.UploadUint32(weight); err != nil {
 		w.Free()
 		return nil, err
 	}

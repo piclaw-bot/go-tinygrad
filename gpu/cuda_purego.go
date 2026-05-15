@@ -248,6 +248,25 @@ func (b *Buffer) Upload(data []float32) error {
 	return nil
 }
 
+// UploadUint32 copies host uint32 data to GPU without repacking. The destination
+// buffer is still sized in 4-byte elements, so uint32 and float32 slices have the
+// same byte footprint.
+func (b *Buffer) UploadUint32(data []uint32) error {
+	if b == nil {
+		return fmt.Errorf("nil GPU buffer")
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	EnsureContext()
+	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
+	runtime.KeepAlive(data)
+	if r != CUDA_SUCCESS {
+		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
+	}
+	return nil
+}
+
 // Download copies GPU data to host.
 func (b *Buffer) Download(data []float32) error {
 	if b == nil {
