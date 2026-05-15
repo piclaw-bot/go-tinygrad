@@ -64,6 +64,18 @@ type GPUModel struct {
 	vocabSize    int
 }
 
+const compactMLXLMHeadThresholdBytes = uint64(1536 * 1024 * 1024)
+
+func shouldUseCompactMLXLMHead(hasMLX bool, lmBytes, freeBytes uint64) bool {
+	if !hasMLX {
+		return false
+	}
+	if lmBytes > compactMLXLMHeadThresholdBytes {
+		return true
+	}
+	return freeBytes <= lmBytes+64*1024*1024
+}
+
 type gpuLayerBufs struct {
 	QW, KW, VW, OW          *gpu.DevBuf
 	QB, KB, VB              *gpu.DevBuf
@@ -432,8 +444,7 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 	if useGPU && gpu.SgemmReady() {
 		free, _ := gpu.MemInfo()
 		lmBytes := uint64(len(g.lmHead) * 4)
-		useCompactMLXHead := m.LMHeadMLX != nil && lmBytes > 1536*1024*1024
-		if useCompactMLXHead {
+		if shouldUseCompactMLXLMHead(m.LMHeadMLX != nil, lmBytes, free) {
 			if w, err := gpu.UploadMLXWeight(m.LMHeadMLX.Weight, m.LMHeadMLX.Scales, m.LMHeadMLX.Biases, m.LMHeadMLX.InDim, m.LMHeadMLX.OutDim, m.LMHeadMLX.GroupSize, false); err == nil {
 				g.lmHeadMLXGPU = w
 				loaderDebugf("[model] MLX LM head on GPU (packed %.0f MB, f32 %.0f MB)\n", float64(len(m.LMHeadMLX.Weight)*4)/1e6, float64(lmBytes)/1e6)
