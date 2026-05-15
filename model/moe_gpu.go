@@ -114,7 +114,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	out := make([]float32, h)
 
 	// Pre-allocate GPU work buffers once (reused across experts)
-	var xBuf, gateBuf, upBuf, downBuf *gpu.DevBuf
+	var xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf *gpu.DevBuf
 	hasGPUExperts := false
 	for _, exp := range selected {
 		poolKey := layerIdx*cfg.NumExperts + exp.id
@@ -128,6 +128,8 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		gateBuf = gpu.NewDevBuf(moeInter)
 		upBuf = gpu.NewDevBuf(moeInter)
 		downBuf = gpu.NewDevBuf(h)
+		gpuOutBuf = gpu.NewDevBuf(h)
+		scaledBuf = gpu.NewDevBuf(h)
 		if err := xBuf.ToGPU(); err != nil {
 			hasGPUExperts = false
 		} else if err := gateBuf.ToGPU(); err != nil {
@@ -136,18 +138,26 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			hasGPUExperts = false
 		} else if err := downBuf.ToGPU(); err != nil {
 			hasGPUExperts = false
+		} else if err := gpuOutBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
+		} else if err := scaledBuf.ToGPU(); err != nil {
+			hasGPUExperts = false
 		}
 		if !hasGPUExperts {
 			xBuf.Free()
 			gateBuf.Free()
 			upBuf.Free()
 			downBuf.Free()
-			xBuf, gateBuf, upBuf, downBuf = nil, nil, nil, nil
+			gpuOutBuf.Free()
+			scaledBuf.Free()
+			xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf = nil, nil, nil, nil, nil, nil
 		} else {
 			defer xBuf.Free()
 			defer gateBuf.Free()
 			defer upBuf.Free()
 			defer downBuf.Free()
+			defer gpuOutBuf.Free()
+			defer scaledBuf.Free()
 		}
 	}
 
@@ -179,16 +189,14 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			}
 		}
 
-		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil {
+		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil && gpuOutBuf != nil && scaledBuf != nil {
 			// GPU path: reuse pre-allocated buffers
 			gpu.GemvMLXDirect(gateBuf, xBuf, gpuEntry.GateW)
 			gpu.GemvMLXDirect(upBuf, xBuf, gpuEntry.UpW)
 			gpu.DevSiLUMul(gateBuf, gateBuf, upBuf)
 			gpu.GemvMLXDirect(downBuf, gateBuf, gpuEntry.DownW)
-			results[si] = expertResult{
-				down:   append([]float32(nil), downBuf.Data()[:h]...),
-				weight: exp.score,
-			}
+			gpu.DevScale(scaledBuf, downBuf, exp.score)
+			gpu.DevAdd(gpuOutBuf, gpuOutBuf, scaledBuf)
 		} else {
 			// CPU fallback (parallel). CUDA uploads are deliberately deferred until
 			// after wg.Wait(); the CUDA driver context is thread-local and the expert
@@ -212,6 +220,13 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		}
 	}
 	wg.Wait()
+
+	if gpuOutBuf != nil {
+		gpuOut := gpuOutBuf.Data()
+		for i := range out {
+			out[i] += gpuOut[i]
+		}
+	}
 
 	// Warm the GPU expert pool sequentially after CPU fallback work completes.
 	for _, cand := range uploadAfterCPU {
