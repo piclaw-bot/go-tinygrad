@@ -1881,7 +1881,7 @@ Completed the current NVFP4/FP4 follow-up roadmap and refreshed status after rep
 - Hardened public NVFP4 rejection coverage across ModelOpt and compressed-tensors variants, including mixed `config_groups`, group `format`, `weights.format`, and 4-bit float `weights.type` metadata. Mixed-group diagnostics now prefer the unsupported FP4 group's bit/group metadata regardless of Go map iteration order.
 - Added metadata-only Qwen3-30B-A3B-NVFP4 placement sizing without downloading shards: about 1188 MB resident, 324 MB for one layer's full expert set, 2.53 MB per expert slot, and roughly 202 expert slots in a 512 MiB cache.
 - Added a packed NVFP4 GEMV/GEMM `NVFP4KernelSpec` contract with row-major packed weights, F8 scales, F32 inputs/outputs, batch semantics, group-size checks, u32 CUDA-interface limits, and overflow guards before native dispatch exists.
-- Validated synthetic CPU-vs-CUDA NVFP4 dequant parity on the local RTX 3060 and fixed PTX pointer arithmetic so the 28-kernel mega-module loads successfully.
+- Validated synthetic CPU-vs-CUDA NVFP4 dequant parity on the local RTX 3060 and fixed PTX pointer arithmetic so the CUDA mega-module loads successfully.
 - Hardened NVFP4 runtime/CUDA helpers against overflow-prone packed-count, padded-byte-capacity, byte-packing, and u32 launch-dimension edge cases.
 
 Public NVFP4 loading/generation remains disabled: synthetic dequant parity is in place, but real checkpoint logits/tokens must agree before enabling user-facing generation.
@@ -1907,11 +1907,11 @@ Representative local short-run results after this pass:
 
 | Model | Tokens | Result |
 |---|---:|---:|
-| `qwen2.5-7b-mlx4` | 16 | ~113–121 tok/s |
-| `gemma3-1b-mlx4` | 16 | ~72 tok/s after F32 LM-head policy |
-| `gemma4-e2b-mlx4` | 16 | ~21 tok/s |
-| `qwen3-30b-a3b-mlx4` cold | 16 | ~4.1 tok/s, ~5.1s total |
-| `qwen3-30b-a3b-mlx4` warmed | 16 | ~3.5s total after expert cache warm |
+| `qwen2.5-7b-mlx4` | 16 | ~120 tok/s no-profile, up to ~158 tok/s in a profiled short run |
+| `gemma3-1b-mlx4` | 16 | ~72–74 tok/s after F32 LM-head policy |
+| `gemma4-e2b-mlx4` | 16 | ~21–22 tok/s |
+| `qwen3-30b-a3b-mlx4` cold | 16 | ~5.2 tok/s, ~4.0s total with selected expert uploads |
+| `qwen3-30b-a3b-mlx4` warmed | 16 | ~2.9s total after expert cache warm |
 
 Remaining Qwen3 MoE bottlenecks are mostly CUDA driver/kernel overhead and sequential expert execution once the route set is warm. The next meaningful improvements are likely route-aware/batched MoE prefill, fused selected-expert kernels, or reducing KV/attention launch counts.
 
