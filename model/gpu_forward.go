@@ -92,6 +92,7 @@ type gpuLayerBufs struct {
 	// MLX on GPU
 	QWmg, KWmg, VWmg, OWmg  *gpu.GPUMLXWeight
 	GateWmg, UpWmg, DownWmg *gpu.GPUMLXWeight
+	RouterWmg               *gpu.GPUMLXWeight
 	// MLX on CPU
 	QWm, KWm, VWm, OWm   *quant.MLXQuantWeight
 	GateWm, UpWm, DownWm *quant.MLXQuantWeight
@@ -119,7 +120,7 @@ func (gl *gpuLayerBufs) free() {
 			qw.Free()
 		}
 	}
-	for _, mw := range []*gpu.GPUMLXWeight{gl.QWmg, gl.KWmg, gl.VWmg, gl.OWmg, gl.GateWmg, gl.UpWmg, gl.DownWmg} {
+	for _, mw := range []*gpu.GPUMLXWeight{gl.QWmg, gl.KWmg, gl.VWmg, gl.OWmg, gl.GateWmg, gl.UpWmg, gl.DownWmg, gl.RouterWmg} {
 		if mw != nil {
 			mw.Free()
 		}
@@ -330,6 +331,10 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 			gl.GateW = wrapTensor(layer.GateW)
 			gl.UpW = wrapTensor(layer.UpW)
 			gl.DownW = wrapTensor(layer.DownW)
+		}
+
+		if layer.RouterW != nil && gpu.SgemmReady() {
+			gl.RouterWmg, _ = gpu.UploadMLXWeightNative(layer.RouterW.Weight, layer.RouterW.Scales, layer.RouterW.Biases, layer.RouterW.InDim, layer.RouterW.OutDim, layer.RouterW.GroupSize)
 		}
 
 		gl.PreFFNNorm = wrapTensor(layer.PreFFNNorm)
@@ -1055,7 +1060,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
 					var down []float32
 					if g.Experts != nil && g.Experts.Slots() > 0 {
-						down = moeForwardGPU(mlpIn, cpuLayer, cfg, g.Experts, l)
+						down = moeForwardGPU(mlpIn, cpuLayer, cfg, g.Experts, l, layer.RouterWmg)
 					} else {
 						down = moeForward(mlpIn, cpuLayer, cfg)
 					}

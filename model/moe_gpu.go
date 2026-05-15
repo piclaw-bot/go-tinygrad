@@ -40,7 +40,7 @@ func uploadExpertNativeToPool(pool *gpu.ExpertPool, layer *LlamaLayer, expertID,
 
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
 // Falls back to CPU quant.GemvMLQ for cold experts not in the pool.
-func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int) []float32 {
+func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int, routerGPU *gpu.GPUMLXWeight) []float32 {
 	h := len(x)
 	numExperts := cfg.NumExperts
 	numActive := cfg.NumExpertsPerTok
@@ -48,9 +48,22 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		numActive = 8
 	}
 
-	// Router: compute logits for each expert
+	// Router: compute logits for each expert.
 	routerLogits := make([]float32, numExperts)
-	if layer.RouterW != nil {
+	if routerGPU != nil {
+		xRouter := gpu.NewDevBufFrom(append([]float32(nil), x...))
+		routerOut, err := gpu.NewDevBufGPU(numExperts)
+		if err == nil && xRouter.ToGPU() == nil {
+			gpu.GemvMLXDirect(routerOut, xRouter, routerGPU)
+			copy(routerLogits, routerOut.Data()[:numExperts])
+		} else if layer.RouterW != nil {
+			quant.GemvMLQ(routerLogits, x, layer.RouterW)
+		}
+		xRouter.Free()
+		if routerOut != nil {
+			routerOut.Free()
+		}
+	} else if layer.RouterW != nil {
 		quant.GemvMLQ(routerLogits, x, layer.RouterW)
 	}
 
