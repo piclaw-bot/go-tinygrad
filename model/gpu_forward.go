@@ -1241,6 +1241,9 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 			steps = 0
 		}
 		fmt.Printf("[decode-profile] steps=%d logit_steps=%d layers=%s logits=%s total=%s\n", steps, logitSteps, totalLayerTime.Round(time.Millisecond), totalLogitTime.Round(time.Millisecond), (totalLayerTime + totalLogitTime).Round(time.Millisecond))
+		if g.Experts != nil {
+			fmt.Printf("[decode-profile] %s\n", g.Experts.Report())
+		}
 	}
 	if len(output) > len(tokenIDs)+1 {
 	}
