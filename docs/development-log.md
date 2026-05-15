@@ -1885,3 +1885,32 @@ Completed the current NVFP4/FP4 follow-up roadmap and refreshed status after rep
 - Hardened NVFP4 runtime/CUDA helpers against overflow-prone packed-count, padded-byte-capacity, byte-packing, and u32 launch-dimension edge cases.
 
 Public NVFP4 loading/generation remains disabled: synthetic dequant parity is in place, but real checkpoint logits/tokens must agree before enabling user-facing generation.
+
+## Session 213: MLX4 GPU decode and Qwen3 MoE performance pass
+
+Continued the MLX4 larger-weight performance investigation after NVFP4 detection/fallback work:
+
+- Applied `--gpu-layers` before upload/allocation so partial residency no longer allocates all layers first, and fixed GPU load diagnostics to report actual resident layer count.
+- Added opt-in decode profiling with `GO_PHERENCE_PROFILE_DECODE=1`, including layer/logit timing and per-run expert-cache deltas split into prompt vs generated-token phases.
+- Skipped prompt-only LM-head/logit projection and tuned the standalone F32 LM-head kernel thread count.
+- Preserved quantized MLX `lm_head` metadata and uploaded large MLX LM heads directly to GPU. This removed the dense `qwen2.5-7b-mlx4` logit bottleneck and moved it from single-digit tok/s to roughly 110–125 tok/s in short local runs.
+- Added a size/VRAM policy for LM-head representation: moderate heads use the faster F32 path when they fit, while very large heads or low-headroom cases use compact MLX. Covered the policy with unit tests.
+- Diagnosed `qwen3-30b-a3b-mlx4` as MoE-bound, not LM-head-bound. Batched dense prefill is explicitly skipped for MoE with `GO_PHERENCE_PREFILL_DEBUG=1` explaining the fallback.
+- Specialized CPU MLX4 GEMV for 4-bit group layouts, reused input-group sums, and added Qwen MoE gate/down microbenchmarks.
+- Added native-only MLX expert upload for MoE. Cached experts use `GemvMLXDirect`, so uploading the transposed GPTQ-compatible buffers was wasted work.
+- Added direct `uint32` CUDA uploads for packed MLX weights to avoid host-side repacking on expert upload.
+- Changed MoE cache misses to upload selected experts immediately and run them on GPU in the same pass; CPU remains the fallback if upload fails.
+- Removed redundant per-expert sync before downloading outputs, then accumulated GPU expert outputs on device to reduce per-expert downloads.
+- Added GPU-only `DevBuf` scratch allocation and used it for MoE scratch buffers to avoid unnecessary zero uploads.
+
+Representative local short-run results after this pass:
+
+| Model | Tokens | Result |
+|---|---:|---:|
+| `qwen2.5-7b-mlx4` | 16 | ~113–121 tok/s |
+| `gemma3-1b-mlx4` | 16 | ~72 tok/s after F32 LM-head policy |
+| `gemma4-e2b-mlx4` | 16 | ~21 tok/s |
+| `qwen3-30b-a3b-mlx4` cold | 16 | ~4.1 tok/s, ~5.1s total |
+| `qwen3-30b-a3b-mlx4` warmed | 16 | ~3.5s total after expert cache warm |
+
+Remaining Qwen3 MoE bottlenecks are mostly CUDA driver/kernel overhead and sequential expert execution once the route set is warm. The next meaningful improvements are likely route-aware/batched MoE prefill, fused selected-expert kernels, or reducing KV/attention launch counts.
