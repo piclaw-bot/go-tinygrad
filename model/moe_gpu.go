@@ -202,7 +202,7 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 
 	for si, exp := range selected {
 		eid := exp.id
-		if eid >= len(layer.ExpertGateW) || layer.ExpertGateW[eid] == nil {
+		if eid < 0 || eid >= len(layer.ExpertGateW) || eid >= len(layer.ExpertUpW) || eid >= len(layer.ExpertDownW) || layer.ExpertGateW[eid] == nil || layer.ExpertUpW[eid] == nil || layer.ExpertDownW[eid] == nil {
 			continue
 		}
 

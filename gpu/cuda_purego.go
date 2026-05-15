@@ -326,12 +326,13 @@ func (b *Buffer) Download(data []float32) error {
 	return nil
 }
 
-func syncCounted(count bool) {
+func syncCounted(count bool) CUresult {
 	EnsureContext()
-	if count && gpuStatsEnabled.Load() {
+	r := cuCtxSynchronize()
+	if count && r == CUDA_SUCCESS && gpuStatsEnabled.Load() {
 		gpuStatsSyncs.Add(1)
 	}
-	cuCtxSynchronize()
+	return r
 }
 
 // Sync waits for all GPU operations to complete.
@@ -348,11 +349,7 @@ func SyncForTiming() {
 
 // SyncErr waits for all GPU operations and reports CUDA driver errors.
 func SyncErr() error {
-	EnsureContext()
-	if gpuStatsEnabled.Load() {
-		gpuStatsSyncs.Add(1)
-	}
-	if r := cuCtxSynchronize(); r != CUDA_SUCCESS {
+	if r := syncCounted(true); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuCtxSynchronize: error %d", r)
 	}
 	return nil
