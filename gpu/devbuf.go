@@ -475,12 +475,12 @@ func DevCopy(dst, src *DevBuf) {
 		return
 	}
 	if src.gpu != nil && dst.gpu != nil && n >= 2048 {
-		src.ToGPU()
-		dst.ToGPU()
-		recordDeviceToDeviceCopy()
-		cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(n*4), 0) // stream 0 = default
-		dst.dev = GPU_DEVICE
-		return
+		if src.ToGPU() == nil && dst.ToGPU() == nil {
+			recordDeviceToDeviceCopy()
+			cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(n)*4, 0) // stream 0 = default
+			dst.dev = GPU_DEVICE
+			return
+		}
 	}
 	src.ToCPU()
 	dst.ToCPU()
