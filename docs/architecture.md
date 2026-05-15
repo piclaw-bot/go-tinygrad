@@ -136,7 +136,7 @@ loader/safetensors BF16 → GetBF16() → []uint16 (zero conversion)
 
 | Backend | Current status |
 |---|---|
-| CUDA PTX | 28 hand-written kernels across GEMV/GEMM, attention/RoPE, norms, activations, BF16, NVFP4 dequant fallback, and utility paths; source assets live in `backends/cuda/ptx` while dispatch/resource ownership remains in `gpu` |
+| CUDA PTX | 29 hand-written kernels across GEMV/GEMM, attention/RoPE, norms, activations, BF16, NVFP4 dequant fallback, fused add-scaled accumulation, and utility paths; source assets live in `backends/cuda/ptx` while dispatch/resource ownership remains in `gpu` |
 | Vulkan SPIR-V | `backends/vulkan` owns shader assets for vector add, RMSNorm, GEMV, SiLU, attention score, RMSNormNoScale, RoPEPartial, and GELU paths; full forward dispatch is still pending |
 | AVX2 asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback |
 | NEON asm | Runtime-gated vector, norm, dot/Saxpy, BF16, and SGEMM helpers with scalar fallback; hardware verification still pending |
