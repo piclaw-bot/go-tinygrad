@@ -125,23 +125,31 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	}
 	if hasGPUExperts {
 		xBuf = gpu.NewDevBufFrom(append([]float32(nil), x...))
-		gateBuf = gpu.NewDevBuf(moeInter)
-		upBuf = gpu.NewDevBuf(moeInter)
-		downBuf = gpu.NewDevBuf(h)
-		gpuOutBuf = gpu.NewDevBuf(h)
-		scaledBuf = gpu.NewDevBuf(h)
-		if err := xBuf.ToGPU(); err != nil {
+		var err error
+		gateBuf, err = gpu.NewDevBufGPU(moeInter)
+		if err != nil {
 			hasGPUExperts = false
-		} else if err := gateBuf.ToGPU(); err != nil {
-			hasGPUExperts = false
-		} else if err := upBuf.ToGPU(); err != nil {
-			hasGPUExperts = false
-		} else if err := downBuf.ToGPU(); err != nil {
-			hasGPUExperts = false
-		} else if err := gpuOutBuf.ToGPU(); err != nil {
-			hasGPUExperts = false
-		} else if err := scaledBuf.ToGPU(); err != nil {
-			hasGPUExperts = false
+		}
+		if hasGPUExperts {
+			upBuf, err = gpu.NewDevBufGPU(moeInter)
+			hasGPUExperts = err == nil
+		}
+		if hasGPUExperts {
+			downBuf, err = gpu.NewDevBufGPU(h)
+			hasGPUExperts = err == nil
+		}
+		if hasGPUExperts {
+			gpuOutBuf, err = gpu.NewDevBufGPU(h)
+			hasGPUExperts = err == nil
+		}
+		if hasGPUExperts {
+			scaledBuf, err = gpu.NewDevBufGPU(h)
+			hasGPUExperts = err == nil
+		}
+		if hasGPUExperts {
+			if err := xBuf.ToGPU(); err != nil {
+				hasGPUExperts = false
+			}
 		}
 		if !hasGPUExperts {
 			xBuf.Free()
@@ -173,6 +181,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		poolKey  int
 	}
 	uploadAfterCPU := make([]uploadCandidate, 0, len(selected))
+	gpuOutInitialized := false
 
 	for si, exp := range selected {
 		eid := exp.id
@@ -196,7 +205,12 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			gpu.DevSiLUMul(gateBuf, gateBuf, upBuf)
 			gpu.GemvMLXDirect(downBuf, gateBuf, gpuEntry.DownW)
 			gpu.DevScale(scaledBuf, downBuf, exp.score)
-			gpu.DevAdd(gpuOutBuf, gpuOutBuf, scaledBuf)
+			if gpuOutInitialized {
+				gpu.DevAdd(gpuOutBuf, gpuOutBuf, scaledBuf)
+			} else {
+				gpu.DevCopy(gpuOutBuf, scaledBuf)
+				gpuOutInitialized = true
+			}
 		} else {
 			// CPU fallback (parallel). CUDA uploads are deliberately deferred until
 			// after wg.Wait(); the CUDA driver context is thread-local and the expert
@@ -221,7 +235,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	}
 	wg.Wait()
 
-	if gpuOutBuf != nil {
+	if gpuOutBuf != nil && gpuOutInitialized {
 		gpuOut := gpuOutBuf.Data()
 		for i := range out {
 			out[i] += gpuOut[i]

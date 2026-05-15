@@ -57,6 +57,22 @@ func NewDevBufFrom(data []float32) *DevBuf {
 	return &DevBuf{cpu: data, n: len(data), dev: CPU}
 }
 
+// NewDevBufGPU allocates a GPU-only buffer without uploading zeroed CPU data.
+// Its contents are undefined until overwritten by a GPU operation.
+func NewDevBufGPU(n int) (*DevBuf, error) {
+	if n < 0 {
+		n = 0
+	}
+	if !SgemmReady() {
+		return nil, fmt.Errorf("GPU not available")
+	}
+	buf, err := Malloc(n)
+	if err != nil {
+		return nil, err
+	}
+	return &DevBuf{gpu: buf, n: n, dev: GPU_DEVICE, ownGPU: true}, nil
+}
+
 // ToGPU ensures data is on GPU. No-op if already there.
 func (b *DevBuf) ToGPU() error {
 	if b == nil {
