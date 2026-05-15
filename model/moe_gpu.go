@@ -14,6 +14,9 @@ func uploadExpertNativeToPool(pool *gpu.ExpertPool, layer *LlamaLayer, expertID,
 	if pool == nil || layer == nil || expertID < 0 || expertID >= len(layer.ExpertGateW) || expertID >= len(layer.ExpertUpW) || expertID >= len(layer.ExpertDownW) {
 		return nil
 	}
+	if layer.ExpertGateW[expertID] == nil || layer.ExpertUpW[expertID] == nil || layer.ExpertDownW[expertID] == nil {
+		return nil
+	}
 	entry := &gpu.ExpertEntry{ExpertID: poolKey}
 	ew := layer.ExpertGateW[expertID]
 	gw, err1 := gpu.UploadMLXWeightNative(ew.Weight, ew.Scales, ew.Biases, ew.InDim, ew.OutDim, ew.GroupSize)
@@ -115,14 +118,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 
 	// Pre-allocate GPU work buffers once (reused across experts)
 	var xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf *gpu.DevBuf
-	hasGPUExperts := false
-	for _, exp := range selected {
-		poolKey := layerIdx*cfg.NumExperts + exp.id
-		if pool != nil && pool.Peek(poolKey) != nil {
-			hasGPUExperts = true
-			break
-		}
-	}
+	hasGPUExperts := pool != nil && pool.Slots() > 0 && len(selected) > 0
 	if hasGPUExperts {
 		xBuf = gpu.NewDevBufFrom(append([]float32(nil), x...))
 		var err error
