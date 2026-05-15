@@ -271,12 +271,17 @@ func checkedByteSize(elements, capacityBytes int) (uint64, error) {
 	if elements < 0 {
 		return 0, fmt.Errorf("negative element count %d", elements)
 	}
+	if capacityBytes < -1 {
+		return 0, fmt.Errorf("negative buffer size %d", capacityBytes)
+	}
 	maxInt := int(^uint(0) >> 1)
 	if elements > maxInt/4 {
 		return 0, fmt.Errorf("copy size overflow for %d float32s", elements)
 	}
 	bytes := elements * 4
-	if capacityBytes > 0 && bytes > capacityBytes {
+	// capacityBytes >= 0 means the caller is checking a real buffer capacity.
+	// capacityBytes < 0 disables the capacity check for pure offset/size math.
+	if capacityBytes >= 0 && bytes > capacityBytes {
 		return 0, fmt.Errorf("copy size %d exceeds buffer size %d", bytes, capacityBytes)
 	}
 	return uint64(bytes), nil
