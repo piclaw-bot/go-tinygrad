@@ -3,7 +3,7 @@ package gpu
 // LM head GEMV: optimized kernel for [vocab × h] × [h] → [vocab]
 //
 // Each block computes one output element (one row's dot product).
-// 128 threads per block, shared memory tree reduction.
+// 64 threads per block, shared memory tree reduction.
 // This is much faster than SGEMM for N=1 (vector) cases.
 
 import (
@@ -34,7 +34,7 @@ func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
 		gridX = 65535
 	}
 
-	LaunchKernel(fnLMHead, gridX, gridY, 1, 128, 1, 1, 128*4,
+	LaunchKernel(fnLMHead, gridX, gridY, 1, 64, 1, 1, 64*4,
 		unsafe.Pointer(&W.gpu.Ptr),
 		unsafe.Pointer(&x.gpu.Ptr),
 		unsafe.Pointer(&logits.gpu.Ptr),

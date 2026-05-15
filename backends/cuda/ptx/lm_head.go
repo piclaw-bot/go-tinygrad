@@ -2,7 +2,7 @@ package ptx
 
 // LMHeadPTX: each block computes one output element.
 // Block i computes: logits[i] = sum_k(W[i*h + k] * x[k])
-// 128 threads stride over h dimension with shared memory reduction. This keeps
+// 64 threads stride over h dimension with shared memory reduction. This keeps
 // per-row launch overhead lower for large-vocab decode while still covering the
 // hidden dimensions used by current Gemma/Qwen models efficiently.
 var LMHeadPTX = `.version 7.0
@@ -20,7 +20,7 @@ var LMHeadPTX = `.version 7.0
     .reg .u64 %rd<12>;
     .reg .f32 %f<8>;
     .reg .pred %p;
-    .shared .align 4 .f32 sdata[128];
+    .shared .align 4 .f32 sdata[64];
 
     // row = blockIdx.y * 65535 + blockIdx.x
     mov.u32 %r0, %ctaid.x;
@@ -44,7 +44,7 @@ var LMHeadPTX = `.version 7.0
     mul.wide.u32 %rd3, %r4, 4;
     add.u64 %rd0, %rd0, %rd3;
 
-    // Partial sum: stride by 128
+    // Partial sum: stride by 64
     mov.f32 %f0, 0f00000000;
     mov.u32 %r5, %r1;
 
@@ -61,7 +61,7 @@ loop:
 
     fma.rn.f32 %f0, %f1, %f2, %f0;
 
-    add.u32 %r5, %r5, 128;
+    add.u32 %r5, %r5, 64;
     bra loop;
 
 reduce:
@@ -73,7 +73,7 @@ reduce:
     bar.sync 0;
 
     // Tree reduction
-    mov.u32 %r6, 64;
+    mov.u32 %r6, 32;
 red_loop:
     setp.lt.u32 %p, %r6, 1;
     @%p bra red_done;
