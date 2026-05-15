@@ -267,6 +267,21 @@ func (b *Buffer) Free() {
 	}
 }
 
+func checkedByteSize(elements, capacityBytes int) (uint64, error) {
+	if elements < 0 {
+		return 0, fmt.Errorf("negative element count %d", elements)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if elements > maxInt/4 {
+		return 0, fmt.Errorf("copy size overflow for %d float32s", elements)
+	}
+	bytes := elements * 4
+	if capacityBytes > 0 && bytes > capacityBytes {
+		return 0, fmt.Errorf("copy size %d exceeds buffer size %d", bytes, capacityBytes)
+	}
+	return uint64(bytes), nil
+}
+
 // Upload copies host data to GPU.
 func (b *Buffer) Upload(data []float32) error {
 	if b == nil {
@@ -275,8 +290,12 @@ func (b *Buffer) Upload(data []float32) error {
 	if len(data) == 0 {
 		return nil
 	}
+	size, err := checkedByteSize(len(data), b.Size)
+	if err != nil {
+		return err
+	}
 	EnsureContext()
-	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
+	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), size)
 	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
@@ -297,8 +316,12 @@ func (b *Buffer) UploadUint32(data []uint32) error {
 	if len(data) == 0 {
 		return nil
 	}
+	size, err := checkedByteSize(len(data), b.Size)
+	if err != nil {
+		return err
+	}
 	EnsureContext()
-	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
+	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), size)
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
@@ -317,8 +340,12 @@ func (b *Buffer) Download(data []float32) error {
 	if len(data) == 0 {
 		return nil
 	}
+	size, err := checkedByteSize(len(data), b.Size)
+	if err != nil {
+		return err
+	}
 	EnsureContext()
-	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
+	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, size)
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyDtoH: error %d", r)
