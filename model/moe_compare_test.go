@@ -41,7 +41,7 @@ func TestMoECPUvsGPUExpert(t *testing.T) {
 	cpuOut := moeForward(x, layer, cfg)
 
 	pool := gpu.NewExpertPool(200, nil)
-	gpuOut := moeForwardGPU(x, layer, cfg, pool, 0, nil)
+	gpuOut := moeForwardGPU(nil, gpu.NewDevBufFrom(x), layer, cfg, pool, 0, nil)
 
 	maxAbs := float64(0)
 	for i := range cpuOut {

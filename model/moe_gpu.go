@@ -40,8 +40,15 @@ func uploadExpertNativeToPool(pool *gpu.ExpertPool, layer *LlamaLayer, expertID,
 
 // moeForwardGPU runs the MoE forward pass using GPU for hot experts.
 // Falls back to CPU quant.GemvMLQ for cold experts not in the pool.
-func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int, routerGPU *gpu.GPUMLXWeight) []float32 {
-	h := len(x)
+func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.ExpertPool, layerIdx int, routerGPU *gpu.GPUMLXWeight) []float32 {
+	h := cfg.HiddenSize
+	var xCPU []float32
+	getXCPU := func() []float32 {
+		if xCPU == nil && xDev != nil {
+			xCPU = append([]float32(nil), xDev.Data()[:h]...)
+		}
+		return xCPU
+	}
 	numExperts := cfg.NumExperts
 	numActive := cfg.NumExpertsPerTok
 	if numActive <= 0 {
@@ -51,20 +58,18 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	// Router: compute logits for each expert.
 	routerLogits := make([]float32, numExperts)
 	if routerGPU != nil {
-		xRouter := gpu.NewDevBufFrom(append([]float32(nil), x...))
 		routerOut, err := gpu.NewDevBufGPU(numExperts)
-		if err == nil && xRouter.ToGPU() == nil {
-			gpu.GemvMLXDirect(routerOut, xRouter, routerGPU)
+		if err == nil && xDev != nil {
+			gpu.GemvMLXDirect(routerOut, xDev, routerGPU)
 			copy(routerLogits, routerOut.Data()[:numExperts])
 		} else if layer.RouterW != nil {
-			quant.GemvMLQ(routerLogits, x, layer.RouterW)
+			quant.GemvMLQ(routerLogits, getXCPU(), layer.RouterW)
 		}
-		xRouter.Free()
 		if routerOut != nil {
 			routerOut.Free()
 		}
 	} else if layer.RouterW != nil {
-		quant.GemvMLQ(routerLogits, x, layer.RouterW)
+		quant.GemvMLQ(routerLogits, getXCPU(), layer.RouterW)
 	}
 
 	// Softmax over router logits
@@ -133,7 +138,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	var xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf *gpu.DevBuf
 	hasGPUExperts := pool != nil && pool.Slots() > 0 && len(selected) > 0
 	if hasGPUExperts {
-		xBuf = gpu.NewDevBufFrom(append([]float32(nil), x...))
+		xBuf = xDev
 		var err error
 		gateBuf, err = gpu.NewDevBufGPU(moeInter)
 		if err != nil {
@@ -155,13 +160,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			scaledBuf, err = gpu.NewDevBufGPU(h)
 			hasGPUExperts = err == nil
 		}
-		if hasGPUExperts {
-			if err := xBuf.ToGPU(); err != nil {
-				hasGPUExperts = false
-			}
-		}
 		if !hasGPUExperts {
-			xBuf.Free()
 			gateBuf.Free()
 			upBuf.Free()
 			downBuf.Free()
@@ -169,7 +168,6 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			scaledBuf.Free()
 			xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf = nil, nil, nil, nil, nil, nil
 		} else {
-			defer xBuf.Free()
 			defer gateBuf.Free()
 			defer upBuf.Free()
 			defer downBuf.Free()
@@ -184,6 +182,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 		weight float32
 	}
 	results := make([]expertResult, len(selected))
+	cpuFallbackUsed := false
 	var wg sync.WaitGroup
 	type uploadCandidate struct {
 		expertID int
@@ -221,6 +220,7 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 				gpuOutInitialized = true
 			}
 		} else {
+			cpuFallbackUsed = true
 			// CPU fallback (parallel). CUDA uploads are deliberately deferred until
 			// after wg.Wait(); the CUDA driver context is thread-local and the expert
 			// pool may evict GPU buffers, so doing this inside worker goroutines can
@@ -233,8 +233,8 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 				defer wg.Done()
 				gate := make([]float32, moeInter)
 				up := make([]float32, moeInter)
-				quant.GemvMLQ(gate, x, layer.ExpertGateW[expertID])
-				quant.GemvMLQ(up, x, layer.ExpertUpW[expertID])
+				quant.GemvMLQ(gate, getXCPU(), layer.ExpertGateW[expertID])
+				quant.GemvMLQ(up, getXCPU(), layer.ExpertUpW[expertID])
 				simd.VecSiLUMul(gate, gate, up)
 				down := make([]float32, h)
 				quant.GemvMLQ(down, gate, layer.ExpertDownW[expertID])
@@ -245,9 +245,13 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 	wg.Wait()
 
 	if gpuOutBuf != nil && gpuOutInitialized {
-		gpuOut := gpuOutBuf.Data()
-		for i := range out {
-			out[i] += gpuOut[i]
+		if outDev != nil {
+			gpu.DevCopy(outDev, gpuOutBuf)
+		} else {
+			gpuOut := gpuOutBuf.Data()
+			for i := range out {
+				out[i] += gpuOut[i]
+			}
 		}
 	}
 
@@ -267,6 +271,17 @@ func moeForwardGPU(x []float32, layer *LlamaLayer, cfg LlamaConfig, pool *gpu.Ex
 			out[i] += r.weight * r.down[i]
 		}
 	}
-
+	if outDev != nil && gpuOutInitialized {
+		if cpuFallbackUsed {
+			cpuOut := gpu.NewDevBufFrom(out)
+			if cpuOut.ToGPU() == nil {
+				gpu.DevAdd(outDev, outDev, cpuOut)
+				cpuOut.Free()
+				return nil
+			}
+			cpuOut.Free()
+		}
+		return nil
+	}
 	return out
 }

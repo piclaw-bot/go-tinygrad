@@ -1060,16 +1060,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				// MLP: gate + up projections (or MoE for expert layers)
 				if cpuLayer.IsMoE && cpuLayer.ExpertGateW != nil {
 					// MoE: router + expert MLPs (GPU-cached or CPU fallback)
-					gpu.Sync()
-					mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
 					var down []float32
 					if g.Experts != nil && g.Experts.Slots() > 0 {
-						down = moeForwardGPU(mlpIn, cpuLayer, cfg, g.Experts, l, layer.RouterWmg)
+						down = moeForwardGPU(g.down, g.normed, cpuLayer, cfg, g.Experts, l, layer.RouterWmg)
 					} else {
+						mlpIn := append([]float32(nil), g.normed.Data()[:h]...)
 						down = moeForward(mlpIn, cpuLayer, cfg)
 					}
-					copy(g.down.Data()[:h], down)
-					g.down.MarkDirty()
+					if down != nil {
+						copy(g.down.Data()[:h], down)
+						g.down.MarkDirty()
+					}
 				}
 
 				// MLP: gate + up projections (skip for MoE layers)
