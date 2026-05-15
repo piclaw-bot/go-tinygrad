@@ -60,14 +60,11 @@ func main() {
 
 	var gpuMod *model.GPUModel
 	if *useGPU {
-		g, err := model.LoadGPUModel(m)
+		g, err := model.LoadGPUModelWithLayers(m, *gpuLayers)
 		if err != nil {
 			fmt.Printf("GPU failed: %v (using CPU)\n", err)
 		} else {
 			g.CPU.Tok = tok
-			if *gpuLayers > 0 {
-				g.GPULayers = *gpuLayers
-			}
 			gpuMod = g
 			defer g.Close()
 			defer gpu.Shutdown()

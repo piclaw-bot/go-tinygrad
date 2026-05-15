@@ -139,6 +139,13 @@ func (g *GPUModel) Close() {
 
 // LoadGPUModel uploads model weights to GPU using DevBuf.
 func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
+	return LoadGPUModelWithLayers(m, 0)
+}
+
+// LoadGPUModelWithLayers uploads model weights to GPU using DevBuf, limiting
+// GPU-resident transformer layers when gpuLayers > 0. Passing the layer budget
+// before upload avoids allocating all layers only to override GPULayers later.
+func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 	runtime.LockOSThread()
 	start := time.Now()
 
@@ -147,9 +154,13 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	kvDim := cfg.HeadDim * cfg.NumKVHeads
 	inter := cfg.Intermediate
 
+	if gpuLayers < 0 {
+		gpuLayers = 0
+	}
 	g := &GPUModel{
 		CPU:       m,
 		Config:    cfg,
+		GPULayers: gpuLayers,
 		vocabSize: cfg.VocabSize,
 	}
 
@@ -432,7 +443,7 @@ func LoadGPUModel(m *LlamaModel) (*GPUModel, error) {
 	if useGPU {
 		device = "GPU"
 	}
-	loaderDebugf("[model] Weights on %s (%d layers, %v)\n", device, len(g.Layers), elapsed.Round(time.Millisecond))
+	loaderDebugf("[model] Weights on %s (%d/%d layers, %v)\n", device, g.GPULayers, len(g.Layers), elapsed.Round(time.Millisecond))
 
 	// Initialize MoE expert pool if model has experts
 	if cfg.NumExperts > 0 {

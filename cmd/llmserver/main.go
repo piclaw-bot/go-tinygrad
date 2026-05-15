@@ -344,14 +344,11 @@ func main() {
 	srv := &Server{cpuModel: m, tok: tok, modelID: modelID, maxCtx: 4096}
 
 	if *useGPU {
-		g, err := model.LoadGPUModel(m)
+		g, err := model.LoadGPUModelWithLayers(m, *gpuLayers)
 		if err != nil {
 			log.Printf("GPU failed: %v (using CPU)", err)
 		} else {
 			g.CPU.Tok = tok
-			if *gpuLayers > 0 {
-				g.GPULayers = *gpuLayers
-			}
 			srv.gpuModel = g
 			defer g.Close()
 			defer gpu.Shutdown()

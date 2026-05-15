@@ -65,11 +65,9 @@ func main() {
 	var gpuMod *model.GPUModel
 	if *useGPU {
 		var err error
-		gpuMod, err = model.LoadGPUModel(m)
+		gpuMod, err = model.LoadGPUModelWithLayers(m, *gpuLayers)
 		if err != nil {
 			fmt.Printf("GPU model failed: %v (falling back to CPU)\n", err)
-		} else if *gpuLayers > 0 {
-			gpuMod.GPULayers = *gpuLayers
 		}
 	}
 
