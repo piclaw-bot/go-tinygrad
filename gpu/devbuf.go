@@ -523,10 +523,10 @@ func CopyDtoD(dst, src CUdeviceptr, bytes uint64) error {
 		return nil
 	}
 	EnsureContext()
-	recordDeviceToDeviceCopy()
 	if r := cuMemcpyDtoD(dst, src, bytes); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyDtoD: error %d", r)
 	}
+	recordDeviceToDeviceCopy()
 	return nil
 }
 

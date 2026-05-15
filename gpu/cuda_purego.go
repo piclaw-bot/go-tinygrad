@@ -273,13 +273,13 @@ func (b *Buffer) Upload(data []float32) error {
 		return nil
 	}
 	EnsureContext()
-	if gpuStatsEnabled.Load() {
-		gpuStatsHostToDevice.Add(1)
-	}
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data) // prevent GC from moving data during CUDA memcpy
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
+	}
+	if gpuStatsEnabled.Load() {
+		gpuStatsHostToDevice.Add(1)
 	}
 	return nil
 }
@@ -295,13 +295,13 @@ func (b *Buffer) UploadUint32(data []uint32) error {
 		return nil
 	}
 	EnsureContext()
-	if gpuStatsEnabled.Load() {
-		gpuStatsHostToDevice.Add(1)
-	}
 	r := cuMemcpyHtoD(b.Ptr, unsafe.Pointer(&data[0]), uint64(len(data)*4))
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyHtoD: error %d", r)
+	}
+	if gpuStatsEnabled.Load() {
+		gpuStatsHostToDevice.Add(1)
 	}
 	return nil
 }
@@ -315,13 +315,13 @@ func (b *Buffer) Download(data []float32) error {
 		return nil
 	}
 	EnsureContext()
-	if gpuStatsEnabled.Load() {
-		gpuStatsDeviceToHost.Add(1)
-	}
 	r := cuMemcpyDtoH(unsafe.Pointer(&data[0]), b.Ptr, uint64(len(data)*4))
 	runtime.KeepAlive(data)
 	if r != CUDA_SUCCESS {
 		return fmt.Errorf("cuMemcpyDtoH: error %d", r)
+	}
+	if gpuStatsEnabled.Load() {
+		gpuStatsDeviceToHost.Add(1)
 	}
 	return nil
 }
@@ -392,11 +392,11 @@ func LaunchKernel(fn CUfunction, gridX, gridY, gridZ, blockX, blockY, blockZ uin
 	if len(args) > 0 {
 		argPtrs = unsafe.Pointer(&args[0])
 	}
-	if gpuStatsEnabled.Load() {
-		gpuStatsKernelLaunches.Add(1)
-	}
 	if r := cuLaunchKernel(fn, gridX, gridY, gridZ, blockX, blockY, blockZ, sharedMem, 0, argPtrs, nil); r != CUDA_SUCCESS {
 		return fmt.Errorf("cuLaunchKernel: error %d", r)
+	}
+	if gpuStatsEnabled.Load() {
+		gpuStatsKernelLaunches.Add(1)
 	}
 	return nil
 }
