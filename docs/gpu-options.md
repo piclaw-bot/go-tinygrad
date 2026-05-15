@@ -4,13 +4,13 @@ go-pherence currently has a production CUDA backend plus Vulkan backend scaffold
 
 ## CUDA PTX (NVIDIA)
 
-Primary GPU backend. 28 hand-written PTX kernels. Source strings are owned by `backends/cuda/ptx`; runtime loading, launch helpers, `DevBuf`, and GPU-resident resources remain in the transitional `gpu` package:
+Primary GPU backend. 29 hand-written PTX kernels. Source strings are owned by `backends/cuda/ptx`; runtime loading, launch helpers, `DevBuf`, and GPU-resident resources remain in the transitional `gpu` package:
 
 | Category | Kernels | Notes |
 |---|---|---|
 | **Core GEMV** | sgemm_nn, gemv_q4sym, gemm_q4sym | GPTQ tiled + shared mem |
 | **MLX** | mlx_gemv, mlx_gemm, mlx_correct | Transposed layout + bias |
-| **Element-wise** | vec_add, vec_mul, vec_scale, vec_silu | threshold-free |
+| **Element-wise** | vec_add, vec_mul, vec_scale, vec_add_scaled, vec_silu | threshold-free |
 | **Fused** | fused_silu_mul, rms_norm, gelu_tanh_mul | reduced launch count |
 | **Norms** | rms_norm_no_scale, to_bf16_f32 | Gemma4 V-norm, BF16 trunc |
 | **Attention** | rope_apply, rope_partial, gqa_attention | precomputed cos/sin, scale param |
@@ -70,7 +70,7 @@ AVX2+FMA (amd64) and NEON (arm64):
 
 ```
 if NVIDIA GPU available:
-    → CUDA PTX (fastest, 28 kernels)
+    → CUDA PTX (fastest, 29 kernels)
 elif Vulkan model dispatch is enabled and a non-software Vulkan device is available:
     → backends/vulkan SPIR-V (portable shader path; still being wired)
 else:

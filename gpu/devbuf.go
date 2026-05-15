@@ -35,6 +35,7 @@ var (
 	fnVecAdd         CUfunction
 	fnVecMul         CUfunction
 	fnVecScale       CUfunction
+	fnVecAddScaled   CUfunction
 	fnToBF16F32      CUfunction
 	fnVecSilu        CUfunction
 	fnRmsNorm        CUfunction
@@ -274,6 +275,28 @@ func DevScale(out, a *DevBuf, s float32) {
 	out.ToCPU()
 	for i := 0; i < n; i++ {
 		out.cpu[i] = a.cpu[i] * s
+	}
+}
+
+// AddScaled: out = a + b * scalar.
+func DevAddScaled(out, a, b *DevBuf, s float32) {
+	initKernels()
+	n := commonLen(a, b, out)
+	if n <= 0 {
+		return
+	}
+	if kernelsLoaded && fnVecAddScaled != 0 && tryGPU(a, b, out) {
+		nn := uint32(n)
+		LaunchKernel(fnVecAddScaled, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&s), unsafe.Pointer(&nn))
+		out.dev = GPU_DEVICE
+		return
+	}
+	a.ToCPU()
+	b.ToCPU()
+	out.ToCPU()
+	for i := 0; i < n; i++ {
+		out.cpu[i] = a.cpu[i] + b.cpu[i]*s
 	}
 }
 

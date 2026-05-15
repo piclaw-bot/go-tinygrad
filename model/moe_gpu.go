@@ -144,7 +144,7 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 	out := make([]float32, h)
 
 	// Pre-allocate GPU work buffers once (reused across experts)
-	var xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf *gpu.DevBuf
+	var xBuf, gateBuf, upBuf, downBuf, gpuOutBuf *gpu.DevBuf
 	hasGPUExperts := pool != nil && pool.Slots() > 0 && len(selected) > 0
 	if hasGPUExperts {
 		xBuf = xDev
@@ -165,23 +165,17 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 			gpuOutBuf, err = gpu.NewDevBufGPU(h)
 			hasGPUExperts = err == nil
 		}
-		if hasGPUExperts {
-			scaledBuf, err = gpu.NewDevBufGPU(h)
-			hasGPUExperts = err == nil
-		}
 		if !hasGPUExperts {
 			gateBuf.Free()
 			upBuf.Free()
 			downBuf.Free()
 			gpuOutBuf.Free()
-			scaledBuf.Free()
-			xBuf, gateBuf, upBuf, downBuf, gpuOutBuf, scaledBuf = nil, nil, nil, nil, nil, nil
+			xBuf, gateBuf, upBuf, downBuf, gpuOutBuf = nil, nil, nil, nil, nil
 		} else {
 			defer gateBuf.Free()
 			defer upBuf.Free()
 			defer downBuf.Free()
 			defer gpuOutBuf.Free()
-			defer scaledBuf.Free()
 		}
 	}
 
@@ -215,17 +209,16 @@ func moeForwardGPU(outDev, xDev *gpu.DevBuf, layer *LlamaLayer, cfg LlamaConfig,
 			}
 		}
 
-		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil && gpuOutBuf != nil && scaledBuf != nil {
+		if gpuEntry != nil && gpuEntry.GateW != nil && xBuf != nil && gpuOutBuf != nil {
 			// GPU path: reuse pre-allocated buffers
 			gpu.GemvMLXDirect(gateBuf, xBuf, gpuEntry.GateW)
 			gpu.GemvMLXDirect(upBuf, xBuf, gpuEntry.UpW)
 			gpu.DevSiLUMul(gateBuf, gateBuf, upBuf)
 			gpu.GemvMLXDirect(downBuf, gateBuf, gpuEntry.DownW)
-			gpu.DevScale(scaledBuf, downBuf, exp.score)
 			if gpuOutInitialized {
-				gpu.DevAdd(gpuOutBuf, gpuOutBuf, scaledBuf)
+				gpu.DevAddScaled(gpuOutBuf, gpuOutBuf, downBuf, exp.score)
 			} else {
-				gpu.DevCopy(gpuOutBuf, scaledBuf)
+				gpu.DevScale(gpuOutBuf, downBuf, exp.score)
 				gpuOutInitialized = true
 			}
 		} else {
