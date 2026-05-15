@@ -240,7 +240,9 @@ func validGPUMLXWeight(w *GPUMLXWeight) bool {
 	if w.AsGPTQ != nil && validGPUQuantWeight(w.AsGPTQ) {
 		return true
 	}
-	return w.QWeight != nil && w.Scales != nil && w.Biases != nil && w.QWeight.Size >= packed*4 && w.Scales.Size >= scale*4 && w.Biases.Size >= scale*4
+	packedBytes, errP := checkedByteSize(packed, -1)
+	scaleBytes, errS := checkedByteSize(scale, -1)
+	return errP == nil && errS == nil && w.QWeight != nil && w.Scales != nil && w.Biases != nil && w.QWeight.Size >= int(packedBytes) && w.Scales.Size >= int(scaleBytes) && w.Biases.Size >= int(scaleBytes)
 }
 
 // Free releases GPU buffers owned by the MLX quantized weight.

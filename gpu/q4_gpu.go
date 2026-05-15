@@ -122,7 +122,10 @@ func validGPUQuantWeight(w *GPUQuantWeight) bool {
 	}
 	qw, okQ := checkedMulInt(w.InDim/8, w.OutDim)
 	sc, okS := checkedMulInt(w.Groups, w.OutDim)
-	return okQ && okS && w.QWeight.Size >= qw*4 && w.Scales.Size >= sc*4 && w.GIdx.Size >= w.InDim*4
+	qwBytes, errQ := checkedByteSize(qw, -1)
+	scBytes, errS := checkedByteSize(sc, -1)
+	giBytes, errG := checkedByteSize(w.InDim, -1)
+	return okQ && okS && errQ == nil && errS == nil && errG == nil && w.QWeight.Size >= int(qwBytes) && w.Scales.Size >= int(scBytes) && w.GIdx.Size >= int(giBytes)
 }
 
 // GemvQ4 computes out[outDim] = x[inDim] @ dequant(W) on GPU.

@@ -21,7 +21,10 @@ func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
 	mk, okMK := checkedMulInt(M, K)
 	kn, okKN := checkedMulInt(K, N)
 	mn, okMN := checkedMulInt(M, N)
-	if !okMK || !okKN || !okMN || A.Size < mk*4 || B.Size < kn*4 || C.Size < mn*4 {
+	mkBytes, errMK := checkedByteSize(mk, -1)
+	knBytes, errKN := checkedByteSize(kn, -1)
+	mnBytes, errMN := checkedByteSize(mn, -1)
+	if !okMK || !okKN || !okMN || errMK != nil || errKN != nil || errMN != nil || A.Size < int(mkBytes) || B.Size < int(knBytes) || C.Size < int(mnBytes) {
 		return fmt.Errorf("invalid SGEMM buffer sizes")
 	}
 	if !SgemmReady() {

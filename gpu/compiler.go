@@ -125,8 +125,12 @@ func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
 	if k == nil || k.Fn == 0 || n <= 0 || k.GridDiv <= 0 || k.BlockSz <= 0 || len(bufs) < k.NumBufs {
 		return
 	}
+	bytes, err := checkedByteSize(n, -1)
+	if err != nil {
+		return
+	}
 	for i := 0; i < k.NumBufs; i++ {
-		if bufs[i] == nil || bufs[i].Ptr == 0 || bufs[i].Size < n*4 {
+		if bufs[i] == nil || bufs[i].Ptr == 0 || bufs[i].Size < int(bytes) {
 			return
 		}
 	}
