@@ -597,7 +597,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 
 	output := make([]int, len(tokenIDs), len(tokenIDs)+maxTokens)
 	copy(output, tokenIDs)
-	forceCPUAttn := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_CPU_ATTN") == "1"
+	forceCPUAttnEnv := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_CPU_ATTN") == "1"
+	forceCPUAttnLayers := make([]bool, len(g.Layers))
+	if forceCPUAttnEnv {
+		for i := range forceCPUAttnLayers {
+			forceCPUAttnLayers[i] = true
+		}
+	}
 	forceFastDown := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_FAST_DOWN") == "1"
 	syncDebug := cfg.ModelType == "gemma4_text" && os.Getenv("GEMMA4_GPU_SYNC_DEBUG") == "1"
 	profileDecode := os.Getenv("GO_PHERENCE_PROFILE_DECODE") != ""
@@ -970,6 +976,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 				seqLen := pos + 1
 
+				forceLayerCPUAttn := l < len(forceCPUAttnLayers) && forceCPUAttnLayers[l]
+				if kvLayer >= 0 && kvLayer < len(forceCPUAttnLayers) && forceCPUAttnLayers[kvLayer] {
+					forceLayerCPUAttn = true
+				}
 				var kvKPtr, kvVPtr *gpu.Buffer
 				if cpuLayer.HasKV && g.kvGPU_K[l] != nil {
 					kvKPtr = g.kvGPU_K[l].GPUPtr()
@@ -993,8 +1003,25 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 							}
 						}
 					}
-					if forceCPUAttn || !copyOK {
-						forceCPUAttn = true
+					if forceLayerCPUAttn || !copyOK {
+						if !copyOK && !forceLayerCPUAttn {
+							// A failed GPU KV append leaves the GPU cache unusable for this layer's
+							// current and future attention. Rebuild the CPU shadow prefix from the
+							// GPU cache before switching this layer to CPU attention so sequence
+							// length remains correct instead of globally forcing unrelated layers to
+							// use incomplete CPU shadows.
+							prefix := pos * layerKVDim
+							if prefix > 0 {
+								kg := g.kvGPU_K[l].Data()
+								vg := g.kvGPU_V[l].Data()
+								if len(kg) >= prefix && len(vg) >= prefix {
+									g.kvCacheK[l] = append(g.kvCacheK[l][:0], kg[:prefix]...)
+									g.kvCacheV[l] = append(g.kvCacheV[l][:0], vg[:prefix]...)
+								}
+							}
+							forceCPUAttnLayers[l] = true
+							forceLayerCPUAttn = true
+						}
 						kd = g.k.Data()
 						vd = g.v.Data()
 						g.kvCacheK[l] = append(g.kvCacheK[l], kd[:layerKVDim]...)
@@ -1014,10 +1041,10 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				}
 
 				var attnKVPtr *gpu.Buffer
-				if !forceCPUAttn && g.kvGPU_K[kvLayer] != nil {
+				if !forceLayerCPUAttn && g.kvGPU_K[kvLayer] != nil {
 					attnKVPtr = g.kvGPU_K[kvLayer].GPUPtr()
 				}
-				if !forceCPUAttn && attnKVPtr != nil && g.kvGPU_V[kvLayer] != nil && g.kvGPU_V[kvLayer].GPUPtr() != nil {
+				if !forceLayerCPUAttn && attnKVPtr != nil && g.kvGPU_V[kvLayer] != nil && g.kvGPU_V[kvLayer].GPUPtr() != nil {
 					gpu.DevAttention(g.attnOut, g.q, g.kvGPU_K[kvLayer], g.kvGPU_V[kvLayer], seqLen, numHeads, numKVHeads, layerHeadDim, attnScale)
 				} else {
 					qd := g.q.Data()
