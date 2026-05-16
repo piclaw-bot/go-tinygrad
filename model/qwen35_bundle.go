@@ -14,6 +14,19 @@ type Qwen35NativeMTPBundle struct {
 	MTP  *QwenNativeMTPHead
 }
 
+func (b *Qwen35NativeMTPBundle) ValidateNativeMTPReady() error {
+	if b == nil {
+		return fmt.Errorf("nil Qwen3.5 native MTP bundle")
+	}
+	if !b.Meta.HasNativeMTP {
+		return fmt.Errorf("Qwen3.5 native MTP is not enabled in metadata")
+	}
+	if b.MTP == nil {
+		return fmt.Errorf("Qwen3.5 native MTP head is not loaded")
+	}
+	return ValidateQwenNativeMTPHead(b.MTP, b.Meta)
+}
+
 func (b *Qwen35NativeMTPBundle) NewForwardState() (Qwen35BaseForwardState, error) {
 	if b == nil {
 		return Qwen35BaseForwardState{}, fmt.Errorf("nil Qwen3.5 native MTP bundle")

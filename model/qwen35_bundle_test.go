@@ -31,6 +31,9 @@ func TestLoadQwen35NativeMTPBundleWithMTPFromDir(t *testing.T) {
 	if bundle.Base == nil || bundle.MTP == nil || len(bundle.Base.Layers) != 1 || len(bundle.MTP.Layers) != 1 {
 		t.Fatalf("bundle=%+v", bundle)
 	}
+	if err := bundle.ValidateNativeMTPReady(); err != nil {
+		t.Fatalf("ValidateNativeMTPReady: %v", err)
+	}
 }
 
 func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
@@ -52,6 +55,9 @@ func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
 	}
 	if bundle.Meta.HiddenSize != 4 || bundle.Base == nil || len(bundle.Base.Layers) != 1 || bundle.MTP != nil {
 		t.Fatalf("bundle=%+v", bundle)
+	}
+	if err := bundle.ValidateNativeMTPReady(); err == nil {
+		t.Fatal("ValidateNativeMTPReady accepted bundle without MTP")
 	}
 	state, err := bundle.NewForwardState()
 	if err != nil {
