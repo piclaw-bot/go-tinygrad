@@ -75,6 +75,25 @@ func TestLoadQwen35FullAttentionLayer(t *testing.T) {
 	}
 }
 
+func TestQwen35FullAttentionLayerForward(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	src := CandidateQwen35TensorSource{Source: fullQwen35LayerSource(meta, "model.layers.0")}
+	l, err := LoadQwen35FullAttentionLayer(src, meta, "model.layers.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, curK, curV, err := l.ForwardWithKV([]float32{1, 0, 0, 0}, 0, nil, nil, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardWithKV: %v", err)
+	}
+	if len(out) != meta.HiddenSize || len(curK) != meta.NumKeyValueHeads*meta.HeadDim || len(curV) != meta.NumKeyValueHeads*meta.HeadDim {
+		t.Fatalf("out/K/V lens=%d/%d/%d", len(out), len(curK), len(curV))
+	}
+	if out[0] == 0 {
+		t.Fatalf("expected residual output, got %v", out)
+	}
+}
+
 func TestValidateQwen35FullAttentionLayer(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	shapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
