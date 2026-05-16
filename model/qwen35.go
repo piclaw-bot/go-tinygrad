@@ -75,6 +75,68 @@ type Qwen35BaseModel struct {
 	Layers []Qwen35BaseLayer
 }
 
+type Qwen35BaseForwardState struct {
+	FullK  [][]float32
+	FullV  [][]float32
+	Linear []Qwen35LinearAttentionState
+	Pos    int
+}
+
+func NewQwen35BaseForwardState(model *Qwen35BaseModel, meta loaderconfig.QwenNativeMTPMetadata) (Qwen35BaseForwardState, error) {
+	if model == nil {
+		return Qwen35BaseForwardState{}, fmt.Errorf("nil Qwen3.5 base model")
+	}
+	state := Qwen35BaseForwardState{
+		FullK:  make([][]float32, len(model.Layers)),
+		FullV:  make([][]float32, len(model.Layers)),
+		Linear: make([]Qwen35LinearAttentionState, len(model.Layers)),
+	}
+	for i, layer := range model.Layers {
+		if layer.Kind == Qwen35LinearAttentionLayerKind {
+			linearState, err := NewQwen35LinearAttentionState(meta)
+			if err != nil {
+				return Qwen35BaseForwardState{}, fmt.Errorf("linear layer %d state: %w", i, err)
+			}
+			state.Linear[i] = linearState
+		}
+	}
+	return state, nil
+}
+
+func (m *Qwen35BaseModel) ForwardOne(input []float32, state Qwen35BaseForwardState, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35BaseForwardState, error) {
+	if m == nil {
+		return nil, state, fmt.Errorf("nil Qwen3.5 base model")
+	}
+	if len(state.FullK) != len(m.Layers) || len(state.FullV) != len(m.Layers) || len(state.Linear) != len(m.Layers) {
+		return nil, state, fmt.Errorf("Qwen3.5 forward state layer counts K/V/linear=%d/%d/%d want %d", len(state.FullK), len(state.FullV), len(state.Linear), len(m.Layers))
+	}
+	cur := append([]float32(nil), input...)
+	for i := range m.Layers {
+		layer := &m.Layers[i]
+		switch layer.Kind {
+		case Qwen35FullAttentionLayerKind:
+			out, curK, curV, err := layer.Full.ForwardWithKV(cur, pos, ropeFreqs, state.FullK[i], state.FullV[i], eps, meta)
+			if err != nil {
+				return nil, state, fmt.Errorf("Qwen3.5 full-attention layer %d: %w", i, err)
+			}
+			state.FullK[i] = append(state.FullK[i], curK...)
+			state.FullV[i] = append(state.FullV[i], curV...)
+			cur = out
+		case Qwen35LinearAttentionLayerKind:
+			out, nextLinear, err := layer.Linear.ForwardWithState(cur, state.Linear[i], eps, meta)
+			if err != nil {
+				return nil, state, fmt.Errorf("Qwen3.5 linear-attention layer %d: %w", i, err)
+			}
+			state.Linear[i] = nextLinear
+			cur = out
+		default:
+			return nil, state, fmt.Errorf("Qwen3.5 layer %d has unsupported kind %q", i, layer.Kind)
+		}
+	}
+	state.Pos = pos + 1
+	return cur, state, nil
+}
+
 func LoadQwen35BaseModelLayers(src Qwen35TensorSource, meta loaderconfig.QwenNativeMTPMetadata) (*Qwen35BaseModel, error) {
 	if src == nil {
 		return nil, fmt.Errorf("nil Qwen3.5 tensor source")

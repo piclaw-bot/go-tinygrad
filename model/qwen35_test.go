@@ -42,6 +42,49 @@ func fullQwen35LayerSource(meta loaderconfig.QwenNativeMTPMetadata, prefix strin
 	}
 }
 
+func TestQwen35BaseModelForwardOneFullAttention(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 1
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"full_attention"}
+	src := CandidateQwen35TensorSource{Source: fullQwen35LayerSource(meta, "model.layers.0")}
+	base, err := LoadQwen35BaseModelLayers(src, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35BaseForwardState(base, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, next, err := base.ForwardOne([]float32{1, 0, 0, 0}, state, 0, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardOne: %v", err)
+	}
+	if len(out) != meta.HiddenSize || next.Pos != 1 || len(next.FullK[0]) != meta.NumKeyValueHeads*meta.HeadDim {
+		t.Fatalf("out=%v next=%+v", out, next)
+	}
+}
+
+func TestQwen35BaseModelForwardOneLinearUnsupported(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 1
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"linear_attention"}
+	src := CandidateQwen35TensorSource{Source: linearQwen35LayerSource(meta, "model.layers.0")}
+	base, err := LoadQwen35BaseModelLayers(src, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35BaseForwardState(base, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = base.ForwardOne([]float32{1, 0, 0, 0}, state, 0, nil, 1e-6, meta)
+	if err == nil || !strings.Contains(err.Error(), "linear-attention layer 0") || !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("expected linear unsupported, got %v", err)
+	}
+}
+
 func TestLoadQwen35BaseModelLayers(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 2
