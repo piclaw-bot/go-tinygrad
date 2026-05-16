@@ -144,6 +144,7 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 		"text_config":{
 			"model_type":"qwen3_5_text",
 			"hidden_size":5120,
+			"intermediate_size":17408,
 			"num_hidden_layers":64,
 			"num_attention_heads":24,
 			"num_key_value_heads":4,
@@ -163,7 +164,7 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseQwenNativeMTPMetadata: %v", err)
 	}
-	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.NumHiddenLayers != 64 || got.NumAttentionHeads != 24 || got.NumKeyValueHeads != 4 || got.HeadDim != 256 || got.LinearNumValueHeads != 16 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
+	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.IntermediateSize != 17408 || got.NumHiddenLayers != 64 || got.NumAttentionHeads != 24 || got.NumKeyValueHeads != 4 || got.HeadDim != 256 || got.LinearNumValueHeads != 16 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
 		t.Fatalf("metadata=%+v", got)
 	}
 }

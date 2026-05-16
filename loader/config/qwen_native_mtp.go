@@ -11,6 +11,7 @@ type QwenNativeMTPMetadata struct {
 	ModelType                 string   `json:"model_type"`
 	Architecture              string   `json:"architecture,omitempty"`
 	HiddenSize                int      `json:"hidden_size"`
+	IntermediateSize          int      `json:"intermediate_size,omitempty"`
 	NumHiddenLayers           int      `json:"num_hidden_layers"`
 	MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 	MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
@@ -35,6 +36,7 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		TextConfig    *struct {
 			ModelType                 string   `json:"model_type"`
 			HiddenSize                int      `json:"hidden_size"`
+			IntermediateSize          int      `json:"intermediate_size"`
 			NumHiddenLayers           int      `json:"num_hidden_layers"`
 			MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 			MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
@@ -50,6 +52,7 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 			FullAttentionInterval     int      `json:"full_attention_interval"`
 		} `json:"text_config"`
 		HiddenSize                int      `json:"hidden_size"`
+		IntermediateSize          int      `json:"intermediate_size"`
 		NumHiddenLayers           int      `json:"num_hidden_layers"`
 		MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 		MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
@@ -76,6 +79,7 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 			meta.ModelType = raw.TextConfig.ModelType
 		}
 		meta.HiddenSize = raw.TextConfig.HiddenSize
+		meta.IntermediateSize = raw.TextConfig.IntermediateSize
 		meta.NumHiddenLayers = raw.TextConfig.NumHiddenLayers
 		meta.MTPNumHiddenLayers = raw.TextConfig.MTPNumHiddenLayers
 		meta.MTPUseDedicatedEmbeddings = raw.TextConfig.MTPUseDedicatedEmbeddings
@@ -91,6 +95,7 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		meta.FullAttentionInterval = raw.TextConfig.FullAttentionInterval
 	} else {
 		meta.HiddenSize = raw.HiddenSize
+		meta.IntermediateSize = raw.IntermediateSize
 		meta.NumHiddenLayers = raw.NumHiddenLayers
 		meta.MTPNumHiddenLayers = raw.MTPNumHiddenLayers
 		meta.MTPUseDedicatedEmbeddings = raw.MTPUseDedicatedEmbeddings

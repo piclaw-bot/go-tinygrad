@@ -213,7 +213,7 @@ Needed before MTP can matter:
 
 Once base forward works:
 
-- define `QwenNativeMTP` with `fc`, `pre_fc_norm_embedding`, `pre_fc_norm_hidden`, `layers`, and `norm`;
+- [x] define `QwenNativeMTPHead` / layer structs with `fc`, `pre_fc_norm_embedding`, `pre_fc_norm_hidden`, `layers`, and `norm`, plus synthetic shape validation;
 - implement one MTP draft step:
   - normalize embedding and previous hidden separately;
   - concatenate `[embedding || hidden]` to 10240;
