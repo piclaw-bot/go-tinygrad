@@ -40,6 +40,9 @@ func Qwen35LinearAttentionShapesFor(hidden, ssmInner, ssmState, ssmConvKernel, s
 	if headVDim <= 0 || headVDim*ssmDtRank != ssmInner {
 		return Qwen35LinearAttentionShapes{}, fmt.Errorf("linear-attention inner=%d not divisible by dt_rank=%d", ssmInner, ssmDtRank)
 	}
+	// Reference conversion (`conversion/qwen.py`) splits HF `in_proj_qkvz`
+	// into two tensors: QKV contains q/k/v only, and Gate contains z. The
+	// recurrent conv stream is therefore q + k + v = keyDim*2 + valueDim.
 	valueDim := ssmInner
 	convDim := keyDim*2 + valueDim
 	if convDim < keyDim || convDim < valueDim {

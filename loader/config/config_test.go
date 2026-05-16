@@ -108,6 +108,22 @@ func TestNVFP4CompanionNames(t *testing.T) {
 	}
 }
 
+func TestQwen35LinearAttentionShapesMatchReferenceSplit(t *testing.T) {
+	got, err := Qwen35LinearAttentionShapesFor(8, 4, 2, 3, 2, 1)
+	if err != nil {
+		t.Fatalf("Qwen35LinearAttentionShapesFor: %v", err)
+	}
+	if got.KeyDim != 2 || got.ValueDim != 4 || got.ConvDim != 8 {
+		t.Fatalf("dims=%+v", got)
+	}
+	if got.QKV[1] != got.ConvDim {
+		t.Fatalf("QKV width=%d want conv_dim=%d", got.QKV[1], got.ConvDim)
+	}
+	if got.Gate[1] != got.ValueDim {
+		t.Fatalf("Gate width=%d want value_dim=%d", got.Gate[1], got.ValueDim)
+	}
+}
+
 func TestQwen35LinearAttentionShapesFor(t *testing.T) {
 	got, err := Qwen35LinearAttentionShapesFor(5120, 1024, 128, 4, 16, 4)
 	if err != nil {
