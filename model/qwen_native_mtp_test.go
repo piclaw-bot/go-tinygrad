@@ -255,6 +255,32 @@ func TestQwenNativeMTPDraftStepState(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPSharedHeadNormFallback(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	m.Norm = tensor.Ones([]int{meta.HiddenSize})
+	got, err := head.SharedHeadNorm(m)
+	if err != nil {
+		t.Fatalf("SharedHeadNorm: %v", err)
+	}
+	if got != head.Norm {
+		t.Fatal("expected MTP norm to take precedence")
+	}
+	head.Norm = nil
+	got, err = head.SharedHeadNorm(m)
+	if err != nil {
+		t.Fatalf("SharedHeadNorm fallback: %v", err)
+	}
+	if got != m.Norm {
+		t.Fatal("expected model norm fallback")
+	}
+	m.Norm = nil
+	if _, err := head.SharedHeadNorm(m); err == nil {
+		t.Fatal("missing both norms returned nil error")
+	}
+}
+
 func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)

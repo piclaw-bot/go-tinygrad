@@ -312,11 +312,12 @@ func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenN
 	if err != nil {
 		return state, nil, 0, err
 	}
-	if head.Norm == nil {
-		return state, nil, 0, fmt.Errorf("missing mtp.norm.weight")
+	headNorm, err := head.SharedHeadNorm(m)
+	if err != nil {
+		return state, nil, 0, err
 	}
 	logitHidden := append([]float32(nil), nextHidden...)
-	rmsNormInPlace(logitHidden, head.Norm.Data(), eps)
+	rmsNormInPlace(logitHidden, headNorm.Data(), eps)
 	logits := make([]float32, m.Config.VocabSize)
 	if err := m.LMHeadLogitsInto(logits, logitHidden); err != nil {
 		return state, nil, 0, err
@@ -332,6 +333,16 @@ func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenN
 		Pos:    state.Pos + 1,
 	}
 	return nextState, logits, token, nil
+}
+
+func (head *QwenNativeMTPHead) SharedHeadNorm(m *LlamaModel) (*tensor.Tensor, error) {
+	if head != nil && head.Norm != nil {
+		return head.Norm, nil
+	}
+	if m != nil && m.Norm != nil {
+		return m.Norm, nil
+	}
+	return nil, fmt.Errorf("Qwen native MTP: missing both mtp.norm.weight and model output norm")
 }
 
 func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, pos int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {

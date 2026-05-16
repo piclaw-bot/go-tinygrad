@@ -6,6 +6,7 @@ Reference: `/tmp/llama-mtp-clean/src/models/qwen35.cpp` and `/tmp/llama-mtp-clea
 
 - Full-attention path uses Q+gate projection, Q/K RMSNorm, RoPE, GQA attention, sigmoid gate, output projection, residual, post-attention RMSNorm, SwiGLU MLP.
 - MTP block is treated as dense/full-attention only and delegates through the shared Qwen3.5 full-attention path.
+- MTP logits use the MTP/shared-head norm when present, with model output norm as fallback, matching the reference `shared_head_norm ? shared_head_norm : output_norm` behavior.
 - Main layer routing uses recurrent/linear layers except full-attention interval and excludes MTP tail.
 - Linear-attention state is separated from full-attention KV cache and can be cloned for rollback.
 
