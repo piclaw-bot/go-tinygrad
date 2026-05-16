@@ -1987,3 +1987,31 @@ Important findings for go-pherence:
 - The runtime MTP loop keeps `pending_h` per sequence, mirrors target pre-norm hidden rows, drafts multiple tokens by feeding back MTP pre-norm hidden, and updates `pending_h` on accept.
 
 Added the detailed mapping to `docs/qwen36-mtp.md`.
+
+### Step 131 — Native Qwen3.6 MTP scaffolding
+
+Continued the Qwen3.6 27B native-MTP goal using the llama.cpp `mtp-clean` reference as the implementation map.
+
+Implemented metadata/config scaffolding:
+
+- reusable Qwen native-MTP parser in `loader/config`;
+- native `mtp.*` tensor-name detection and required tensor set validation;
+- Qwen3.5/Qwen3.6 full-attention and linear-attention shape helpers;
+- layer classification helpers for main linear/full-attention layers vs appended MTP tail;
+- `cmd/qwenmtpmeta` for local metadata/tensor triage.
+
+Implemented native-MTP head scaffolding:
+
+- `QwenNativeMTPHead` / `QwenNativeMTPLayer` structs;
+- tensor-source loader contract plus safetensors-backed source for BF16/F32 fixtures;
+- synthetic full-head safetensors loading test;
+- CPU preprojection, full-attention/MLP block skeleton, RoPE application, history-aware MTP KV attention, final MTP norm + main LM-head logits/argmax;
+- `QwenNativeMTPDraftState`, bounded `DraftSteps`, plan contract, verifier-token/logit adapters, accepted-prefix draft-state commit, and stats/aggregation helpers;
+- `cmd/qwenmtpsynth` for command-line synthetic correctness.
+
+Remaining blockers:
+
+- real Qwen3.5/Qwen3.6 base forward support, especially gated delta-net linear attention;
+- real native-MTP integration into `LoadLlama` once base support exists;
+- real-checkpoint NVFP4 loading or a non-NVFP4 Qwen3.6 native-MTP artifact;
+- `speccheck -qwen-native-mtp` real-model wiring and golden baseline generation.
