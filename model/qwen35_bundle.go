@@ -14,6 +14,20 @@ type Qwen35NativeMTPBundle struct {
 	MTP  *QwenNativeMTPHead
 }
 
+func (b *Qwen35NativeMTPBundle) NewForwardState() (Qwen35BaseForwardState, error) {
+	if b == nil {
+		return Qwen35BaseForwardState{}, fmt.Errorf("nil Qwen3.5 native MTP bundle")
+	}
+	return NewQwen35BaseForwardState(b.Base, b.Meta)
+}
+
+func (b *Qwen35NativeMTPBundle) ForwardBaseSequence(inputs [][]float32, state Qwen35BaseForwardState, ropeFreqs []float32, eps float32) ([][]float32, Qwen35BaseForwardState, error) {
+	if b == nil || b.Base == nil {
+		return nil, state, fmt.Errorf("nil Qwen3.5 base model in bundle")
+	}
+	return b.Base.ForwardSequence(inputs, state, ropeFreqs, eps, b.Meta)
+}
+
 func LoadQwen35NativeMTPBundleFromDir(dir string) (*Qwen35NativeMTPBundle, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
 	if err != nil {

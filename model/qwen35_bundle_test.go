@@ -53,4 +53,15 @@ func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
 	if bundle.Meta.HiddenSize != 4 || bundle.Base == nil || len(bundle.Base.Layers) != 1 || bundle.MTP != nil {
 		t.Fatalf("bundle=%+v", bundle)
 	}
+	state, err := bundle.NewForwardState()
+	if err != nil {
+		t.Fatalf("NewForwardState: %v", err)
+	}
+	outs, next, err := bundle.ForwardBaseSequence([][]float32{{1, 0, 0, 0}}, state, nil, 1e-6)
+	if err != nil {
+		t.Fatalf("ForwardBaseSequence: %v", err)
+	}
+	if len(outs) != 1 || next.Pos != 1 {
+		t.Fatalf("outs=%v next=%+v", outs, next)
+	}
 }
