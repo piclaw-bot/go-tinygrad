@@ -45,6 +45,30 @@ type QwenNativeMTPTensorSource interface {
 	Get(name string, shape []int) (*tensor.Tensor, error)
 }
 
+func LoadOptionalQwenNativeMTPSharedHead(src QwenNativeMTPTensorSource, vocab, hidden int) (*tensor.Tensor, error) {
+	if src == nil {
+		return nil, fmt.Errorf("nil Qwen native MTP tensor source")
+	}
+	if vocab <= 0 || hidden <= 0 {
+		return nil, fmt.Errorf("invalid Qwen native MTP shared head dims vocab=%d hidden=%d", vocab, hidden)
+	}
+	candidates := []string{
+		"mtp.shared_head_head.weight",
+		"mtp.shared_head.head.weight",
+		"mtp.lm_head.weight",
+	}
+	var lastErr error
+	for _, name := range candidates {
+		t, err := src.Get(name, []int{vocab, hidden})
+		if err == nil {
+			return t, nil
+		}
+		lastErr = err
+	}
+	_ = lastErr
+	return nil, nil
+}
+
 func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.QwenNativeMTPMetadata) (*QwenNativeMTPHead, error) {
 	if src == nil {
 		return nil, fmt.Errorf("nil Qwen native MTP tensor source")

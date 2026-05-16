@@ -387,6 +387,29 @@ func TestQwenNativeMTPPreProject(t *testing.T) {
 	}
 }
 
+func TestLoadOptionalQwenNativeMTPSharedHead(t *testing.T) {
+	src := fakeQwenMTPTensorSource{
+		"mtp.shared_head_head.weight": tensor.Zeros([]int{2, 4}),
+	}
+	got, err := LoadOptionalQwenNativeMTPSharedHead(src, 2, 4)
+	if err != nil {
+		t.Fatalf("LoadOptionalQwenNativeMTPSharedHead: %v", err)
+	}
+	if got == nil {
+		t.Fatal("nil shared head")
+	}
+	missing, err := LoadOptionalQwenNativeMTPSharedHead(fakeQwenMTPTensorSource{}, 2, 4)
+	if err != nil {
+		t.Fatalf("missing optional shared head: %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("missing shared head=%v", missing)
+	}
+	if _, err := LoadOptionalQwenNativeMTPSharedHead(src, 0, 4); err == nil {
+		t.Fatal("bad dims returned nil error")
+	}
+}
+
 func TestLoadQwenNativeMTPHeadSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
