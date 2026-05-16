@@ -232,6 +232,36 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestApplyQwen35LinearDeltaUpdate(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35LinearAttentionState(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := make([]float32, shapes.ConvDim-shapes.ValueDim)
+	v := make([]float32, shapes.ValueDim)
+	for i := range k {
+		k[i] = 1
+	}
+	for i := range v {
+		v[i] = 1
+	}
+	next, out, err := applyQwen35LinearDeltaUpdate(state.SSM, k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta)
+	if err != nil {
+		t.Fatalf("applyQwen35LinearDeltaUpdate: %v", err)
+	}
+	if len(next) != len(state.SSM) || len(out) != shapes.ValueDim || out[0] == 0 {
+		t.Fatalf("next/out=%d/%v", len(next), out)
+	}
+	if _, _, err := applyQwen35LinearDeltaUpdate(state.SSM[:len(state.SSM)-1], k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta); err == nil {
+		t.Fatal("bad SSM state len returned nil error")
+	}
+}
+
 func TestPrepareQwen35LinearDeltaParams(t *testing.T) {
 	dt, decay, err := prepareQwen35LinearDeltaParams([]float32{0, 1}, []float32{2, 3}, []float32{0, -1}, []float32{1, 2}, 2)
 	if err != nil {

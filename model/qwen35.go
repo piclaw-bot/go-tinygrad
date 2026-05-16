@@ -386,6 +386,41 @@ func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]fl
 	return next, nil
 }
 
+func applyQwen35LinearDeltaUpdate(ssm, k, v, beta, dt, decay []float32, shapes loaderconfig.Qwen35LinearAttentionShapes, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, []float32, error) {
+	stateLen := meta.LinearNumValueHeads * meta.LinearValueHeadDim * meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
+	if len(ssm) != stateLen {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention SSM state len=%d want %d", len(ssm), stateLen)
+	}
+	if len(k) != shapes.ConvDim-shapes.ValueDim || len(v) != shapes.ValueDim {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta K/V len=%d/%d want %d/%d", len(k), len(v), shapes.ConvDim-shapes.ValueDim, shapes.ValueDim)
+	}
+	rank := meta.LinearNumValueHeads
+	if len(beta) != rank || len(dt) != rank || len(decay) != rank {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta rank lens beta/dt/decay=%d/%d/%d want %d", len(beta), len(dt), len(decay), rank)
+	}
+	next := append([]float32(nil), ssm...)
+	out := make([]float32, shapes.ValueDim)
+	keyWidth := meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
+	for vh := 0; vh < meta.LinearNumValueHeads; vh++ {
+		for vd := 0; vd < meta.LinearValueHeadDim; vd++ {
+			vIdx := vh*meta.LinearValueHeadDim + vd
+			acc := float32(0)
+			for kh := 0; kh < meta.LinearNumKeyHeads; kh++ {
+				for kd := 0; kd < meta.LinearKeyHeadDim; kd++ {
+					kIdx := kh*meta.LinearKeyHeadDim + kd
+					stateIdx := ((vh*meta.LinearValueHeadDim+vd)*meta.LinearNumKeyHeads+kh)*meta.LinearKeyHeadDim + kd
+					next[stateIdx] = next[stateIdx]*decay[vh] + beta[vh]*dt[vh]*v[vIdx]*k[kIdx]
+					acc += next[stateIdx] * k[kIdx]
+				}
+			}
+			if keyWidth > 0 {
+				out[vIdx] = acc / float32(keyWidth)
+			}
+		}
+	}
+	return next, out, nil
+}
+
 func softplus(x float32) float32 {
 	if x > 20 {
 		return x
