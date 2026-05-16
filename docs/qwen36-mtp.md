@@ -217,7 +217,7 @@ Needed before MTP can matter:
 - [ ] implement linear-attention/gated-delta-net layer (typed recurrent state and clear unsupported forward stub exist):
   - in_proj_qkvz layout and conversion/reorder (projection shape and split primitive staged);
   - conv1d state (state update and depthwise conv primitives staged);
-  - beta/alpha/dt/a recurrent update;
+  - beta/alpha/dt/a recurrent update (alpha/beta projection primitive staged; recurrent math still pending);
   - gated RMSNorm with z;
   - recurrent state cache layout and rollback semantics.
 - [ ] support attention output gates if required (`attn_output_gate`, `output_gate_type`);

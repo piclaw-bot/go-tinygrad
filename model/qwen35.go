@@ -385,6 +385,24 @@ func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]fl
 	return next, nil
 }
 
+func projectQwen35LinearAlphaBeta(input []float32, alphaW, betaW []float32, hidden, rank int) (alpha, beta []float32, err error) {
+	if hidden <= 0 || rank <= 0 {
+		return nil, nil, fmt.Errorf("invalid Qwen3.5 linear-attention alpha/beta dims hidden=%d rank=%d", hidden, rank)
+	}
+	if len(input) != hidden {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention alpha/beta input len=%d want %d", len(input), hidden)
+	}
+	want := hidden * rank
+	if len(alphaW) != want || len(betaW) != want {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention alpha/beta weight lens=%d/%d want %d", len(alphaW), len(betaW), want)
+	}
+	alpha = make([]float32, rank)
+	beta = make([]float32, rank)
+	gemvNT(alpha, input, alphaW, hidden, rank)
+	gemvNT(beta, input, betaW, hidden, rank)
+	return alpha, beta, nil
+}
+
 func splitQwen35LinearConvOutput(conv []float32, shapes loaderconfig.Qwen35LinearAttentionShapes) (k, v []float32, err error) {
 	if len(conv) != shapes.ConvDim {
 		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention conv output len=%d want %d", len(conv), shapes.ConvDim)
@@ -455,6 +473,9 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 		return nil, state, err
 	}
 	if _, _, err := splitQwen35LinearConvOutput(convOut, shapes); err != nil {
+		return nil, state, err
+	}
+	if _, _, err := projectQwen35LinearAlphaBeta(cur, l.AlphaW.Data(), l.BetaW.Data(), meta.HiddenSize, meta.LinearNumValueHeads); err != nil {
 		return nil, state, err
 	}
 	state.Conv = nextConv

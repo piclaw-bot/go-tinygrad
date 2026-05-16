@@ -232,6 +232,25 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestProjectQwen35LinearAlphaBeta(t *testing.T) {
+	input := []float32{1, 2, 3}
+	alphaW := []float32{1, 10, 2, 20, 3, 30}
+	betaW := []float32{4, 40, 5, 50, 6, 60}
+	alpha, beta, err := projectQwen35LinearAlphaBeta(input, alphaW, betaW, 3, 2)
+	if err != nil {
+		t.Fatalf("projectQwen35LinearAlphaBeta: %v", err)
+	}
+	if len(alpha) != 2 || alpha[0] != 27 || alpha[1] != 116 || beta[0] != 99 || beta[1] != 242 {
+		t.Fatalf("alpha/beta=%v/%v", alpha, beta)
+	}
+	if _, _, err := projectQwen35LinearAlphaBeta(input[:2], alphaW, betaW, 3, 2); err == nil {
+		t.Fatal("bad input len returned nil error")
+	}
+	if _, _, err := projectQwen35LinearAlphaBeta(input, alphaW[:5], betaW, 3, 2); err == nil {
+		t.Fatal("bad weight len returned nil error")
+	}
+}
+
 func TestSplitQwen35LinearConvOutput(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
