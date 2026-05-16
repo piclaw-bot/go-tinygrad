@@ -430,9 +430,10 @@ func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
 		return
 	}
 	if SgemmReady() && tryGPU(x, W, out) {
-		Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu)
-		out.dev = GPU_DEVICE
-		return
+		if err := Sgemm(M, 1, K, 1.0, W.gpu, x.gpu, out.gpu); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback: out[j] = dot(W[j,:], x)
 	x.ToCPU()
@@ -538,9 +539,10 @@ func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
 		return
 	}
 	if SgemmReady() && tryGPU(x, W, out) {
-		Sgemm(1, N, K, 1.0, x.gpu, W.gpu, out.gpu)
-		out.dev = GPU_DEVICE
-		return
+		if err := Sgemm(1, N, K, 1.0, x.gpu, W.gpu, out.gpu); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	x.ToCPU()
