@@ -30,6 +30,31 @@ func TestCPUDecodeStateCommitAcceptedFloatKV(t *testing.T) {
 	}
 }
 
+func TestCPUDecodeStateCommitAcceptedOutputOnly(t *testing.T) {
+	m := &LlamaModel{
+		Config: LlamaConfig{NumKVHeads: 1, HeadDim: 2},
+		Layers: []LlamaLayer{{HasKV: true}},
+	}
+	st, err := NewCPUDecodeStateForSpeculative(m, []int{1, 2}, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := st.Checkpoint()
+	acc, err := AcceptMTPDraft([]int{3, 4}, []int{3, 9, 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CommitAcceptedOutputOnly(cp, acc); err != nil {
+		t.Fatalf("CommitAcceptedOutputOnly: %v", err)
+	}
+	if !sameInts(st.Output, []int{1, 2, 3, 9}) {
+		t.Fatalf("output=%v", st.Output)
+	}
+	if len(st.KVCacheK[0]) != 0 || len(st.KVCacheV[0]) != 0 {
+		t.Fatalf("output-only commit changed KV")
+	}
+}
+
 func TestCPUDecodeStateRestoreFloatKV(t *testing.T) {
 	m := &LlamaModel{
 		Config: LlamaConfig{NumKVHeads: 1, HeadDim: 1},

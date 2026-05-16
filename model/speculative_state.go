@@ -82,6 +82,18 @@ func (s *CPUDecodeState) Restore(cp CPUDecodeCheckpoint) error {
 	return cp.FloatKV.Restore(s.KVCacheK, s.KVCacheV)
 }
 
+func (s *CPUDecodeState) CommitAcceptedOutputOnly(cp CPUDecodeCheckpoint, acceptance MTPAcceptance) error {
+	if err := acceptance.Validate(); err != nil {
+		return err
+	}
+	if cp.OutputLen < 0 || cp.OutputLen > len(s.Output) {
+		return fmt.Errorf("checkpoint output len=%d outside current len=%d", cp.OutputLen, len(s.Output))
+	}
+	s.Output = s.Output[:cp.OutputLen]
+	s.Output = append(s.Output, acceptance.OutputTokens...)
+	return nil
+}
+
 func (s *CPUDecodeState) CommitAccepted(cp CPUDecodeCheckpoint, acceptance MTPAcceptance) error {
 	if err := acceptance.Validate(); err != nil {
 		return err

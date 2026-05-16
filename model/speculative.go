@@ -109,7 +109,10 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if maxTokens > maxInt-len(prepared) {
 		return append([]int(nil), prepared...)
 	}
-	out := append([]int(nil), prepared...)
+	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens)
+	if err != nil {
+		return m.generatePrepared(prepared, maxTokens)
+	}
 	stats := SpeculativeStats{}
 	defer func() {
 		if cfg.Debug {
@@ -117,21 +120,21 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 				stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
 		}
 	}()
-	for len(out) < len(prepared)+maxTokens {
+	for len(state.Output) < len(prepared)+maxTokens {
 		stats.Steps++
-		remaining := len(prepared) + maxTokens - len(out)
+		remaining := len(prepared) + maxTokens - len(state.Output)
 		block := cfg.BlockSize
 		if block <= 0 || block > remaining-1 {
 			block = remaining - 1
 		}
-		proposal := PromptLookupProposal(out, block, cfg.NGram)
+		proposal := PromptLookupProposal(state.Output, block, cfg.NGram)
 		if len(proposal) == 0 {
 			stats.FallbackSteps++
-			verified := m.generatePrepared(out, 1)
-			if len(verified) <= len(out) {
-				return out
+			verified := m.generatePrepared(state.Output, 1)
+			if len(verified) <= len(state.Output) {
+				return state.Output
 			}
-			out = append(out, verified[len(out)])
+			state.Output = append(state.Output, verified[len(state.Output)])
 			continue
 		}
 
@@ -146,32 +149,39 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if verifyN > remaining {
 			verifyN = remaining
 		}
-		verified := m.generatePrepared(out, verifyN)
-		if len(verified) <= len(out) {
-			return out
+		checkpoint := state.Checkpoint()
+		verified := m.generatePrepared(state.Output, verifyN)
+		if len(verified) <= len(state.Output) {
+			return state.Output
 		}
-		verifierTokens := verified[len(out):]
+		verifierTokens := verified[len(state.Output):]
 		if len(verifierTokens) > len(proposal)+1 {
 			verifierTokens = verifierTokens[:len(proposal)+1]
 		}
 		acceptance, err := AcceptMTPDraft(proposal, verifierTokens)
 		if err != nil {
 			stats.FallbackSteps++
-			verified = m.generatePrepared(out, 1)
-			if len(verified) <= len(out) {
-				return out
+			_ = state.Restore(checkpoint)
+			verified = m.generatePrepared(state.Output, 1)
+			if len(verified) <= len(state.Output) {
+				return state.Output
 			}
-			out = append(out, verified[len(out)])
+			state.Output = append(state.Output, verified[len(state.Output)])
 			continue
 		}
 		stats.AcceptedTokens += acceptance.AcceptedPrefixLen
 		stats.BonusTokens++
-		for _, tok := range acceptance.OutputTokens {
-			if len(out) >= len(prepared)+maxTokens {
-				break
+		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
+			_ = state.Restore(checkpoint)
+			verified = m.generatePrepared(state.Output, 1)
+			if len(verified) <= len(state.Output) {
+				return state.Output
 			}
-			out = append(out, tok)
+			state.Output = append(state.Output, verified[len(state.Output)])
+		}
+		if len(state.Output) > len(prepared)+maxTokens {
+			state.Output = state.Output[:len(prepared)+maxTokens]
 		}
 	}
-	return out
+	return state.Output
 }
