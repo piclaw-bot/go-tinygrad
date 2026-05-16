@@ -17,7 +17,7 @@ func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
 	if logits == nil || x == nil || W == nil || vocab <= 0 || h <= 0 || !ok || logits.n < vocab || x.n < h || W.n < weightLen {
 		return
 	}
-	if !kernelsLoaded || fnLMHead == 0 || !tryGPU(x, W, logits) {
+	if !kernelsLoaded || fnLMHead == 0 || !fitsUint32(vocab) || !fitsUint32(h) || !tryGPU(x, W, logits) {
 		DevGemv(logits, x, W, vocab, h)
 		return
 	}
