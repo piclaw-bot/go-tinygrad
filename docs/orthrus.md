@@ -4,14 +4,21 @@ Orthrus is a Qwen3-derived dual-view generation scheme from `chiennv2000/orthrus
 
 ## Fit with go-pherence
 
-Orthrus fits as a new generation mode rather than a new quantization family:
+Orthrus is useful primarily as an algorithmic reference. The published implementation obtains its lossless speedup from custom-trained diffusion-view attention tensors, but go-pherence should not require custom Orthrus checkpoint weights.
 
-- the base path is standard dense Qwen3;
-- checkpoints add per-layer diffusion attention tensors;
-- MLP, embeddings, final norm, LM head, and autoregressive KV cache are shared;
-- the verifier is the existing autoregressive forward path over a proposed block.
+Useful pieces:
 
-The initial safe behavior is to load Orthrus checkpoints as baseline Qwen3 and ignore diffusion tensors. The speedup requires explicit Orthrus generation support.
+- the verifier is an ordinary autoregressive pass over a proposed block;
+- accepted tokens share the normal high-fidelity KV cache;
+- cache crop/accept/reject mechanics are directly relevant to generic speculative decoding.
+
+Not directly reusable without custom weights:
+
+- the diffusion proposer itself;
+- the `*_diff` projection/norm tensors;
+- the strict Orthrus acceptance-rate claims.
+
+The initial safe behavior is to recognize Orthrus checkpoints for metadata/debugging only. For normal go-pherence models, reuse the verification/cache-control structure rather than the custom diffusion view.
 
 ## Checkpoint markers
 
@@ -45,21 +52,28 @@ model.layers.N.self_attn.k_norm_diff.weight
 
 ## Port sequence
 
-1. Detect Orthrus metadata in `LlamaConfig`.
-2. Baseline-load checkpoints through the existing Qwen3 path, ignoring `*_diff` tensors.
-3. Add CPU structs for diffusion attention weights.
-4. Add a greedy-only Orthrus generation mode:
+1. Detect Orthrus metadata in `LlamaConfig` for compatibility/debugging.
+2. Keep Orthrus diffusion generation disabled unless custom `*_diff` tensors are explicitly loaded.
+3. Port the generic verifier mechanics to standard models:
    - run prompt AR pass and keep shared KV cache;
-   - generate the first next token normally;
-   - build a masked block of length `block_size`;
-   - run the diffusion attention view over that block against the AR KV cache;
+   - accept a proposed block from a non-custom proposer;
    - run an AR verifier pass over the proposed block;
    - accept the longest matching prefix and crop KV cache.
-5. Add exact sampling later using the paper/PyTorch residual distribution logic.
-6. Move hot diffusion/verifier block paths to GPU only after CPU parity tests pass.
+4. Start with deterministic greedy verification.
+5. Add exact sampling later using speculative-decoding residual distribution logic.
+6. Move hot verifier-block paths to GPU only after CPU parity tests pass.
+
+Candidate non-custom proposers:
+
+- n-gram/cache proposer for repeated text;
+- prompt lookup decoding;
+- smaller existing model as drafter;
+- self-speculative early-exit/layer-skip proposer if confidence is good enough;
+- CPU heuristic proposer for structured/code completions.
 
 ## Non-goals
 
 - This does not advance NVFP4 support directly.
 - This does not apply to Qwen3 MoE checkpoints in the current Orthrus release.
-- Do not enable diffusion generation by default until token-level parity against the Python implementation is established.
+- Do not require or depend on Orthrus custom checkpoint weights.
+- Do not claim Orthrus-style lossless diffusion speedups for stock Qwen/Gemma weights; only the verifier is lossless, while speedup depends on proposer quality.
