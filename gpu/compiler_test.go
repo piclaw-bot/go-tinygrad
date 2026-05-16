@@ -131,4 +131,7 @@ func TestCompilerValidationRejectsMalformedSpecs(t *testing.T) {
 	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 0, BlockSz: 256}).Launch(1, &Buffer{Ptr: 1, Size: 4})
 	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1)
 	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1, &Buffer{Ptr: 0, Size: 4})
+	maxU32 := int(^uint32(0))
+	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(maxU32+1, &Buffer{Ptr: 1, Size: maxU32})
+	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: maxU32 + 1}).Launch(1, &Buffer{Ptr: 1, Size: 4})
 }

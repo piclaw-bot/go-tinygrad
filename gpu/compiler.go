@@ -126,7 +126,11 @@ func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
 		return
 	}
 	bytes, err := checkedByteSize(n, -1)
-	if err != nil {
+	if err != nil || !fitsUint32(n) || !fitsUint32(k.BlockSz) || !fitsUint32(k.SharedMem) {
+		return
+	}
+	gridInt := (n + k.GridDiv - 1) / k.GridDiv
+	if !fitsUint32(gridInt) {
 		return
 	}
 	for i := 0; i < k.NumBufs; i++ {
@@ -135,7 +139,7 @@ func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
 		}
 	}
 	EnsureContext()
-	grid := uint32((n + k.GridDiv - 1) / k.GridDiv)
+	grid := uint32(gridInt)
 	args := make([]unsafe.Pointer, len(bufs)+1)
 	for i, b := range bufs {
 		args[i] = unsafe.Pointer(&b.Ptr)
