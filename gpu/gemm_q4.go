@@ -22,7 +22,7 @@ func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
 	}
 	inLen, okIn := checkedMulInt(B, w.InDim)
 	outLen, okOut := checkedMulInt(B, w.OutDim)
-	if !q4Ready || fnGemmQ4 == 0 || !okIn || !okOut {
+	if !q4Ready || fnGemmQ4 == 0 || !okIn || !okOut || !fitsUint32(B) || !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) {
 		return
 	}
 	if input.n < inLen || out.n < outLen || !tryGPU(input, out) {
