@@ -489,11 +489,13 @@ func DevCopy(dst, src *DevBuf) {
 		return
 	}
 	if src.gpu != nil && dst.gpu != nil && n >= 2048 {
-		if src.ToGPU() == nil && dst.ToGPU() == nil {
-			recordDeviceToDeviceCopy()
-			cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, uint64(n)*4, 0) // stream 0 = default
-			dst.dev = GPU_DEVICE
-			return
+		bytes, err := checkedByteSize(n, -1)
+		if err == nil && src.ToGPU() == nil && dst.ToGPU() == nil {
+			if r := cuMemcpyDtoDAsync(dst.gpu.Ptr, src.gpu.Ptr, bytes, 0); r == CUDA_SUCCESS { // stream 0 = default
+				recordDeviceToDeviceCopy()
+				dst.dev = GPU_DEVICE
+				return
+			}
 		}
 	}
 	src.ToCPU()
