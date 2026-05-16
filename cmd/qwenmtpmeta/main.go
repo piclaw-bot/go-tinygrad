@@ -20,6 +20,9 @@ type Report struct {
 	OptionalSharedHeadTensors []string                                  `json:"optional_shared_head_tensors,omitempty"`
 	MissingMTPTensors         []string                                  `json:"missing_mtp_tensors,omitempty"`
 	CanLoadSharedHead         bool                                      `json:"can_load_shared_head"`
+	MTPTensorCount            int                                       `json:"mtp_tensor_count"`
+	OptionalSharedHeadCount   int                                       `json:"optional_shared_head_count"`
+	MissingMTPTensorCount     int                                       `json:"missing_mtp_tensor_count"`
 }
 
 func main() {
@@ -57,6 +60,9 @@ func main() {
 		}
 		report.MissingMTPTensors = loaderconfig.MissingQwenNativeMTPTensors(report.MTPTensors, meta.MTPNumHiddenLayers)
 	}
+	report.MTPTensorCount = len(report.MTPTensors)
+	report.OptionalSharedHeadCount = len(report.OptionalSharedHeadTensors)
+	report.MissingMTPTensorCount = len(report.MissingMTPTensors)
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(report); err != nil {
