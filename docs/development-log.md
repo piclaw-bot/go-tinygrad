@@ -1965,3 +1965,11 @@ Audit fixes during this work:
 - Fixed `specbench` token accounting to use `PreparedGenerateTokens`, because CPU generation may add BOS/chat-template tokens before decoding.
 
 Current result: the path is exact and observable but intentionally slower with `backend=replay`. Real speedups require replacing replay verification with a KV-reusing verifier block and then measuring proposer quality with `specbench`.
+
+### Step 129 — Pivot active goal to Qwen3.6 27B native MTP
+
+Set Qwen3.6 27B native MTP as the active project goal. The immediate target is no longer generic Orthrus-style speculation, but the Qwen3.5/Qwen3.6 text architecture plus its embedded `mtp.*` native MTP head.
+
+Key checkpoint finding remains `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`, which exposes `text_config.model_type=qwen3_5_text`, 64 mixed linear/full-attention layers, and one native MTP layer (`mtp_num_hidden_layers=1`). The safetensors header shows the native MTP layout (`mtp.fc`, pre-FC norms, one MTP decoder layer, and `mtp.norm`). The public artifact is NVFP4, so implementation needs either a non-NVFP4 artifact or enough real-checkpoint NVFP4 loading to reach parity.
+
+Updated `docs/qwen36-mtp.md` from notes into the active roadmap. First milestone is clear loader/config diagnostics and base Qwen3.6 text-model support before native MTP generation is enabled.

@@ -4,6 +4,8 @@
 
 **Run MLX models on any hardware.** A pure Go inference engine for Apple MLX, GPTQ and BF16 model weights — with a production CUDA backend, Vulkan scaffolding, and SIMD assembly CPU paths. Single static binary, no Python, no CGo, no external dependencies.
 
+> Active development goal: Qwen3.6 27B native MTP support. See [docs/qwen36-mtp.md](docs/qwen36-mtp.md) for checkpoint findings, blockers, and the implementation roadmap.
+
 ## Why
 
 Apple's [MLX](https://github.com/ml-explore/mlx) ecosystem has the best quantized model collection on HuggingFace (mlx-community). But MLX only runs on Apple Silicon. **go-pherence runs those same MLX weights on NVIDIA GPUs, Intel/AMD CPUs, ARM SBCs, and (soon) any Vulkan device.**

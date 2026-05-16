@@ -1,8 +1,17 @@
-# Qwen3.6 27B Native MTP notes
+# Qwen3.6 27B Native MTP roadmap
 
-## Goal
+## Active goal
 
-Get a Qwen3.6 27B checkpoint with native MTP running in go-pherence as quickly as possible, without confusing it with the separate Gemma4 assistant-drafter MTP or the Orthrus-inspired stock-weight speculative scaffold.
+**Qwen3.6 27B with native MTP is now the active project goal.** Get a Qwen3.6 27B checkpoint with native MTP running in go-pherence as quickly as possible, without confusing it with the separate Gemma4 assistant-drafter MTP or the Orthrus-inspired stock-weight speculative scaffold.
+
+Definition of done for the first useful milestone:
+
+- load Qwen3.6 text config and tensors far enough to reject/route unsupported pieces clearly;
+- support the base Qwen3.6 text forward path needed by the 27B checkpoint;
+- load the native `mtp.*` head metadata/weights;
+- run greedy CPU correctness for at least one short prompt;
+- run `speccheck` normal-vs-native-MTP parity with K=1;
+- only then optimize CUDA/KV reuse.
 
 ## Public checkpoint finding
 
@@ -121,11 +130,29 @@ Use `cmd/speccheck` to compare:
 
 Do not optimize GPU until CPU token parity is stable.
 
-## Immediate recommendation
+## Immediate execution plan
 
-For ASAP progress:
+This supersedes the prior Orthrus/stock-weight speculative exploration as the main implementation track.
 
-1. first find or produce a non-NVFP4 Qwen3.6 27B MTP safetensors artifact;
-2. in parallel, add metadata/header tests and explicit unsupported diagnostics for `qwen3_5_text + mtp_num_hidden_layers`;
-3. only then implement Qwen3.5 linear-attention base layers;
-4. then wire the native MTP head into the existing speculative acceptance/checkpoint harness.
+1. **Checkpoint triage**
+   - find or produce a non-NVFP4 Qwen3.6 27B MTP safetensors artifact if possible;
+   - keep inspecting NVFP4 metadata so the current public checkpoint remains useful as a shape/layout oracle;
+   - do not enable public NVFP4 generation until real logits/tokens agree.
+2. **Loader/config gate**
+   - add metadata/header tests and explicit unsupported diagnostics for `qwen3_5_text + mtp_num_hidden_layers`;
+   - avoid silent partial loads or generic missing-tensor errors.
+3. **Base Qwen3.6 text model**
+   - implement nested `text_config` loading and tensor prefix mapping;
+   - implement or explicitly stage support for `linear_attention` / `full_attention` layers;
+   - validate full-attention-only synthetic fixtures before touching large weights.
+4. **Native MTP head**
+   - load `mtp.fc`, pre-FC norms, one MTP decoder layer, and `mtp.norm`;
+   - implement K=1 greedy draft step;
+   - reuse `AcceptMTPDraft` and `speccheck` parity checks.
+5. **Correctness harness**
+   - extend `speccheck` with a native-MTP mode once the draft step exists;
+   - store golden token baselines for small prompts;
+   - only optimize after CPU parity is stable.
+6. **Performance path**
+   - replace replay verification with KV-reusing verifier block;
+   - then move hot MTP and verifier paths to CUDA.
