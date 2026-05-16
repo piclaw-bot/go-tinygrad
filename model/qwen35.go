@@ -83,6 +83,33 @@ type Qwen35BaseForwardState struct {
 	Pos    int
 }
 
+func CloneQwen35LinearAttentionState(state Qwen35LinearAttentionState) Qwen35LinearAttentionState {
+	return Qwen35LinearAttentionState{
+		Conv: append([]float32(nil), state.Conv...),
+		SSM:  append([]float32(nil), state.SSM...),
+		Pos:  state.Pos,
+	}
+}
+
+func CloneQwen35BaseForwardState(state Qwen35BaseForwardState) Qwen35BaseForwardState {
+	out := Qwen35BaseForwardState{
+		FullK:  make([][]float32, len(state.FullK)),
+		FullV:  make([][]float32, len(state.FullV)),
+		Linear: make([]Qwen35LinearAttentionState, len(state.Linear)),
+		Pos:    state.Pos,
+	}
+	for i := range state.FullK {
+		out.FullK[i] = append([]float32(nil), state.FullK[i]...)
+	}
+	for i := range state.FullV {
+		out.FullV[i] = append([]float32(nil), state.FullV[i]...)
+	}
+	for i := range state.Linear {
+		out.Linear[i] = CloneQwen35LinearAttentionState(state.Linear[i])
+	}
+	return out
+}
+
 func NewQwen35BaseForwardState(model *Qwen35BaseModel, meta loaderconfig.QwenNativeMTPMetadata) (Qwen35BaseForwardState, error) {
 	if model == nil {
 		return Qwen35BaseForwardState{}, fmt.Errorf("nil Qwen3.5 base model")
@@ -111,6 +138,7 @@ func (m *Qwen35BaseModel) ForwardOne(input []float32, state Qwen35BaseForwardSta
 	if len(state.FullK) != len(m.Layers) || len(state.FullV) != len(m.Layers) || len(state.Linear) != len(m.Layers) {
 		return nil, state, fmt.Errorf("Qwen3.5 forward state layer counts K/V/linear=%d/%d/%d want %d", len(state.FullK), len(state.FullV), len(state.Linear), len(m.Layers))
 	}
+	state = CloneQwen35BaseForwardState(state)
 	cur := append([]float32(nil), input...)
 	for i := range m.Layers {
 		layer := &m.Layers[i]

@@ -219,7 +219,7 @@ Needed before MTP can matter:
   - conv1d state (state update and depthwise conv primitives staged);
   - beta/alpha/dt/a recurrent update (conservative scalar recurrence staged);
   - z-gated output path;
-  - recurrent state cache layout and rollback semantics (forward state exists; rollback integration still pending).
+  - recurrent state cache layout and rollback semantics (forward state exists and clone/checkpoint helpers are staged; speculative integration still pending).
 - [ ] support attention output gates if required (`attn_output_gate`, `output_gate_type`);
 - [ ] validate BF16/full-precision baseline first, if a non-NVFP4 checkpoint exists.
 

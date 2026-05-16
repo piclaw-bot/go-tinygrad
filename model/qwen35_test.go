@@ -59,6 +59,46 @@ func TestAppendQwen35FullAttentionKV(t *testing.T) {
 	}
 }
 
+func TestCloneQwen35BaseForwardState(t *testing.T) {
+	state := Qwen35BaseForwardState{
+		FullK:  [][]float32{{1, 2}},
+		FullV:  [][]float32{{3, 4}},
+		Linear: []Qwen35LinearAttentionState{{Conv: []float32{5}, SSM: []float32{6}, Pos: 7}},
+		Pos:    8,
+	}
+	clone := CloneQwen35BaseForwardState(state)
+	clone.FullK[0][0] = 10
+	clone.FullV[0][0] = 11
+	clone.Linear[0].Conv[0] = 12
+	clone.Linear[0].SSM[0] = 13
+	if state.FullK[0][0] != 1 || state.FullV[0][0] != 3 || state.Linear[0].Conv[0] != 5 || state.Linear[0].SSM[0] != 6 {
+		t.Fatalf("clone aliased original: state=%+v clone=%+v", state, clone)
+	}
+}
+
+func TestQwen35BaseModelForwardOneDoesNotMutateInputState(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 1
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"full_attention"}
+	src := CandidateQwen35TensorSource{Source: fullQwen35LayerSource(meta, "model.layers.0")}
+	base, err := LoadQwen35BaseModelLayers(src, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35BaseForwardState(base, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, next, err := base.ForwardOne([]float32{1, 0, 0, 0}, state, 0, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.FullK[0]) != 0 || len(next.FullK[0]) == 0 {
+		t.Fatalf("state mutated or next empty: state=%+v next=%+v", state, next)
+	}
+}
+
 func TestQwen35BaseModelForwardOneFullAttention(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 1
