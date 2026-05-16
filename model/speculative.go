@@ -29,12 +29,13 @@ func (p PromptLookupProposer) Propose(context []int, max int) []int {
 }
 
 type SpeculativeStats struct {
-	Steps          int
-	ProposalSteps  int
-	ProposedTokens int
-	AcceptedTokens int
-	BonusTokens    int
-	FallbackSteps  int
+	VerifierBackend string
+	Steps           int
+	ProposalSteps   int
+	ProposedTokens  int
+	AcceptedTokens  int
+	BonusTokens     int
+	FallbackSteps   int
 }
 
 func (s SpeculativeStats) AcceptanceRate() float64 {
@@ -126,11 +127,11 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if err != nil {
 		return m.generatePrepared(prepared, maxTokens)
 	}
-	stats := SpeculativeStats{}
+	stats := SpeculativeStats{VerifierBackend: state.VerifierBackend()}
 	defer func() {
 		if cfg.Debug {
-			fmt.Fprintf(os.Stderr, "speculative steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
-				stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
+			fmt.Fprintf(os.Stderr, "speculative backend=%s steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
+				stats.VerifierBackend, stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
 		}
 	}()
 	for len(state.Output) < len(prepared)+maxTokens {

@@ -61,6 +61,10 @@ func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens in
 	return st, nil
 }
 
+func (s *CPUDecodeState) VerifierBackend() string {
+	return "replay"
+}
+
 func (s *CPUDecodeState) DecodeOneGreedy() (int, error) {
 	if s == nil || s.Model == nil {
 		return 0, fmt.Errorf("nil decode state/model")

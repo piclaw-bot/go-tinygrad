@@ -2,6 +2,17 @@ package model
 
 import "testing"
 
+func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
+	stats := SpeculativeStats{VerifierBackend: "replay", ProposedTokens: 4, AcceptedTokens: 3}
+	if got := stats.AcceptanceRate(); got != 0.75 {
+		t.Fatalf("AcceptanceRate=%v want 0.75", got)
+	}
+	stats.ProposedTokens = 0
+	if got := stats.AcceptanceRate(); got != 0 {
+		t.Fatalf("zero-proposal AcceptanceRate=%v want 0", got)
+	}
+}
+
 func TestPromptLookupProposer(t *testing.T) {
 	p := PromptLookupProposer{NGram: 2}
 	got := p.Propose([]int{1, 2, 3, 4, 1, 2}, 2)
