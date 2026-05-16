@@ -50,6 +50,15 @@ func LoadQwenNativeMTPHeadFromSafetensorsDir(dir string, meta loaderconfig.QwenN
 	return LoadQwenNativeMTPHead(src, meta)
 }
 
+func LoadQwen35BaseModelLayersFromSafetensorsDir(dir string, meta loaderconfig.QwenNativeMTPMetadata) (*Qwen35BaseModel, error) {
+	src, err := OpenQwenNativeMTPSafetensorsSource(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	return LoadQwen35BaseModelLayers(CandidateQwen35TensorSource{Source: src}, meta)
+}
+
 func (s qwenNativeMTPSingleFileSource) Close() error {
 	if s.File == nil {
 		return nil

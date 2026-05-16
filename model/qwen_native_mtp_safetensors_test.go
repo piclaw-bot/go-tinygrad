@@ -35,6 +35,24 @@ func TestLoadQwenNativeMTPHeadFromTinySafetensors(t *testing.T) {
 	}
 }
 
+func TestLoadQwen35BaseModelLayersFromSafetensorsDir(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 1
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"full_attention"}
+	dir := t.TempDir()
+	if err := writeTinySafetensors(filepath.Join(dir, "model.safetensors"), mapFromQwen35Source(fullQwen35LayerSource(meta, "model.layers.0"))); err != nil {
+		t.Fatalf("writeTinySafetensors: %v", err)
+	}
+	base, err := LoadQwen35BaseModelLayersFromSafetensorsDir(dir, meta)
+	if err != nil {
+		t.Fatalf("LoadQwen35BaseModelLayersFromSafetensorsDir: %v", err)
+	}
+	if len(base.Layers) != 1 || base.Layers[0].Kind != Qwen35FullAttentionLayerKind {
+		t.Fatalf("base=%+v", base)
+	}
+}
+
 func TestLoadQwenNativeMTPHeadFromSafetensorsDir(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
@@ -169,6 +187,14 @@ func TestSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
 }
 
 func mapFromFakeSource(src fakeQwenMTPTensorSource) map[string]*tensor.Tensor {
+	out := make(map[string]*tensor.Tensor, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+func mapFromQwen35Source(src fakeQwen35TensorSource) map[string]*tensor.Tensor {
 	out := make(map[string]*tensor.Tensor, len(src))
 	for k, v := range src {
 		out[k] = v
