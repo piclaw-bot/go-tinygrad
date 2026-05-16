@@ -134,15 +134,19 @@ go run ./cmd/llmgen -model models/smollm2-135m -tokens 32 \
 
 Current speculative backend is `replay`, a correctness scaffold that reuses the CPU generator and can be slower. It is useful for measuring proposer acceptance before the planned KV-reusing verifier backend lands. Available proposer choices are `prompt`, `repeat-last`, and `none`; `-speculative-min-proposal` gates tiny proposals.
 
-### specbench — speculative decoding benchmark CSV
+### specbench / speccheck — speculative benchmark and correctness harness
 
 ```bash
 go run ./cmd/specbench -model models/smollm2-135m \
   -prompt-file prompts.txt -tokens 16 -repeat 3 \
   -speculative-proposer prompt -csv specbench.csv
+
+go run ./cmd/speccheck -model models/smollm2-135m \
+  -prompt-file prompts.txt -tokens 16 \
+  -proposers prompt,repeat-last,none
 ```
 
-`specbench` emits normal/speculative rows with output parity, speedup vs normal, verifier backend, proposer, acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, and aggregate total rows for multi-prompt workloads.
+`specbench` emits normal/speculative rows with output parity, speedup vs normal, verifier backend, proposer, acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, and aggregate total rows for multi-prompt workloads. `speccheck` emits JSON and exits non-zero on any normal-vs-speculative mismatch.
 
 ### llmchat — interactive chat
 
