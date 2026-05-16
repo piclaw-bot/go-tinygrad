@@ -45,8 +45,9 @@ func Qwen35LinearAttentionShapesFor(hidden, ssmInner, ssmState, ssmConvKernel, s
 	if convDim < keyDim || convDim < valueDim {
 		return Qwen35LinearAttentionShapes{}, fmt.Errorf("linear-attention conv dimension overflow")
 	}
+	qkvzDim := valueDim + convDim + valueDim
 	return Qwen35LinearAttentionShapes{
-		QKV:      []int{hidden, convDim},
+		QKV:      []int{hidden, qkvzDim},
 		Gate:     []int{hidden, valueDim},
 		Conv1D:   []int{ssmConvKernel, convDim},
 		DTBias:   []int{ssmDtRank},

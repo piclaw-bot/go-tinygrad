@@ -213,7 +213,7 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projected := make([]float32, shapes.ValueDim+shapes.KeyDim+shapes.ValueDim+shapes.ValueDim)
+	projected := make([]float32, shapes.QKV[1])
 	for i := range projected {
 		projected[i] = float32(i + 1)
 	}
@@ -221,7 +221,7 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("splitQwen35LinearQKVZ: %v", err)
 	}
-	if len(parts.Q) != shapes.ValueDim || len(parts.K) != shapes.KeyDim || len(parts.V) != shapes.ValueDim || len(parts.Z) != shapes.ValueDim {
+	if len(parts.Q) != shapes.ValueDim || len(parts.K) != shapes.ConvDim-shapes.ValueDim || len(parts.V) != shapes.ValueDim || len(parts.Z) != shapes.ValueDim {
 		t.Fatalf("parts lens Q/K/V/Z=%d/%d/%d/%d", len(parts.Q), len(parts.K), len(parts.V), len(parts.Z))
 	}
 	if parts.Q[0] != 1 || parts.K[0] != float32(shapes.ValueDim+1) {
@@ -299,9 +299,12 @@ func TestQwen35LinearAttentionForwardStub(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = l.ForwardWithState([]float32{1, 0, 0, 0}, state, 1e-6, meta)
+	_, next, err := l.ForwardWithState([]float32{1, 0, 0, 0}, state, 1e-6, meta)
 	if err == nil || !strings.Contains(err.Error(), "not implemented") {
 		t.Fatalf("expected not implemented, got %v", err)
+	}
+	if len(next.Conv) != len(state.Conv) {
+		t.Fatalf("next conv len=%d want %d", len(next.Conv), len(state.Conv))
 	}
 }
 

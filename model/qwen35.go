@@ -347,7 +347,7 @@ type Qwen35LinearQKVZ struct {
 
 func splitQwen35LinearQKVZ(projected []float32, shapes loaderconfig.Qwen35LinearAttentionShapes) (Qwen35LinearQKVZ, error) {
 	qLen := shapes.ValueDim
-	kLen := shapes.KeyDim
+	kLen := shapes.ConvDim - shapes.ValueDim
 	vLen := shapes.ValueDim
 	zLen := shapes.ValueDim
 	want := qLen + kLen + vLen + zLen
@@ -420,6 +420,29 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	if len(state.Conv) != len(want.Conv) || len(state.SSM) != len(want.SSM) {
 		return nil, state, fmt.Errorf("Qwen3.5 linear-attention state dims conv/ssm=%d/%d want %d/%d", len(state.Conv), len(state.SSM), len(want.Conv), len(want.SSM))
 	}
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		return nil, state, err
+	}
+	cur := append([]float32(nil), input...)
+	rmsNormInPlace(cur, l.InputNorm.Data(), eps)
+	projected := make([]float32, shapes.QKV[1])
+	gemvNT(projected, cur, l.QKVW.Data(), meta.HiddenSize, shapes.QKV[1])
+	parts, err := splitQwen35LinearQKVZ(projected, shapes)
+	if err != nil {
+		return nil, state, err
+	}
+	convInput := make([]float32, 0, shapes.ConvDim)
+	convInput = append(convInput, parts.K...)
+	convInput = append(convInput, parts.V...)
+	nextConv, err := updateQwen35LinearConvState(state.Conv, convInput, meta.LinearConvKernelDim)
+	if err != nil {
+		return nil, state, err
+	}
+	if _, err := applyQwen35LinearDepthwiseConv(nextConv, l.Conv1D.Data(), shapes.ConvDim, meta.LinearConvKernelDim); err != nil {
+		return nil, state, err
+	}
+	state.Conv = nextConv
 	return nil, state, fmt.Errorf("Qwen3.5 linear-attention forward is not implemented: gated delta-net recurrent update pending")
 }
 

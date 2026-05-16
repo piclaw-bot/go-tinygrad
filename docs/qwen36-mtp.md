@@ -215,8 +215,8 @@ Needed before MTP can matter:
   - multiply attention output by `sigmoid(gate)`;
   - o_proj + residual + post-attention RMSNorm + SwiGLU MLP.
 - [ ] implement linear-attention/gated-delta-net layer (typed recurrent state and clear unsupported forward stub exist):
-  - in_proj_qkvz layout and conversion/reorder;
-  - conv1d state;
+  - in_proj_qkvz layout and conversion/reorder (projection shape and split primitive staged);
+  - conv1d state (state update and depthwise conv primitives staged);
   - beta/alpha/dt/a recurrent update;
   - gated RMSNorm with z;
   - recurrent state cache layout and rollback semantics.
