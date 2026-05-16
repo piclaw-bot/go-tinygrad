@@ -22,6 +22,12 @@ type SpeculativeProposer interface {
 	Propose(context []int, max int) []int
 }
 
+type NoopProposer struct{}
+
+func (NoopProposer) Name() string { return "none" }
+
+func (NoopProposer) Propose(context []int, max int) []int { return nil }
+
 type PromptLookupProposer struct {
 	NGram int
 }
@@ -34,6 +40,8 @@ func (p PromptLookupProposer) Propose(context []int, max int) []int {
 
 func NewSpeculativeProposer(cfg SpeculativeConfig) SpeculativeProposer {
 	switch cfg.Proposer {
+	case "none", "off", "disabled":
+		return NoopProposer{}
 	case "", "prompt", "prompt-lookup", "ngram":
 		return PromptLookupProposer{NGram: cfg.NGram}
 	default:

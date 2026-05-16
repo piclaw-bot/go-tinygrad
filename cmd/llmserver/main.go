@@ -313,7 +313,7 @@ func main() {
 	speculative := flag.Bool("speculative", false, "enable opt-in stock-weight speculative decoding path (CPU backend)")
 	specBlock := flag.Int("speculative-block", 8, "speculative proposal block size")
 	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
-	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt")
+	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
 	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()

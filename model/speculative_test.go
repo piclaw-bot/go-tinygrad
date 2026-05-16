@@ -13,6 +13,16 @@ func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
 	}
 }
 
+func TestNoopProposer(t *testing.T) {
+	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "none"})
+	if p.Name() != "none" {
+		t.Fatalf("Name=%q want none", p.Name())
+	}
+	if got := p.Propose([]int{1, 2, 1}, 4); got != nil {
+		t.Fatalf("noop proposal=%v want nil", got)
+	}
+}
+
 func TestNewSpeculativeProposerDefaultsToPromptLookup(t *testing.T) {
 	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "unknown", NGram: 2})
 	got := p.Propose([]int{1, 2, 3, 1, 2}, 1)
