@@ -72,7 +72,7 @@ Current opt-in hook:
 - This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.
 - `CPUDecodeState` now defines the KV/output checkpoint, restore, `GenerateGreedy`/`DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
 - `GenerateSpeculativeWithStats` returns structured acceptance/fallback metrics for benchmarks without scraping debug stderr, including emitted-token and tokens-per-step derived metrics.
-- `cmd/specbench` runs normal vs speculative generation and emits CSV rows with timing plus structured speculative stats.
+- `cmd/specbench` runs normal vs speculative generation and emits CSV rows with timing, speedup-vs-normal, parity, and structured speculative stats.
 
 Candidate non-custom proposers:
 

@@ -61,13 +61,19 @@ func main() {
 	specElapsed := time.Since(specStart)
 
 	match := sameInts(normal, spec)
+	normalTokS := tokensPerSecond(len(normal)-len(ids), normalElapsed)
+	specTokS := tokensPerSecond(len(spec)-len(ids), specElapsed)
+	speedup := 0.0
+	if normalTokS > 0 {
+		speedup = specTokS / normalTokS
+	}
 	rows := [][]string{{
-		"model", "prompt_tokens", "max_tokens", "mode", "elapsed_ms", "tokens_per_sec", "match_normal",
+		"model", "prompt_tokens", "max_tokens", "mode", "elapsed_ms", "tokens_per_sec", "speedup_vs_normal", "match_normal",
 		"backend", "proposer", "steps", "proposal_steps", "proposed", "accepted", "bonus", "fallback", "acceptance", "emitted", "tokens_per_step", "avg_proposal",
 	}}
 	modelID := baseName(*dir)
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, "normal", normalElapsed, len(normal)-len(ids), true, model.SpeculativeStats{}))
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, "speculative", specElapsed, len(spec)-len(ids), match, stats))
+	rows = append(rows, benchRow(modelID, len(ids), *tokens, "normal", normalElapsed, len(normal)-len(ids), 1.0, true, model.SpeculativeStats{}))
+	rows = append(rows, benchRow(modelID, len(ids), *tokens, "speculative", specElapsed, len(spec)-len(ids), speedup, match, stats))
 
 	w := csv.NewWriter(os.Stdout)
 	if *outPath != "" {
@@ -85,11 +91,8 @@ func main() {
 	}
 }
 
-func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed time.Duration, generated int, match bool, stats model.SpeculativeStats) []string {
-	tokS := 0.0
-	if elapsed > 0 {
-		tokS = float64(generated) / elapsed.Seconds()
-	}
+func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed time.Duration, generated int, speedup float64, match bool, stats model.SpeculativeStats) []string {
+	tokS := tokensPerSecond(generated, elapsed)
 	return []string{
 		modelID,
 		strconv.Itoa(promptTokens),
@@ -97,6 +100,7 @@ func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed 
 		mode,
 		strconv.FormatInt(elapsed.Milliseconds(), 10),
 		strconv.FormatFloat(tokS, 'f', 3, 64),
+		strconv.FormatFloat(speedup, 'f', 3, 64),
 		strconv.FormatBool(match),
 		stats.VerifierBackend,
 		stats.Proposer,
@@ -111,6 +115,13 @@ func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed 
 		strconv.FormatFloat(stats.TokensPerStep(), 'f', 3, 64),
 		strconv.FormatFloat(stats.AverageProposalLen(), 'f', 3, 64),
 	}
+}
+
+func tokensPerSecond(generated int, elapsed time.Duration) float64 {
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(generated) / elapsed.Seconds()
 }
 
 func sameInts(a, b []int) bool {
