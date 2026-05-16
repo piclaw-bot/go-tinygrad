@@ -21,6 +21,7 @@ func TestQwen35TensorNameCandidates(t *testing.T) {
 	want := []string{
 		"model.layers.0.self_attn.q_proj.weight",
 		"model.language_model.model.layers.0.self_attn.q_proj.weight",
+		"model.language_model.layers.0.self_attn.q_proj.weight",
 		"language_model.model.layers.0.self_attn.q_proj.weight",
 	}
 	if len(got) != len(want) {
@@ -35,6 +36,17 @@ func TestQwen35TensorNameCandidates(t *testing.T) {
 	if len(mtp) != 1 || mtp[0] != "mtp.fc.weight" {
 		t.Fatalf("mtp candidates=%v", mtp)
 	}
+}
+
+func TestQwen35TensorNameCandidatesIncludeReferenceAliases(t *testing.T) {
+	got := Qwen35TensorNameCandidates("model.layers.0.linear_attn.in_proj_qkvz.weight")
+	want := "model.language_model.layers.0.linear_attn.in_proj_qkv.weight"
+	for _, candidate := range got {
+		if candidate == want {
+			return
+		}
+	}
+	t.Fatalf("missing alias %q in %v", want, got)
 }
 
 func TestIsQwen35MainLayerTensorName(t *testing.T) {
