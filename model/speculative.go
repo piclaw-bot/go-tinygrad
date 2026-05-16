@@ -16,6 +16,18 @@ type SpeculativeConfig struct {
 	Debug     bool
 }
 
+type SpeculativeProposer interface {
+	Propose(context []int, max int) []int
+}
+
+type PromptLookupProposer struct {
+	NGram int
+}
+
+func (p PromptLookupProposer) Propose(context []int, max int) []int {
+	return PromptLookupProposal(context, max, p.NGram)
+}
+
 type SpeculativeStats struct {
 	Steps          int
 	ProposalSteps  int
@@ -109,6 +121,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if maxTokens > maxInt-len(prepared) {
 		return append([]int(nil), prepared...)
 	}
+	proposer := PromptLookupProposer{NGram: cfg.NGram}
 	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens)
 	if err != nil {
 		return m.generatePrepared(prepared, maxTokens)
@@ -127,7 +140,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if block <= 0 || block > remaining-1 {
 			block = remaining - 1
 		}
-		proposal := PromptLookupProposal(state.Output, block, cfg.NGram)
+		proposal := proposer.Propose(state.Output, block)
 		if len(proposal) == 0 {
 			stats.FallbackSteps++
 			if _, err := state.DecodeOneGreedy(); err != nil {

@@ -2,6 +2,15 @@ package model
 
 import "testing"
 
+func TestPromptLookupProposer(t *testing.T) {
+	p := PromptLookupProposer{NGram: 2}
+	got := p.Propose([]int{1, 2, 3, 4, 1, 2}, 2)
+	want := []int{3, 4}
+	if !sameInts(got, want) {
+		t.Fatalf("proposal=%v want %v", got, want)
+	}
+}
+
 func TestPromptLookupProposal(t *testing.T) {
 	ctx := []int{1, 2, 3, 4, 1, 2}
 	got := PromptLookupProposal(ctx, 2, 2)
