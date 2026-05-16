@@ -94,6 +94,36 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
+func (head *QwenNativeMTPHead) PreProject(embedding, hidden []float32, eps float32) ([]float32, error) {
+	if head == nil {
+		return nil, fmt.Errorf("nil Qwen native MTP head")
+	}
+	if head.FC == nil || head.PreFCNormEmbedding == nil || head.PreFCNormHidden == nil {
+		return nil, fmt.Errorf("incomplete Qwen native MTP preprojection tensors")
+	}
+	h := len(embedding)
+	if h <= 0 || len(hidden) != h {
+		return nil, fmt.Errorf("embedding/hidden dims=%d/%d", len(embedding), len(hidden))
+	}
+	if len(head.PreFCNormEmbedding.Data()) < h || len(head.PreFCNormHidden.Data()) < h {
+		return nil, fmt.Errorf("preprojection norm dims too small")
+	}
+	fcShape := head.FC.Shape()
+	if len(fcShape) != 2 || fcShape[0] != h || fcShape[1] != 2*h {
+		return nil, fmt.Errorf("mtp.fc shape=%v want [%d %d]", fcShape, h, 2*h)
+	}
+	e := append([]float32(nil), embedding...)
+	hh := append([]float32(nil), hidden...)
+	rmsNormInPlace(e, head.PreFCNormEmbedding.Data(), eps)
+	rmsNormInPlace(hh, head.PreFCNormHidden.Data(), eps)
+	concat := make([]float32, 0, 2*h)
+	concat = append(concat, e...)
+	concat = append(concat, hh...)
+	out := make([]float32, h)
+	gemvNT(out, concat, head.FC.Data(), 2*h, h)
+	return out, nil
+}
+
 func ValidateQwenNativeMTPHead(head *QwenNativeMTPHead, meta loaderconfig.QwenNativeMTPMetadata) error {
 	if head == nil {
 		return fmt.Errorf("nil Qwen native MTP head")

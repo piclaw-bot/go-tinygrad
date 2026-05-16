@@ -26,6 +26,30 @@ type errFakeMissing string
 
 func (e errFakeMissing) Error() string { return "missing " + string(e) }
 
+func TestQwenNativeMTPPreProject(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	// Identity-like FC rows select the normalized embedding stream.
+	head.FC = tensor.FromFloat32([]float32{
+		1, 0, 0, 0, 0, 0, 0, 0,
+		0, 1, 0, 0, 0, 0, 0, 0,
+		0, 0, 1, 0, 0, 0, 0, 0,
+		0, 0, 0, 1, 0, 0, 0, 0,
+	}, []int{4, 8})
+	head.PreFCNormEmbedding = tensor.Ones([]int{4})
+	head.PreFCNormHidden = tensor.Ones([]int{4})
+	out, err := head.PreProject([]float32{1, 0, 0, 0}, []float32{0, 1, 0, 0}, 1e-6)
+	if err != nil {
+		t.Fatalf("PreProject: %v", err)
+	}
+	if len(out) != 4 || out[0] <= 1.9 || out[1] != 0 || out[2] != 0 || out[3] != 0 {
+		t.Fatalf("PreProject out=%v", out)
+	}
+	if _, err := head.PreProject([]float32{1}, []float32{1, 2}, 1e-6); err == nil {
+		t.Fatal("bad dims returned nil error")
+	}
+}
+
 func TestLoadQwenNativeMTPHeadSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
