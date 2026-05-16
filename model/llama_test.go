@@ -34,6 +34,23 @@ func gemma4Path() string {
 	return p
 }
 
+func TestLlamaConfigDetectsOrthrus(t *testing.T) {
+	cfg := LlamaConfig{
+		ModelType:          "qwen3",
+		Architectures:      []string{"OrthrusLM"},
+		OrthrusBlockSize:   32,
+		OrthrusMaskTokenID: 151669,
+	}
+	if !cfg.IsOrthrus() {
+		t.Fatal("Orthrus config was not detected")
+	}
+
+	cfg.Architectures = []string{"Qwen3ForCausalLM"}
+	if cfg.IsOrthrus() {
+		t.Fatal("plain Qwen3 config detected as Orthrus")
+	}
+}
+
 func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
 	base := `{
 		"model_type":"qwen3",

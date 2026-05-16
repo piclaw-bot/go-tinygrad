@@ -44,6 +44,7 @@ type LlamaConfig struct {
 	RopeTheta            float64  `json:"rope_theta"`
 	RMSNormEps           float64  `json:"rms_norm_eps"`
 	ModelType            string   `json:"model_type"`
+	Architectures        []string `json:"architectures"`
 	TieEmbeddings        bool     `json:"tie_word_embeddings"`
 	HeadDim              int      `json:"head_dim"`
 	SlidingWindow        int      `json:"sliding_window"`
@@ -57,6 +58,12 @@ type LlamaConfig struct {
 	VocabPerLayer        int      `json:"vocab_size_per_layer_input"`
 	TensorPrefix         string   `json:"-"` // "language_model.model." for Gemma4
 	HiddenAct            string   `json:"hidden_activation"`
+
+	// Orthrus dual-view diffusion metadata. The baseline Qwen3 path can ignore
+	// the *_diff tensors, but these fields identify checkpoints that can use the
+	// lossless block-diffusion generation mode once implemented.
+	OrthrusBlockSize   int `json:"block_size"`
+	OrthrusMaskTokenID int `json:"mask_token_id"`
 
 	// Quantization (populated from quantize_config.json or config.json)
 	QuantBits   int    `json:"-"`
@@ -107,6 +114,17 @@ type LlamaModel struct {
 	// headDim needs its own orthogonal rotation matrix.
 	EnableTurboQuant bool
 	TurboQuantStates map[int]*kv.TurboQuantState
+}
+
+func (c LlamaConfig) IsOrthrus() bool {
+	if c.OrthrusBlockSize > 0 && c.OrthrusMaskTokenID >= 0 {
+		for _, arch := range c.Architectures {
+			if arch == "OrthrusLM" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // LlamaLayer holds weights for one decoder layer.
@@ -274,6 +292,9 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	}
 
 	m := &LlamaModel{Config: cfg}
+	if cfg.IsOrthrus() {
+		loaderDebugf("  Orthrus: block_size=%d mask_token_id=%d (baseline Qwen3 path; diffusion tensors ignored)\n", cfg.OrthrusBlockSize, cfg.OrthrusMaskTokenID)
+	}
 	h := cfg.HiddenSize
 	// For large models (>2B params), skip pre-transpose to save memory
 	large := cfg.HiddenSize >= 3000
