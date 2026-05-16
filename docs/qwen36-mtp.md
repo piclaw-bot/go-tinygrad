@@ -203,11 +203,27 @@ Qwen3.6 27B is not plain Qwen3 dense. It uses mixed `linear_attention` / `full_a
 
 Needed before MTP can matter:
 
-- load nested `text_config` as `qwen3_5_text`;
-- map tensor prefix (`model.language_model.` if present);
-- implement or explicitly reject linear-attention layers;
-- support attention output gates if required (`attn_output_gate`, `output_gate_type`);
-- validate BF16/full-precision baseline first, if a non-NVFP4 checkpoint exists.
+- [x] load nested `text_config` as `qwen3_5_text` for metadata/early diagnostics;
+- [ ] map tensor prefix (`model.language_model.` if present);
+- [ ] add Qwen3.5/Qwen3.6 base layer structs separate from existing Qwen3 layer assumptions;
+- [ ] implement full-attention Qwen3.5 layer:
+  - q_proj outputs query + gate;
+  - split Q and gate;
+  - Q/K RMSNorm;
+  - RoPE/MRoPE;
+  - GQA attention;
+  - multiply attention output by `sigmoid(gate)`;
+  - o_proj + residual + post-attention RMSNorm + SwiGLU MLP.
+- [ ] implement linear-attention/gated-delta-net layer:
+  - in_proj_qkvz layout and conversion/reorder;
+  - conv1d state;
+  - beta/alpha/dt/a recurrent update;
+  - gated RMSNorm with z;
+  - recurrent state cache layout and rollback semantics.
+- [ ] support attention output gates if required (`attn_output_gate`, `output_gate_type`);
+- [ ] validate BF16/full-precision baseline first, if a non-NVFP4 checkpoint exists.
+
+Linear attention is the critical blocker. The helper `Qwen35LinearAttentionShapesFor` only fixes tensor layout; the actual recurrent delta-net math and state management still need implementation.
 
 ### Phase C — native MTP head
 
