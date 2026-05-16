@@ -77,6 +77,22 @@ func SpeculativeConfigFromEnv() SpeculativeConfig {
 		Proposer:    envString("GO_PHERENCE_SPECULATIVE_PROPOSER", "prompt"),
 		Debug:       os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
 	}
+	return cfg.Normalize()
+}
+
+func (cfg SpeculativeConfig) Normalize() SpeculativeConfig {
+	if cfg.BlockSize <= 0 {
+		cfg.BlockSize = 8
+	}
+	if cfg.NGram <= 0 {
+		cfg.NGram = 4
+	}
+	if cfg.MinProposal <= 0 {
+		cfg.MinProposal = 2
+	}
+	if cfg.Proposer == "" {
+		cfg.Proposer = "prompt"
+	}
 	return cfg
 }
 
@@ -146,6 +162,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if !cfg.Enabled || maxTokens <= 0 {
 		return m.Generate(tokenIDs, maxTokens)
 	}
+	cfg = cfg.Normalize()
 	prepared := m.prepareGenerateTokens(tokenIDs)
 	if maxTokens < 0 {
 		return append([]int(nil), prepared...)

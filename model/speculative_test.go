@@ -13,6 +13,17 @@ func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
 	}
 }
 
+func TestSpeculativeConfigNormalize(t *testing.T) {
+	cfg := (SpeculativeConfig{}).Normalize()
+	if cfg.BlockSize != 8 || cfg.NGram != 4 || cfg.MinProposal != 2 || cfg.Proposer != "prompt" {
+		t.Fatalf("Normalize=%+v, want safe defaults", cfg)
+	}
+	cfg = (SpeculativeConfig{BlockSize: 1, NGram: 2, MinProposal: 3, Proposer: "none"}).Normalize()
+	if cfg.BlockSize != 1 || cfg.NGram != 2 || cfg.MinProposal != 3 || cfg.Proposer != "none" {
+		t.Fatalf("Normalize changed explicit values: %+v", cfg)
+	}
+}
+
 func TestSpeculativeConfigMinProposalDefault(t *testing.T) {
 	t.Setenv("GO_PHERENCE_SPECULATIVE", "1")
 	cfg := SpeculativeConfigFromEnv()
