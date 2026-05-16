@@ -132,20 +132,26 @@ func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, pos int, 
 	if len(head.Layers) == 0 {
 		return nil, fmt.Errorf("Qwen native MTP head has no layers")
 	}
-	return head.Layers[0].Forward(cur, pos, ropeFreqs, eps, meta)
+	out, _, _, err := head.Layers[0].ForwardWithKV(cur, pos, ropeFreqs, nil, nil, eps, meta)
+	return out, err
 }
 
 func (l *QwenNativeMTPLayer) Forward(input []float32, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
+	out, _, _, err := l.ForwardWithKV(input, pos, ropeFreqs, nil, nil, eps, meta)
+	return out, err
+}
+
+func (l *QwenNativeMTPLayer) ForwardWithKV(input []float32, pos int, ropeFreqs, pastK, pastV []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (out, curK, curV []float32, err error) {
 	if l == nil {
-		return nil, fmt.Errorf("nil Qwen native MTP layer")
+		return nil, nil, nil, fmt.Errorf("nil Qwen native MTP layer")
 	}
 	h := meta.HiddenSize
 	if len(input) != h {
-		return nil, fmt.Errorf("MTP layer input len=%d want %d", len(input), h)
+		return nil, nil, nil, fmt.Errorf("MTP layer input len=%d want %d", len(input), h)
 	}
 	attnShapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	cur := append([]float32(nil), input...)
 	rmsNormInPlace(cur, l.InputNorm.Data(), eps)
@@ -164,7 +170,13 @@ func (l *QwenNativeMTPLayer) Forward(input []float32, pos int, ropeFreqs []float
 		applyRoPE(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim)
 		applyRoPE(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim)
 	}
-	attn := singleTokenGroupedAttention(q, k, v, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
+	curK = append([]float32(nil), k...)
+	curV = append([]float32(nil), v...)
+	kAll, vAll, err := appendQwenMTPKV(pastK, pastV, curK, curV)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	attn := qwenMTPGroupedAttention(q, kAll, vAll, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
 	for i := range attn {
 		attn[i] *= sigmoid(gate[i])
 	}
@@ -182,9 +194,9 @@ func (l *QwenNativeMTPLayer) Forward(input []float32, pos int, ropeFreqs []float
 	simd.VecSiLUMul(gateMLP, gateMLP, up)
 	down := make([]float32, h)
 	gemvNT(down, gateMLP, l.DownW.Data(), inter, h)
-	out := make([]float32, h)
+	out = make([]float32, h)
 	simd.VecAdd(out, resid, down)
-	return out, nil
+	return out, curK, curV, nil
 }
 
 func (head *QwenNativeMTPHead) PreProject(embedding, hidden []float32, eps float32) ([]float32, error) {
@@ -286,27 +298,69 @@ func normHeads(x, weight []float32, nHeads, headDim int, eps float32) {
 	}
 }
 
-func singleTokenGroupedAttention(q, k, v []float32, nHeads, nKVHeads, headDim int) []float32 {
+func appendQwenMTPKV(pastK, pastV, curK, curV []float32) ([]float32, []float32, error) {
+	if len(pastK) != len(pastV) {
+		return nil, nil, fmt.Errorf("past MTP KV length mismatch K/V=%d/%d", len(pastK), len(pastV))
+	}
+	outK := make([]float32, 0, len(pastK)+len(curK))
+	outK = append(outK, pastK...)
+	outK = append(outK, curK...)
+	outV := make([]float32, 0, len(pastV)+len(curV))
+	outV = append(outV, pastV...)
+	outV = append(outV, curV...)
+	return outK, outV, nil
+}
+
+func qwenMTPGroupedAttention(q, kAll, vAll []float32, nHeads, nKVHeads, headDim int) []float32 {
 	out := make([]float32, nHeads*headDim)
+	kvDim := nKVHeads * headDim
+	seqLen := 0
+	if kvDim > 0 {
+		seqLen = len(kAll) / kvDim
+	}
+	if seqLen <= 0 || len(vAll) < seqLen*kvDim {
+		return out
+	}
 	groups := nHeads / nKVHeads
 	if groups <= 0 {
 		groups = 1
 	}
 	scale := float32(1.0 / math.Sqrt(float64(headDim)))
+	scores := make([]float32, seqLen)
 	for h := 0; h < nHeads; h++ {
 		kvh := h / groups
 		if kvh >= nKVHeads {
 			kvh = nKVHeads - 1
 		}
 		qBase := h * headDim
-		kvBase := kvh * headDim
-		var score float32
-		for i := 0; i < headDim; i++ {
-			score += q[qBase+i] * k[kvBase+i]
+		maxScore := float32(math.Inf(-1))
+		for t := 0; t < seqLen; t++ {
+			kvBase := t*kvDim + kvh*headDim
+			var score float32
+			for i := 0; i < headDim; i++ {
+				score += q[qBase+i] * kAll[kvBase+i]
+			}
+			score *= scale
+			scores[t] = score
+			if score > maxScore {
+				maxScore = score
+			}
 		}
-		// Sequence length is one in the first skeleton, so softmax(score)=1.
-		_ = score * scale
-		copy(out[qBase:qBase+headDim], v[kvBase:kvBase+headDim])
+		var sum float32
+		for t := 0; t < seqLen; t++ {
+			scores[t] = float32(math.Exp(float64(scores[t] - maxScore)))
+			sum += scores[t]
+		}
+		if sum == 0 {
+			continue
+		}
+		for t := 0; t < seqLen; t++ {
+			w := scores[t] / sum
+			vBase := t*kvDim + kvh*headDim
+			for i := 0; i < headDim; i++ {
+				out[qBase+i] += w * vAll[vBase+i]
+			}
+		}
 	}
 	return out
 }

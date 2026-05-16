@@ -26,6 +26,32 @@ type errFakeMissing string
 
 func (e errFakeMissing) Error() string { return "missing " + string(e) }
 
+func TestQwenNativeMTPLayerForwardWithKV(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	input, err := head.PreProject([]float32{1, 0, 0, 0}, []float32{0, 1, 0, 0}, 1e-6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, k, v, err := head.Layers[0].ForwardWithKV(input, 0, nil, nil, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardWithKV first: %v", err)
+	}
+	if len(out) != meta.HiddenSize || len(k) != meta.NumKeyValueHeads*meta.HeadDim || len(v) != len(k) {
+		t.Fatalf("lens out/k/v=%d/%d/%d", len(out), len(k), len(v))
+	}
+	out2, _, _, err := head.Layers[0].ForwardWithKV(input, 1, nil, k, v, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardWithKV history: %v", err)
+	}
+	if len(out2) != meta.HiddenSize {
+		t.Fatalf("out2 len=%d", len(out2))
+	}
+	if _, _, _, err := head.Layers[0].ForwardWithKV(input, 1, nil, k, nil, 1e-6, meta); err == nil {
+		t.Fatal("mismatched past KV returned nil error")
+	}
+}
+
 func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
