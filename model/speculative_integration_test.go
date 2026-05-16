@@ -46,9 +46,21 @@ func TestSpeculativeMatchesNormalSmallLocalModels(t *testing.T) {
 				t.Fatalf("LoadLlama: %v", err)
 			}
 			normal := m.Generate(tc.prompt, tc.max)
-			spec := m.GenerateSpeculative(tc.prompt, tc.max, SpeculativeConfig{Enabled: true, BlockSize: 4, NGram: 2})
+			spec, stats := m.GenerateSpeculativeWithStats(tc.prompt, tc.max, SpeculativeConfig{Enabled: true, BlockSize: 4, NGram: 2})
 			if !sameInts(spec, normal) {
 				t.Fatalf("speculative output mismatch\nnormal=%v\nspec=%v", normal, spec)
+			}
+			if stats.VerifierBackend != "replay" {
+				t.Fatalf("VerifierBackend=%q want replay", stats.VerifierBackend)
+			}
+			if stats.Proposer != "prompt" {
+				t.Fatalf("Proposer=%q want prompt", stats.Proposer)
+			}
+			if stats.Steps <= 0 {
+				t.Fatalf("Steps=%d want >0", stats.Steps)
+			}
+			if stats.ProposedTokens > 0 && stats.AcceptanceRate() < 0 {
+				t.Fatalf("AcceptanceRate=%f", stats.AcceptanceRate())
 			}
 		})
 	}
