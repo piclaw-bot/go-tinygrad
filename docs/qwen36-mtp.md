@@ -205,7 +205,7 @@ Needed before MTP can matter:
 
 - [x] load nested `text_config` as `qwen3_5_text` for metadata/early diagnostics;
 - [ ] map tensor prefix (`model.language_model.` if present);
-- [ ] add Qwen3.5/Qwen3.6 base layer structs separate from existing Qwen3 layer assumptions;
+- [x] add Qwen3.5/Qwen3.6 base layer structs separate from existing Qwen3 layer assumptions;
 - [ ] implement full-attention Qwen3.5 layer:
   - q_proj outputs query + gate;
   - split Q and gate;
