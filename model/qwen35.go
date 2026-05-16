@@ -385,6 +385,27 @@ func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]fl
 	return next, nil
 }
 
+func applyQwen35LinearDepthwiseConv(state []float32, weight []float32, convDim, kernel int) ([]float32, error) {
+	if convDim <= 0 || kernel <= 0 {
+		return nil, fmt.Errorf("invalid Qwen3.5 linear-attention conv dims conv_dim=%d kernel=%d", convDim, kernel)
+	}
+	if len(state) != convDim*kernel {
+		return nil, fmt.Errorf("Qwen3.5 linear-attention conv state len=%d want %d", len(state), convDim*kernel)
+	}
+	if len(weight) != convDim*kernel {
+		return nil, fmt.Errorf("Qwen3.5 linear-attention conv weight len=%d want %d", len(weight), convDim*kernel)
+	}
+	out := make([]float32, convDim)
+	for k := 0; k < kernel; k++ {
+		stateOff := k * convDim
+		weightOff := k * convDim
+		for c := 0; c < convDim; c++ {
+			out[c] += state[stateOff+c] * weight[weightOff+c]
+		}
+	}
+	return out, nil
+}
+
 func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwen35LinearAttentionState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35LinearAttentionState, error) {
 	if l == nil {
 		return nil, state, fmt.Errorf("nil Qwen3.5 linear-attention layer")

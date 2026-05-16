@@ -232,6 +232,27 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestApplyQwen35LinearDepthwiseConv(t *testing.T) {
+	out, err := applyQwen35LinearDepthwiseConv(
+		[]float32{1, 2, 3, 4, 5, 6},
+		[]float32{1, 10, 1, 10, 1, 10},
+		2,
+		3,
+	)
+	if err != nil {
+		t.Fatalf("applyQwen35LinearDepthwiseConv: %v", err)
+	}
+	if len(out) != 2 || out[0] != 9 || out[1] != 120 {
+		t.Fatalf("out=%v", out)
+	}
+	if _, err := applyQwen35LinearDepthwiseConv([]float32{1}, []float32{1}, 0, 1); err == nil {
+		t.Fatal("bad dims returned nil error")
+	}
+	if _, err := applyQwen35LinearDepthwiseConv([]float32{1, 2}, []float32{1}, 1, 2); err == nil {
+		t.Fatal("bad weight len returned nil error")
+	}
+}
+
 func TestUpdateQwen35LinearConvState(t *testing.T) {
 	next, err := updateQwen35LinearConvState([]float32{1, 2, 3, 4, 5, 6}, []float32{7, 8}, 3)
 	if err != nil {
