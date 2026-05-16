@@ -2,6 +2,18 @@ package model
 
 import "testing"
 
+func TestSpeculativeStatsCommitFailureAccounting(t *testing.T) {
+	stats := SpeculativeStats{}
+	// A verifier attempt that cannot be committed must be counted as fallback
+	// only; accepted/bonus counters describe successfully committed tokens.
+	stats.ProposalSteps++
+	stats.ProposedTokens += 2
+	stats.FallbackSteps++
+	if stats.AcceptedTokens != 0 || stats.BonusTokens != 0 || stats.EmittedTokens() != 1 {
+		t.Fatalf("stats=%+v emitted=%d", stats, stats.EmittedTokens())
+	}
+}
+
 func TestGenerateSpeculativeWithStatsDisabled(t *testing.T) {
 	m := &LlamaModel{}
 	out, stats := m.GenerateSpeculativeWithStats([]int{1, 2}, -1, SpeculativeConfig{})

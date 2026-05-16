@@ -289,13 +289,15 @@ func (m *LlamaModel) GenerateSpeculativeWithStats(tokenIDs []int, maxTokens int,
 			}
 			continue
 		}
-		stats.AcceptedTokens += acceptance.AcceptedPrefixLen
-		stats.BonusTokens++
 		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
+			stats.FallbackSteps++
 			_ = state.Restore(checkpoint)
 			if err := state.GenerateGreedy(1); err != nil {
 				return state.Output, stats
 			}
+		} else {
+			stats.AcceptedTokens += acceptance.AcceptedPrefixLen
+			stats.BonusTokens++
 		}
 		if len(state.Output) > len(prepared)+maxTokens {
 			state.Output = state.Output[:len(prepared)+maxTokens]
