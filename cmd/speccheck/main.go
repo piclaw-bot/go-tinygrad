@@ -101,6 +101,18 @@ func main() {
 		os.Exit(2)
 	}
 	report := CheckReport{Model: modelID, Passed: true, GoldenMatch: true}
+	if golden != nil {
+		if golden.Model != "" && golden.Model != modelID {
+			report.Passed = false
+			report.GoldenMatch = false
+			fmt.Fprintf(os.Stderr, "golden model mismatch: got %q want %q\n", modelID, golden.Model)
+		}
+		if len(golden.Prompts) != len(prompts) {
+			report.Passed = false
+			report.GoldenMatch = false
+			fmt.Fprintf(os.Stderr, "golden prompt count mismatch: got %d want %d\n", len(prompts), len(golden.Prompts))
+		}
+	}
 	writeGolden := GoldenReport{Model: modelID}
 	for pi, promptText := range prompts {
 		ids := tok.Encode(promptText)

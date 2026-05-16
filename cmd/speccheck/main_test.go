@@ -46,6 +46,22 @@ func TestCheckReportSummaryFields(t *testing.T) {
 	}
 }
 
+func TestGoldenReportMetadataChecks(t *testing.T) {
+	modelID := "actual"
+	prompts := []string{"p"}
+	golden := &GoldenReport{Model: "expected", Prompts: []GoldenPrompt{{PromptIndex: 0}}}
+	passed := true
+	if golden.Model != "" && golden.Model != modelID {
+		passed = false
+	}
+	if len(golden.Prompts) != len(prompts) {
+		passed = false
+	}
+	if passed {
+		t.Fatal("metadata mismatch was not detected")
+	}
+}
+
 func TestGoldenRoundTripAndCompare(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "golden.json")
