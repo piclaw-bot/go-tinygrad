@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/tensor"
 )
@@ -38,6 +39,15 @@ func OpenQwenNativeMTPSafetensorsSource(dir string) (qwenNativeMTPClosableTensor
 		return nil, err
 	}
 	return qwenNativeMTPSingleFileSource{SafetensorsQwenNativeMTPTensorSource{File: f}}, nil
+}
+
+func LoadQwenNativeMTPHeadFromSafetensorsDir(dir string, meta loaderconfig.QwenNativeMTPMetadata) (*QwenNativeMTPHead, error) {
+	src, err := OpenQwenNativeMTPSafetensorsSource(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	return LoadQwenNativeMTPHead(src, meta)
 }
 
 func (s qwenNativeMTPSingleFileSource) Close() error {

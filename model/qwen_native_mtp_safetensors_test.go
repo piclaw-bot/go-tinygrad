@@ -35,6 +35,22 @@ func TestLoadQwenNativeMTPHeadFromTinySafetensors(t *testing.T) {
 	}
 }
 
+func TestLoadQwenNativeMTPHeadFromSafetensorsDir(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	dir := t.TempDir()
+	if err := writeTinySafetensors(filepath.Join(dir, "model.safetensors"), mapFromFakeSource(fakeQwenMTPTensorSourceFromHead(head))); err != nil {
+		t.Fatalf("writeTinySafetensors: %v", err)
+	}
+	loaded, err := LoadQwenNativeMTPHeadFromSafetensorsDir(dir, meta)
+	if err != nil {
+		t.Fatalf("LoadQwenNativeMTPHeadFromSafetensorsDir: %v", err)
+	}
+	if err := ValidateQwenNativeMTPHead(loaded, meta); err != nil {
+		t.Fatalf("ValidateQwenNativeMTPHead: %v", err)
+	}
+}
+
 func TestOpenQwenNativeMTPSafetensorsSource(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeTinySafetensors(filepath.Join(dir, "model.safetensors"), map[string]*tensor.Tensor{
