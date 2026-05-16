@@ -22,7 +22,7 @@ func main() {
 	specBlock := flag.Int("speculative-block", 8, "speculative proposal block size")
 	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
 	specMinProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
-	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
+	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, repeat-last, none")
 	specBackend := flag.String("speculative-backend", "replay", "speculative verifier backend: replay")
 	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")

@@ -65,6 +65,20 @@ func TestSpeculativeConfigMinProposalDefault(t *testing.T) {
 	}
 }
 
+func TestRepeatLastProposer(t *testing.T) {
+	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "repeat-last"})
+	if p.Name() != "repeat-last" {
+		t.Fatalf("Name=%q want repeat-last", p.Name())
+	}
+	got := p.Propose([]int{1, 2, 3}, 4)
+	if !sameInts(got, []int{3, 3, 3, 3}) {
+		t.Fatalf("repeat-last proposal=%v", got)
+	}
+	if got := p.Propose(nil, 4); got != nil {
+		t.Fatalf("empty context proposal=%v want nil", got)
+	}
+}
+
 func TestNoopProposer(t *testing.T) {
 	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "none"})
 	if p.Name() != "none" {

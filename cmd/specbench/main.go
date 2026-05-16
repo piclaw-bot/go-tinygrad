@@ -22,7 +22,7 @@ func main() {
 	block := flag.Int("speculative-block", 8, "speculative proposal block size")
 	ngram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
 	minProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
-	proposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
+	proposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, repeat-last, none")
 	backend := flag.String("speculative-backend", "replay", "speculative verifier backend: replay")
 	repeat := flag.Int("repeat", 1, "number of timed runs to average")
 	outPath := flag.String("csv", "", "optional CSV output path")

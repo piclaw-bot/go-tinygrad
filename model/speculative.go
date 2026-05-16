@@ -40,10 +40,27 @@ func (p PromptLookupProposer) Propose(context []int, max int) []int {
 	return PromptLookupProposal(context, max, p.NGram)
 }
 
+type RepeatLastProposer struct{}
+
+func (RepeatLastProposer) Name() string { return "repeat-last" }
+
+func (RepeatLastProposer) Propose(context []int, max int) []int {
+	if max <= 0 || len(context) == 0 {
+		return nil
+	}
+	out := make([]int, max)
+	for i := range out {
+		out[i] = context[len(context)-1]
+	}
+	return out
+}
+
 func NewSpeculativeProposer(cfg SpeculativeConfig) SpeculativeProposer {
 	switch cfg.Proposer {
 	case "none", "off", "disabled":
 		return NoopProposer{}
+	case "repeat", "repeat-last", "last":
+		return RepeatLastProposer{}
 	case "", "prompt", "prompt-lookup", "ngram":
 		return PromptLookupProposer{NGram: cfg.NGram}
 	default:
