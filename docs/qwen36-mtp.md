@@ -214,7 +214,7 @@ Needed before MTP can matter:
   - GQA attention;
   - multiply attention output by `sigmoid(gate)`;
   - o_proj + residual + post-attention RMSNorm + SwiGLU MLP.
-- [ ] implement linear-attention/gated-delta-net layer:
+- [ ] implement linear-attention/gated-delta-net layer (typed recurrent state and clear unsupported forward stub exist):
   - in_proj_qkvz layout and conversion/reorder;
   - conv1d state;
   - beta/alpha/dt/a recurrent update;

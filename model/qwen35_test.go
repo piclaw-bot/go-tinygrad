@@ -147,6 +147,39 @@ func TestLoadQwen35LinearAttentionLayer(t *testing.T) {
 	}
 }
 
+func TestNewQwen35LinearAttentionState(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	state, err := NewQwen35LinearAttentionState(meta)
+	if err != nil {
+		t.Fatalf("NewQwen35LinearAttentionState: %v", err)
+	}
+	shapes, _ := qwen35LinearAttentionShapesFromMeta(meta)
+	if len(state.Conv) != shapes.ConvDim*meta.LinearConvKernelDim {
+		t.Fatalf("conv len=%d", len(state.Conv))
+	}
+	wantSSM := meta.LinearNumValueHeads * meta.LinearValueHeadDim * meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
+	if len(state.SSM) != wantSSM {
+		t.Fatalf("ssm len=%d want %d", len(state.SSM), wantSSM)
+	}
+}
+
+func TestQwen35LinearAttentionForwardStub(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	src := CandidateQwen35TensorSource{Source: linearQwen35LayerSource(meta, "model.layers.1")}
+	l, err := LoadQwen35LinearAttentionLayer(src, meta, "model.layers.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35LinearAttentionState(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = l.ForwardWithState([]float32{1, 0, 0, 0}, state, 1e-6, meta)
+	if err == nil || !strings.Contains(err.Error(), "not implemented") {
+		t.Fatalf("expected not implemented, got %v", err)
+	}
+}
+
 func TestValidateQwen35LinearAttentionLayer(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)

@@ -29,6 +29,25 @@ type Qwen35FullAttentionLayer struct {
 	DownW     *tensor.Tensor
 }
 
+type Qwen35LinearAttentionState struct {
+	Conv []float32
+	SSM  []float32
+	Pos  int
+}
+
+func NewQwen35LinearAttentionState(meta loaderconfig.QwenNativeMTPMetadata) (Qwen35LinearAttentionState, error) {
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		return Qwen35LinearAttentionState{}, err
+	}
+	convLen := shapes.ConvDim * meta.LinearConvKernelDim
+	ssmLen := meta.LinearNumValueHeads * meta.LinearValueHeadDim * meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
+	if convLen < 0 || ssmLen < 0 {
+		return Qwen35LinearAttentionState{}, fmt.Errorf("invalid Qwen3.5 linear-attention state dims conv=%d ssm=%d", convLen, ssmLen)
+	}
+	return Qwen35LinearAttentionState{Conv: make([]float32, convLen), SSM: make([]float32, ssmLen)}, nil
+}
+
 type Qwen35LinearAttentionLayer struct {
 	InputNorm *tensor.Tensor
 	PostNorm  *tensor.Tensor
@@ -228,6 +247,23 @@ func (l *Qwen35FullAttentionLayer) ForwardWithKV(input []float32, pos int, ropeF
 func (l *Qwen35FullAttentionLayer) Forward(input []float32, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
 	out, _, _, err := l.ForwardWithKV(input, pos, ropeFreqs, nil, nil, eps, meta)
 	return out, err
+}
+
+func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwen35LinearAttentionState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35LinearAttentionState, error) {
+	if l == nil {
+		return nil, state, fmt.Errorf("nil Qwen3.5 linear-attention layer")
+	}
+	if len(input) != meta.HiddenSize {
+		return nil, state, fmt.Errorf("Qwen3.5 linear-attention input len=%d want %d", len(input), meta.HiddenSize)
+	}
+	want, err := NewQwen35LinearAttentionState(meta)
+	if err != nil {
+		return nil, state, err
+	}
+	if len(state.Conv) != len(want.Conv) || len(state.SSM) != len(want.SSM) {
+		return nil, state, fmt.Errorf("Qwen3.5 linear-attention state dims conv/ssm=%d/%d want %d/%d", len(state.Conv), len(state.SSM), len(want.Conv), len(want.SSM))
+	}
+	return nil, state, fmt.Errorf("Qwen3.5 linear-attention forward is not implemented: gated delta-net recurrent update pending")
 }
 
 func ValidateQwen35FullAttentionLayer(l *Qwen35FullAttentionLayer, meta loaderconfig.QwenNativeMTPMetadata, prefix string) error {
