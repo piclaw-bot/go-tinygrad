@@ -108,6 +108,22 @@ func TestNVFP4CompanionNames(t *testing.T) {
 	}
 }
 
+func TestQwen35LinearAttentionShapesFor(t *testing.T) {
+	got, err := Qwen35LinearAttentionShapesFor(5120, 1024, 128, 4, 16, 4)
+	if err != nil {
+		t.Fatalf("Qwen35LinearAttentionShapesFor: %v", err)
+	}
+	if got.KeyDim != 512 || got.ValueDim != 1024 || got.ConvDim != 2048 || got.HeadVDim != 64 {
+		t.Fatalf("linear dims=%+v", got)
+	}
+	if got.QKV[0] != 5120 || got.QKV[1] != 2048 || got.Gate[1] != 1024 || got.Conv1D[0] != 4 || got.Conv1D[1] != 2048 || got.Out[0] != 1024 || got.Out[1] != 5120 {
+		t.Fatalf("linear shapes=%+v", got)
+	}
+	if _, err := Qwen35LinearAttentionShapesFor(5120, 1025, 128, 4, 16, 4); err == nil {
+		t.Fatal("non-divisible inner/dt_rank returned nil error")
+	}
+}
+
 func TestQwen35FullAttentionShapesFor(t *testing.T) {
 	got, err := Qwen35FullAttentionShapesFor(5120, 24, 4, 256)
 	if err != nil {

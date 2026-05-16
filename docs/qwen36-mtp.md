@@ -124,7 +124,7 @@ recurrent[i] = i < n_main && ((i + 1) % full_attention_interval != 0)
 
 - Full-attention Q projection emits query plus gate: `q_proj` output is `2 * n_heads * head_dim`. Added `Qwen35FullAttentionShapesFor` to validate these dimensions (`[12288,5120]` for Qwen3.6 27B q_proj, gate size 6144).
 - Attention output is multiplied by `sigmoid(gate)` before `o_proj`.
-- Linear attention is a gated delta net with conv/recurrent state. This is the largest base-model blocker for Qwen3.6.
+- Linear attention is a gated delta net with conv/recurrent state. This is the largest base-model blocker for Qwen3.6. Added `Qwen35LinearAttentionShapesFor` to make the tensor shape contract explicit before implementing forward/state updates.
 
 ### Native MTP graph
 
