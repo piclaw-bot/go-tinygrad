@@ -1,0 +1,105 @@
+package model
+
+import (
+	"fmt"
+
+	"github.com/rcarmo/go-pherence/runtime/kv"
+)
+
+// CPUDecodeState is the incremental state shape needed by a KV-reusing
+// speculative verifier. The current generator still owns the full token-step
+// implementation, but keeping this state contract explicit lets the verifier
+// block land without changing the public GenerateSpeculative API again.
+type CPUDecodeState struct {
+	Model        *LlamaModel
+	Output       []int
+	KVCacheK     [][]float32
+	KVCacheV     [][]float32
+	CompressedKV []*kv.CompressedKVCache
+	KVDims       []int
+}
+
+// CPUDecodeCheckpoint records a restorable point before staging verifier tokens.
+type CPUDecodeCheckpoint struct {
+	OutputLen    int
+	FloatKV      kv.FloatKVCheckpoint
+	CompressedKV []kv.CompressedKVCheckpoint
+}
+
+func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens int) (*CPUDecodeState, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil model")
+	}
+	if maxTokens < 0 {
+		return nil, fmt.Errorf("maxTokens=%d must be >= 0", maxTokens)
+	}
+	dims, err := m.LayerKVDims()
+	if err != nil {
+		return nil, err
+	}
+	st := &CPUDecodeState{
+		Model:    m,
+		Output:   append([]int(nil), prepared...),
+		KVCacheK: make([][]float32, len(m.Layers)),
+		KVCacheV: make([][]float32, len(m.Layers)),
+		KVDims:   dims,
+	}
+	maxSeq := len(prepared) + maxTokens
+	if maxSeq < 1 {
+		maxSeq = 1
+	}
+	for i, dim := range dims {
+		if dim <= 0 {
+			continue
+		}
+		if maxSeq > int(^uint(0)>>1)/dim {
+			return nil, fmt.Errorf("layer %d KV capacity overflow: seq=%d dim=%d", i, maxSeq, dim)
+		}
+		st.KVCacheK[i] = make([]float32, 0, maxSeq*dim)
+		st.KVCacheV[i] = make([]float32, 0, maxSeq*dim)
+	}
+	return st, nil
+}
+
+func (s *CPUDecodeState) Checkpoint() CPUDecodeCheckpoint {
+	cp := CPUDecodeCheckpoint{OutputLen: len(s.Output)}
+	if s.CompressedKV != nil {
+		cp.CompressedKV = kv.CheckpointCompressedKV(s.CompressedKV)
+	} else {
+		cp.FloatKV = kv.CheckpointFloatKV(s.KVCacheK, s.KVCacheV)
+	}
+	return cp
+}
+
+func (s *CPUDecodeState) Restore(cp CPUDecodeCheckpoint) error {
+	if cp.OutputLen < 0 || cp.OutputLen > len(s.Output) {
+		return fmt.Errorf("checkpoint output len=%d outside current len=%d", cp.OutputLen, len(s.Output))
+	}
+	s.Output = s.Output[:cp.OutputLen]
+	if s.CompressedKV != nil {
+		return kv.RestoreCompressedKV(s.CompressedKV, cp.CompressedKV)
+	}
+	return cp.FloatKV.Restore(s.KVCacheK, s.KVCacheV)
+}
+
+func (s *CPUDecodeState) CommitAccepted(cp CPUDecodeCheckpoint, acceptance MTPAcceptance) error {
+	if err := acceptance.Validate(); err != nil {
+		return err
+	}
+	if cp.OutputLen < 0 || cp.OutputLen > len(s.Output) {
+		return fmt.Errorf("checkpoint output len=%d outside current len=%d", cp.OutputLen, len(s.Output))
+	}
+	keep := acceptance.KVKeepTokens()
+	if s.CompressedKV != nil {
+		if err := kv.KeepCompressedKVAppended(s.CompressedKV, cp.CompressedKV, keep); err != nil {
+			return err
+		}
+	} else {
+		if err := CommitAcceptedFloatKV(s.KVCacheK, s.KVCacheV, cp.FloatKV, s.KVDims, acceptance); err != nil {
+			return err
+		}
+	}
+	s.Output = s.Output[:cp.OutputLen]
+	s.Output = append(s.Output, acceptance.OutputTokens...)
+	return nil
+}
