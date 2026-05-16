@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -8,16 +9,42 @@ import (
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
-func TestValidateQwenNativeMTPHeadSynthetic(t *testing.T) {
-	meta := loaderconfig.QwenNativeMTPMetadata{
-		HiddenSize:         4,
-		IntermediateSize:   6,
-		NumAttentionHeads:  2,
-		NumKeyValueHeads:   1,
-		HeadDim:            2,
-		MTPNumHiddenLayers: 1,
-		HasNativeMTP:       true,
+type fakeQwenMTPTensorSource map[string]*tensor.Tensor
+
+func (s fakeQwenMTPTensorSource) Get(name string, shape []int) (*tensor.Tensor, error) {
+	t := s[name]
+	if t == nil {
+		return nil, errFakeMissing(name)
 	}
+	if err := expectShape(t, shape, name); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+type errFakeMissing string
+
+func (e errFakeMissing) Error() string { return "missing " + string(e) }
+
+func TestLoadQwenNativeMTPHeadSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	src := fakeQwenMTPTensorSourceFromHead(head)
+	loaded, err := LoadQwenNativeMTPHead(src, meta)
+	if err != nil {
+		t.Fatalf("LoadQwenNativeMTPHead: %v", err)
+	}
+	if err := ValidateQwenNativeMTPHead(loaded, meta); err != nil {
+		t.Fatalf("Validate loaded head: %v", err)
+	}
+	delete(src, "mtp.norm.weight")
+	if _, err := LoadQwenNativeMTPHead(src, meta); err == nil || !strings.Contains(err.Error(), "mtp.norm.weight") {
+		t.Fatalf("missing tensor err=%v", err)
+	}
+}
+
+func TestValidateQwenNativeMTPHeadSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
 	if err := ValidateQwenNativeMTPHead(head, meta); err != nil {
 		t.Fatalf("ValidateQwenNativeMTPHead: %v", err)
@@ -26,6 +53,42 @@ func TestValidateQwenNativeMTPHeadSynthetic(t *testing.T) {
 	if err := ValidateQwenNativeMTPHead(head, meta); err == nil || !strings.Contains(err.Error(), "q_proj") {
 		t.Fatalf("bad q_proj validation err=%v", err)
 	}
+}
+
+func testQwenNativeMTPMeta() loaderconfig.QwenNativeMTPMetadata {
+	return loaderconfig.QwenNativeMTPMetadata{
+		HiddenSize:         4,
+		IntermediateSize:   6,
+		NumAttentionHeads:  2,
+		NumKeyValueHeads:   1,
+		HeadDim:            2,
+		MTPNumHiddenLayers: 1,
+		HasNativeMTP:       true,
+	}
+}
+
+func fakeQwenMTPTensorSourceFromHead(head *QwenNativeMTPHead) fakeQwenMTPTensorSource {
+	src := fakeQwenMTPTensorSource{
+		"mtp.fc.weight":                    head.FC,
+		"mtp.pre_fc_norm_embedding.weight": head.PreFCNormEmbedding,
+		"mtp.pre_fc_norm_hidden.weight":    head.PreFCNormHidden,
+		"mtp.norm.weight":                  head.Norm,
+	}
+	for i, l := range head.Layers {
+		prefix := "mtp.layers." + strconv.Itoa(i)
+		src[prefix+".input_layernorm.weight"] = l.InputNorm
+		src[prefix+".post_attention_layernorm.weight"] = l.PostNorm
+		src[prefix+".self_attn.q_proj.weight"] = l.QW
+		src[prefix+".self_attn.k_proj.weight"] = l.KW
+		src[prefix+".self_attn.v_proj.weight"] = l.VW
+		src[prefix+".self_attn.o_proj.weight"] = l.OW
+		src[prefix+".self_attn.q_norm.weight"] = l.QNorm
+		src[prefix+".self_attn.k_norm.weight"] = l.KNorm
+		src[prefix+".mlp.gate_proj.weight"] = l.GateW
+		src[prefix+".mlp.up_proj.weight"] = l.UpW
+		src[prefix+".mlp.down_proj.weight"] = l.DownW
+	}
+	return src
 }
 
 func syntheticQwenNativeMTPHead(meta loaderconfig.QwenNativeMTPMetadata) *QwenNativeMTPHead {

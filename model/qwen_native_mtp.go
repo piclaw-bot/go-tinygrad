@@ -32,6 +32,68 @@ type QwenNativeMTPLayer struct {
 	DownW     *tensor.Tensor
 }
 
+type QwenNativeMTPTensorSource interface {
+	Get(name string, shape []int) (*tensor.Tensor, error)
+}
+
+func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.QwenNativeMTPMetadata) (*QwenNativeMTPHead, error) {
+	if src == nil {
+		return nil, fmt.Errorf("nil Qwen native MTP tensor source")
+	}
+	h := meta.HiddenSize
+	inter := meta.IntermediateSize
+	head := &QwenNativeMTPHead{}
+	var err error
+	if head.FC, err = src.Get("mtp.fc.weight", []int{h, 2 * h}); err != nil {
+		return nil, err
+	}
+	if head.PreFCNormEmbedding, err = src.Get("mtp.pre_fc_norm_embedding.weight", []int{h}); err != nil {
+		return nil, err
+	}
+	if head.PreFCNormHidden, err = src.Get("mtp.pre_fc_norm_hidden.weight", []int{h}); err != nil {
+		return nil, err
+	}
+	if head.Norm, err = src.Get("mtp.norm.weight", []int{h}); err != nil {
+		return nil, err
+	}
+	attnShapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
+	if err != nil {
+		return nil, err
+	}
+	head.Layers = make([]QwenNativeMTPLayer, meta.MTPNumHiddenLayers)
+	for i := range head.Layers {
+		l := &head.Layers[i]
+		prefix := fmt.Sprintf("mtp.layers.%d", i)
+		loads := []struct {
+			name  string
+			dst   **tensor.Tensor
+			shape []int
+		}{
+			{prefix + ".input_layernorm.weight", &l.InputNorm, []int{h}},
+			{prefix + ".post_attention_layernorm.weight", &l.PostNorm, []int{h}},
+			{prefix + ".self_attn.q_proj.weight", &l.QW, attnShapes.QProj},
+			{prefix + ".self_attn.k_proj.weight", &l.KW, attnShapes.KProj},
+			{prefix + ".self_attn.v_proj.weight", &l.VW, attnShapes.VProj},
+			{prefix + ".self_attn.o_proj.weight", &l.OW, attnShapes.OProj},
+			{prefix + ".self_attn.q_norm.weight", &l.QNorm, attnShapes.QNorm},
+			{prefix + ".self_attn.k_norm.weight", &l.KNorm, attnShapes.KNorm},
+			{prefix + ".mlp.gate_proj.weight", &l.GateW, []int{inter, h}},
+			{prefix + ".mlp.up_proj.weight", &l.UpW, []int{inter, h}},
+			{prefix + ".mlp.down_proj.weight", &l.DownW, []int{h, inter}},
+		}
+		for _, load := range loads {
+			*load.dst, err = src.Get(load.name, load.shape)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := ValidateQwenNativeMTPHead(head, meta); err != nil {
+		return nil, err
+	}
+	return head, nil
+}
+
 func ValidateQwenNativeMTPHead(head *QwenNativeMTPHead, meta loaderconfig.QwenNativeMTPMetadata) error {
 	if head == nil {
 		return fmt.Errorf("nil Qwen native MTP head")
