@@ -14,6 +14,28 @@ type Qwen35NativeMTPBundle struct {
 	MTP  *QwenNativeMTPHead
 }
 
+type Qwen35NativeMTPBundleReadiness struct {
+	BaseReady bool   `json:"base_ready"`
+	MTPReady  bool   `json:"mtp_ready"`
+	BaseError string `json:"base_error,omitempty"`
+	MTPError  string `json:"mtp_error,omitempty"`
+}
+
+func (b *Qwen35NativeMTPBundle) Readiness() Qwen35NativeMTPBundleReadiness {
+	ready := Qwen35NativeMTPBundleReadiness{}
+	if err := b.ValidateBaseReady(); err != nil {
+		ready.BaseError = err.Error()
+	} else {
+		ready.BaseReady = true
+	}
+	if err := b.ValidateNativeMTPReady(); err != nil {
+		ready.MTPError = err.Error()
+	} else {
+		ready.MTPReady = true
+	}
+	return ready
+}
+
 func (b *Qwen35NativeMTPBundle) ValidateBaseReady() error {
 	if b == nil {
 		return fmt.Errorf("nil Qwen3.5 native MTP bundle")

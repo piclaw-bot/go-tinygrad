@@ -34,6 +34,10 @@ func TestLoadQwen35NativeMTPBundleWithMTPFromDir(t *testing.T) {
 	if err := bundle.ValidateNativeMTPReady(); err != nil {
 		t.Fatalf("ValidateNativeMTPReady: %v", err)
 	}
+	ready := bundle.Readiness()
+	if !ready.BaseReady || !ready.MTPReady || ready.BaseError != "" || ready.MTPError != "" {
+		t.Fatalf("readiness=%+v", ready)
+	}
 }
 
 func TestQwen35NativeMTPBundleValidateBaseReady(t *testing.T) {
@@ -77,6 +81,10 @@ func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
 	}
 	if err := bundle.ValidateNativeMTPReady(); err == nil {
 		t.Fatal("ValidateNativeMTPReady accepted bundle without MTP")
+	}
+	ready := bundle.Readiness()
+	if !ready.BaseReady || ready.MTPReady || ready.MTPError == "" {
+		t.Fatalf("readiness=%+v", ready)
 	}
 	state, err := bundle.NewForwardState()
 	if err != nil {
