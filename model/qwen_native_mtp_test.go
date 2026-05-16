@@ -110,6 +110,27 @@ func TestCommitQwenNativeMTPDraftState(t *testing.T) {
 	}
 }
 
+func TestRunQwenNativeMTPSpeculativeStepFromLogitsSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	_, drafted, _, err := head.DraftSteps(m, 0, state, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftSteps seed: %v", err)
+	}
+	verifier := append([]int(nil), drafted...)
+	verifier = append(verifier, 1)
+	logits := logitsForVerifierTokens(verifier, m.Config.VocabSize)
+	res, err := RunQwenNativeMTPSpeculativeStepFromLogits(head, m, 0, state, logits, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("RunQwenNativeMTPSpeculativeStepFromLogits: %v", err)
+	}
+	if res.Acceptance.AcceptedPrefixLen != len(drafted) || res.Stats.AcceptedTokens != len(drafted) {
+		t.Fatalf("acceptance=%+v stats=%+v drafted=%v", res.Acceptance, res.Stats, drafted)
+	}
+}
+
 func TestRunQwenNativeMTPSpeculativeStepSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
@@ -295,6 +316,18 @@ func fakeQwenMTPTensorSourceFromHead(head *QwenNativeMTPHead) fakeQwenMTPTensorS
 		src[prefix+".mlp.down_proj.weight"] = l.DownW
 	}
 	return src
+}
+
+func logitsForVerifierTokens(tokens []int, vocab int) [][]float32 {
+	rows := make([][]float32, len(tokens))
+	for i, tok := range tokens {
+		row := make([]float32, vocab)
+		if tok >= 0 && tok < vocab {
+			row[tok] = 1
+		}
+		rows[i] = row
+	}
+	return rows
 }
 
 func syntheticQwenMTPMainModel(meta loaderconfig.QwenNativeMTPMetadata) *LlamaModel {
