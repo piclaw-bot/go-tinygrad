@@ -21,6 +21,7 @@ func main() {
 	minProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
 	proposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
 	backend := flag.String("speculative-backend", "replay", "speculative verifier backend: replay")
+	repeat := flag.Int("repeat", 1, "number of timed runs to average")
 	outPath := flag.String("csv", "", "optional CSV output path")
 	flag.Parse()
 
@@ -30,6 +31,10 @@ func main() {
 	}
 	if *tokens < 0 {
 		fmt.Fprintln(os.Stderr, "tokens must be non-negative")
+		os.Exit(1)
+	}
+	if *repeat <= 0 {
+		fmt.Fprintln(os.Stderr, "repeat must be positive")
 		os.Exit(1)
 	}
 
@@ -46,10 +51,6 @@ func main() {
 	m.Tok = tok
 	ids := tok.Encode(*prompt)
 
-	normalStart := time.Now()
-	normal := m.Generate(ids, *tokens)
-	normalElapsed := time.Since(normalStart)
-
 	cfg := model.SpeculativeConfig{
 		Enabled:     true,
 		BlockSize:   *block,
@@ -58,11 +59,33 @@ func main() {
 		Proposer:    *proposer,
 		Backend:     *backend,
 	}.Normalize()
-	specStart := time.Now()
-	spec, stats := m.GenerateSpeculativeWithStats(ids, *tokens, cfg)
-	specElapsed := time.Since(specStart)
 
-	match := sameInts(normal, spec)
+	var normal, spec []int
+	var normalElapsed, specElapsed time.Duration
+	var stats model.SpeculativeStats
+	match := true
+	for i := 0; i < *repeat; i++ {
+		normalStart := time.Now()
+		runNormal := m.Generate(ids, *tokens)
+		normalElapsed += time.Since(normalStart)
+
+		specStart := time.Now()
+		runSpec, runStats := m.GenerateSpeculativeWithStats(ids, *tokens, cfg)
+		specElapsed += time.Since(specStart)
+
+		if i == 0 {
+			normal = runNormal
+			spec = runSpec
+		} else {
+			match = match && sameInts(normal, runNormal) && sameInts(spec, runSpec)
+		}
+		match = match && sameInts(runNormal, runSpec)
+		stats = addStats(stats, runStats)
+	}
+	normalElapsed /= time.Duration(*repeat)
+	specElapsed /= time.Duration(*repeat)
+	stats = averageStats(stats, *repeat)
+
 	normalTokS := tokensPerSecond(len(normal)-len(ids), normalElapsed)
 	specTokS := tokensPerSecond(len(spec)-len(ids), specElapsed)
 	speedup := 0.0
@@ -70,12 +93,12 @@ func main() {
 		speedup = specTokS / normalTokS
 	}
 	rows := [][]string{{
-		"model", "prompt_tokens", "max_tokens", "mode", "elapsed_ms", "tokens_per_sec", "speedup_vs_normal", "match_normal",
+		"model", "prompt_tokens", "max_tokens", "repeat", "mode", "elapsed_ms", "tokens_per_sec", "speedup_vs_normal", "match_normal",
 		"backend", "proposer", "steps", "proposal_steps", "proposed", "accepted", "bonus", "fallback", "acceptance", "emitted", "tokens_per_step", "avg_proposal",
 	}}
 	modelID := baseName(*dir)
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, "normal", normalElapsed, len(normal)-len(ids), 1.0, true, model.SpeculativeStats{}))
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, "speculative", specElapsed, len(spec)-len(ids), speedup, match, stats))
+	rows = append(rows, benchRow(modelID, len(ids), *tokens, *repeat, "normal", normalElapsed, len(normal)-len(ids), 1.0, true, model.SpeculativeStats{}))
+	rows = append(rows, benchRow(modelID, len(ids), *tokens, *repeat, "speculative", specElapsed, len(spec)-len(ids), speedup, match, stats))
 
 	w := csv.NewWriter(os.Stdout)
 	if *outPath != "" {
@@ -93,12 +116,13 @@ func main() {
 	}
 }
 
-func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed time.Duration, generated int, speedup float64, match bool, stats model.SpeculativeStats) []string {
+func benchRow(modelID string, promptTokens, maxTokens, repeat int, mode string, elapsed time.Duration, generated int, speedup float64, match bool, stats model.SpeculativeStats) []string {
 	tokS := tokensPerSecond(generated, elapsed)
 	return []string{
 		modelID,
 		strconv.Itoa(promptTokens),
 		strconv.Itoa(maxTokens),
+		strconv.Itoa(repeat),
 		mode,
 		strconv.FormatInt(elapsed.Milliseconds(), 10),
 		strconv.FormatFloat(tokS, 'f', 3, 64),
@@ -117,6 +141,35 @@ func benchRow(modelID string, promptTokens, maxTokens int, mode string, elapsed 
 		strconv.FormatFloat(stats.TokensPerStep(), 'f', 3, 64),
 		strconv.FormatFloat(stats.AverageProposalLen(), 'f', 3, 64),
 	}
+}
+
+func addStats(a, b model.SpeculativeStats) model.SpeculativeStats {
+	if a.VerifierBackend == "" {
+		a.VerifierBackend = b.VerifierBackend
+	}
+	if a.Proposer == "" {
+		a.Proposer = b.Proposer
+	}
+	a.Steps += b.Steps
+	a.ProposalSteps += b.ProposalSteps
+	a.ProposedTokens += b.ProposedTokens
+	a.AcceptedTokens += b.AcceptedTokens
+	a.BonusTokens += b.BonusTokens
+	a.FallbackSteps += b.FallbackSteps
+	return a
+}
+
+func averageStats(s model.SpeculativeStats, n int) model.SpeculativeStats {
+	if n <= 1 {
+		return s
+	}
+	s.Steps /= n
+	s.ProposalSteps /= n
+	s.ProposedTokens /= n
+	s.AcceptedTokens /= n
+	s.BonusTokens /= n
+	s.FallbackSteps /= n
+	return s
 }
 
 func tokensPerSecond(generated int, elapsed time.Duration) float64 {
