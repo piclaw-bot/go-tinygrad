@@ -453,20 +453,22 @@ func applyQwen35LinearDeltaUpdate(ssm, q, k, v, beta, dt, decay []float32, shape
 	if len(beta) != rank || len(dt) != rank || len(decay) != rank {
 		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta rank lens beta/dt/decay=%d/%d/%d want %d", len(beta), len(dt), len(decay), rank)
 	}
+	if meta.LinearNumValueHeads%meta.LinearNumKeyHeads != 0 {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention value heads=%d not divisible by key heads=%d", meta.LinearNumValueHeads, meta.LinearNumKeyHeads)
+	}
 	next := append([]float32(nil), ssm...)
 	out := make([]float32, shapes.ValueDim)
-	keyWidth := meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
+	keyWidth := meta.LinearKeyHeadDim
 	for vh := 0; vh < meta.LinearNumValueHeads; vh++ {
+		kh := vh % meta.LinearNumKeyHeads
 		for vd := 0; vd < meta.LinearValueHeadDim; vd++ {
 			vIdx := vh*meta.LinearValueHeadDim + vd
 			acc := float32(0)
-			for kh := 0; kh < meta.LinearNumKeyHeads; kh++ {
-				for kd := 0; kd < meta.LinearKeyHeadDim; kd++ {
-					kIdx := kh*meta.LinearKeyHeadDim + kd
-					stateIdx := ((vh*meta.LinearValueHeadDim+vd)*meta.LinearNumKeyHeads+kh)*meta.LinearKeyHeadDim + kd
-					next[stateIdx] = next[stateIdx]*decay[vh] + beta[vh]*dt[vh]*v[vIdx]*k[kIdx]
-					acc += next[stateIdx] * q[kIdx]
-				}
+			for kd := 0; kd < meta.LinearKeyHeadDim; kd++ {
+				kIdx := kh*meta.LinearKeyHeadDim + kd
+				stateIdx := ((vh*meta.LinearValueHeadDim+vd)*meta.LinearNumKeyHeads+kh)*meta.LinearKeyHeadDim + kd
+				next[stateIdx] = next[stateIdx]*decay[vh] + beta[vh]*dt[vh]*v[vIdx]*k[kIdx]
+				acc += next[stateIdx] * q[kIdx]
 			}
 			if keyWidth > 0 {
 				out[vIdx] = acc / float32(keyWidth)

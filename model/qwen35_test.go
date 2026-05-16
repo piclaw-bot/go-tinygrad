@@ -299,6 +299,33 @@ func TestSplitQwen35LinearQKV(t *testing.T) {
 	}
 }
 
+func TestApplyQwen35LinearDeltaUpdateUsesTiledKeyHeads(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35LinearAttentionState(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := []float32{1, 2}
+	k := []float32{3, 4}
+	v := []float32{1, 1, 1, 1}
+	next, out, err := applyQwen35LinearDeltaUpdate(state.SSM, q, k, v, []float32{1, 1}, []float32{1, 1}, []float32{0, 0}, shapes, meta)
+	if err != nil {
+		t.Fatalf("applyQwen35LinearDeltaUpdate: %v", err)
+	}
+	if len(next) != len(state.SSM) || len(out) != shapes.ValueDim {
+		t.Fatalf("next/out=%d/%v", len(next), out)
+	}
+	for i, got := range out {
+		if got != 5.5 {
+			t.Fatalf("out[%d]=%v want 5.5; out=%v", i, got, out)
+		}
+	}
+}
+
 func TestApplyQwen35LinearDeltaUpdate(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
