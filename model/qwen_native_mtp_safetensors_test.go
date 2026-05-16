@@ -12,6 +12,29 @@ import (
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
+func TestLoadQwenNativeMTPHeadFromTinySafetensors(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	srcMap := fakeQwenMTPTensorSourceFromHead(head)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.safetensors")
+	if err := writeTinySafetensors(path, mapFromFakeSource(srcMap)); err != nil {
+		t.Fatalf("writeTinySafetensors: %v", err)
+	}
+	f, err := safetensors.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	loaded, err := LoadQwenNativeMTPHead(SafetensorsQwenNativeMTPTensorSource{File: f}, meta)
+	if err != nil {
+		t.Fatalf("LoadQwenNativeMTPHead: %v", err)
+	}
+	if err := ValidateQwenNativeMTPHead(loaded, meta); err != nil {
+		t.Fatalf("ValidateQwenNativeMTPHead: %v", err)
+	}
+}
+
 func TestSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "model.safetensors")
@@ -36,6 +59,14 @@ func TestSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
 	if _, err := src.Get("mtp.fc.weight", []int{1, 4}); err == nil {
 		t.Fatal("shape mismatch returned nil error")
 	}
+}
+
+func mapFromFakeSource(src fakeQwenMTPTensorSource) map[string]*tensor.Tensor {
+	out := make(map[string]*tensor.Tensor, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 func writeTinySafetensors(path string, tensors map[string]*tensor.Tensor) error {
