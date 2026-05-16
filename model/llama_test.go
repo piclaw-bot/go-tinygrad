@@ -47,6 +47,17 @@ func TestPreparedGenerateTokensCopiesPrompt(t *testing.T) {
 	}
 }
 
+func TestLlamaConfigDetectsNativeMTP(t *testing.T) {
+	cfg := LlamaConfig{ModelType: "qwen3_5_text", MTPNumHiddenLayers: 1}
+	if !cfg.HasNativeMTP() {
+		t.Fatal("native MTP config was not detected")
+	}
+	cfg.MTPNumHiddenLayers = 0
+	if cfg.HasNativeMTP() {
+		t.Fatal("zero native MTP layers detected as enabled")
+	}
+}
+
 func TestLlamaConfigDetectsOrthrus(t *testing.T) {
 	cfg := LlamaConfig{
 		ModelType:          "qwen3",

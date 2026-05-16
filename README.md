@@ -245,6 +245,7 @@ go vet ./...
 - **[docs/nvfp4.md](docs/nvfp4.md)** — NVFP4/FP4 support track and relevant Gemma/Qwen checkpoint findings
 - **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — Gemma4/Qwen3.6 MTP research plus current internal implementation status
 - **[docs/orthrus.md](docs/orthrus.md)** — Orthrus analysis and stock-weight speculative decoding scaffold/benchmark notes
+- **[docs/qwen36-mtp.md](docs/qwen36-mtp.md)** — Qwen3.6 27B native MTP checkpoint findings and shortest implementation path
 - **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)
 - **[docs/development-log.md](docs/development-log.md)** — build process
