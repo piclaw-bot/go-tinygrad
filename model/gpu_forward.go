@@ -1002,9 +1002,17 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 						}
 					}
 				} else if g.ropeCosSin != nil && g.ropeCosSin.GPUPtr() != nil {
-					gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim)
+					if !gpu.DevRoPE(g.q, g.ropeCosSin, pos, numHeads, headDim) {
+						qd := g.q.Data()
+						applyRoPE(qd, m.RopeFreqs, pos, numHeads, headDim)
+						g.q.MarkDirty()
+					}
 					if cpuLayer.HasKV {
-						gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim)
+						if !gpu.DevRoPE(g.k, g.ropeCosSin, pos, numKVHeads, headDim) {
+							kd2 := g.k.Data()
+							applyRoPE(kd2, m.RopeFreqs, pos, numKVHeads, headDim)
+							g.k.MarkDirty()
+						}
 					}
 				} else {
 					qd := g.q.Data()

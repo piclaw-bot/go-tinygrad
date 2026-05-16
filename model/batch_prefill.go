@@ -157,8 +157,16 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 				ropePtr = g.ropeCosSin.GPUPtr()
 			}
 			if ropePtr != nil {
-				gpu.DevRoPE(qSlice, g.ropeCosSin, pos, numHeads, headDim)
-				gpu.DevRoPE(kSlice, g.ropeCosSin, pos, numKVHeads, headDim)
+				if !gpu.DevRoPE(qSlice, g.ropeCosSin, pos, numHeads, headDim) {
+					qd := qSlice.Data()
+					applyRoPE(qd, m.RopeFreqs, pos, numHeads, headDim)
+					qSlice.MarkDirty()
+				}
+				if !gpu.DevRoPE(kSlice, g.ropeCosSin, pos, numKVHeads, headDim) {
+					kd := kSlice.Data()
+					applyRoPE(kd, m.RopeFreqs, pos, numKVHeads, headDim)
+					kSlice.MarkDirty()
+				}
 			} else {
 				qd := qSlice.Data()
 				kd := kSlice.Data()

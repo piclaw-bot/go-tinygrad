@@ -25,7 +25,7 @@ func initRoPEAttn() { loadMegaModule() }
 
 // DevRoPE applies rotary position embedding on GPU (in-place).
 // cosSin is a precomputed [maxSeq * headDim] buffer with interleaved cos,sin pairs.
-func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
+func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) bool {
 	initRoPEAttn()
 	total, okTotal := checkedMulInt(nHeads, headDim)
 	halfDim, okHalf := checkedMulInt(nHeads, headDim/2)
@@ -33,7 +33,7 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 	if ropeReady && fitsUint32(pos) && nHeads > 0 && headDim > 0 && headDim%2 == 0 && okTotal && okHalf && okCosNeed && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosNeed && tryGPU(x, cosSin) {
 		grid, okGrid := grid1DFor(halfDim, 256)
 		if !okGrid {
-			return
+			return false
 		}
 		p := uint32(pos)
 		nh := uint32(nHeads)
@@ -45,10 +45,10 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&hd)); err == nil {
 			x.dev = GPU_DEVICE
+			return true
 		}
-		return
 	}
-	// CPU fallback in model code
+	return false
 }
 
 // DevRoPEPartial applies partial rotary position embedding on GPU (in-place).
