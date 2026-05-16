@@ -13,6 +13,7 @@ type SpeculativeConfig struct {
 	Enabled   bool
 	BlockSize int
 	NGram     int
+	Proposer  string
 	Debug     bool
 }
 
@@ -26,6 +27,15 @@ type PromptLookupProposer struct {
 
 func (p PromptLookupProposer) Propose(context []int, max int) []int {
 	return PromptLookupProposal(context, max, p.NGram)
+}
+
+func NewSpeculativeProposer(cfg SpeculativeConfig) SpeculativeProposer {
+	switch cfg.Proposer {
+	case "", "prompt", "prompt-lookup", "ngram":
+		return PromptLookupProposer{NGram: cfg.NGram}
+	default:
+		return PromptLookupProposer{NGram: cfg.NGram}
+	}
 }
 
 type SpeculativeStats struct {
@@ -50,9 +60,17 @@ func SpeculativeConfigFromEnv() SpeculativeConfig {
 		Enabled:   os.Getenv("GO_PHERENCE_SPECULATIVE") == "1",
 		BlockSize: envPositiveInt("GO_PHERENCE_SPECULATIVE_BLOCK", 8),
 		NGram:     envPositiveInt("GO_PHERENCE_SPECULATIVE_NGRAM", 4),
+		Proposer:  envString("GO_PHERENCE_SPECULATIVE_PROPOSER", "prompt"),
 		Debug:     os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
 	}
 	return cfg
+}
+
+func envString(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
 }
 
 func envPositiveInt(name string, def int) int {
@@ -122,7 +140,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if maxTokens > maxInt-len(prepared) {
 		return append([]int(nil), prepared...)
 	}
-	proposer := PromptLookupProposer{NGram: cfg.NGram}
+	proposer := NewSpeculativeProposer(cfg)
 	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens)
 	if err != nil {
 		return m.generatePrepared(prepared, maxTokens)

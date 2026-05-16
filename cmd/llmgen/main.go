@@ -21,6 +21,7 @@ func main() {
 	speculative := flag.Bool("speculative", false, "enable opt-in stock-weight speculative decoding path (CPU backend)")
 	specBlock := flag.Int("speculative-block", 8, "speculative proposal block size")
 	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
+	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt")
 	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
@@ -41,6 +42,7 @@ func main() {
 		os.Setenv("GO_PHERENCE_SPECULATIVE", "1")
 		os.Setenv("GO_PHERENCE_SPECULATIVE_BLOCK", fmt.Sprint(*specBlock))
 		os.Setenv("GO_PHERENCE_SPECULATIVE_NGRAM", fmt.Sprint(*specNGram))
+		os.Setenv("GO_PHERENCE_SPECULATIVE_PROPOSER", *specProposer)
 		if *specDebug {
 			os.Setenv("GO_PHERENCE_SPECULATIVE_DEBUG", "1")
 		}

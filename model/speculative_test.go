@@ -13,6 +13,14 @@ func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
 	}
 }
 
+func TestNewSpeculativeProposerDefaultsToPromptLookup(t *testing.T) {
+	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "unknown", NGram: 2})
+	got := p.Propose([]int{1, 2, 3, 1, 2}, 1)
+	if !sameInts(got, []int{3}) {
+		t.Fatalf("proposal=%v want [3]", got)
+	}
+}
+
 func TestPromptLookupProposer(t *testing.T) {
 	p := PromptLookupProposer{NGram: 2}
 	got := p.Propose([]int{1, 2, 3, 4, 1, 2}, 2)
