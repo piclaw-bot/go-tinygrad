@@ -18,6 +18,7 @@ func main() {
 	useGPU := flag.Bool("gpu", false, "use GPU-resident forward pass")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
+	speculative := flag.Bool("speculative", false, "enable opt-in stock-weight speculative decoding path (CPU backend)")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
 
@@ -29,6 +30,12 @@ func main() {
 		if *turboQuant {
 			fmt.Fprintln(os.Stderr, "warning: --turbo-quant currently applies to the CPU backend only")
 		}
+		if *speculative {
+			fmt.Fprintln(os.Stderr, "warning: --speculative currently applies to the CPU backend only")
+		}
+	}
+	if *speculative {
+		os.Setenv("GO_PHERENCE_SPECULATIVE", "1")
 	}
 
 	if *dir == "" {
@@ -78,6 +85,8 @@ func main() {
 	var output []int
 	if gpuMod != nil {
 		output = append(ids, gpuMod.Generate(ids, *tokens)...)
+	} else if *speculative {
+		output = m.GenerateSpeculative(ids, *tokens, model.SpeculativeConfigFromEnv())
 	} else {
 		output = m.Generate(ids, *tokens)
 	}

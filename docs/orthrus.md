@@ -63,6 +63,12 @@ model.layers.N.self_attn.k_norm_diff.weight
 5. Add exact sampling later using speculative-decoding residual distribution logic.
 6. Move hot verifier-block paths to GPU only after CPU parity tests pass.
 
+Current opt-in hook:
+
+- `llmgen -speculative` / `GO_PHERENCE_SPECULATIVE=1` routes CPU generation through `GenerateSpeculative`.
+- The first proposer is `PromptLookupProposal`, an n-gram/prompt-lookup proposer for repeated text.
+- Until verifier-block execution is implemented, the path preserves exact behavior by falling back to normal generation.
+
 Candidate non-custom proposers:
 
 - n-gram/cache proposer for repeated text;
