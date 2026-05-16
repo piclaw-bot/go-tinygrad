@@ -10,11 +10,12 @@ import (
 // It intentionally does not depend on Orthrus custom diffusion weights: the
 // proposer is pluggable and the verifier remains the normal model.
 type SpeculativeConfig struct {
-	Enabled   bool
-	BlockSize int
-	NGram     int
-	Proposer  string
-	Debug     bool
+	Enabled     bool
+	BlockSize   int
+	NGram       int
+	MinProposal int
+	Proposer    string
+	Debug       bool
 }
 
 type SpeculativeProposer interface {
@@ -69,11 +70,12 @@ func (s SpeculativeStats) AcceptanceRate() float64 {
 
 func SpeculativeConfigFromEnv() SpeculativeConfig {
 	cfg := SpeculativeConfig{
-		Enabled:   os.Getenv("GO_PHERENCE_SPECULATIVE") == "1",
-		BlockSize: envPositiveInt("GO_PHERENCE_SPECULATIVE_BLOCK", 8),
-		NGram:     envPositiveInt("GO_PHERENCE_SPECULATIVE_NGRAM", 4),
-		Proposer:  envString("GO_PHERENCE_SPECULATIVE_PROPOSER", "prompt"),
-		Debug:     os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
+		Enabled:     os.Getenv("GO_PHERENCE_SPECULATIVE") == "1",
+		BlockSize:   envPositiveInt("GO_PHERENCE_SPECULATIVE_BLOCK", 8),
+		NGram:       envPositiveInt("GO_PHERENCE_SPECULATIVE_NGRAM", 4),
+		MinProposal: envPositiveInt("GO_PHERENCE_SPECULATIVE_MIN_PROPOSAL", 2),
+		Proposer:    envString("GO_PHERENCE_SPECULATIVE_PROPOSER", "prompt"),
+		Debug:       os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
 	}
 	return cfg
 }
@@ -172,7 +174,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 			block = remaining - 1
 		}
 		proposal := proposer.Propose(state.Output, block)
-		if len(proposal) == 0 {
+		if len(proposal) < cfg.MinProposal {
 			stats.FallbackSteps++
 			if _, err := state.DecodeOneGreedy(); err != nil {
 				return state.Output

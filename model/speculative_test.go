@@ -13,6 +13,19 @@ func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
 	}
 }
 
+func TestSpeculativeConfigMinProposalDefault(t *testing.T) {
+	t.Setenv("GO_PHERENCE_SPECULATIVE", "1")
+	cfg := SpeculativeConfigFromEnv()
+	if cfg.MinProposal != 2 {
+		t.Fatalf("MinProposal=%d want 2", cfg.MinProposal)
+	}
+	t.Setenv("GO_PHERENCE_SPECULATIVE_MIN_PROPOSAL", "3")
+	cfg = SpeculativeConfigFromEnv()
+	if cfg.MinProposal != 3 {
+		t.Fatalf("MinProposal=%d want 3", cfg.MinProposal)
+	}
+}
+
 func TestNoopProposer(t *testing.T) {
 	p := NewSpeculativeProposer(SpeculativeConfig{Proposer: "none"})
 	if p.Name() != "none" {
