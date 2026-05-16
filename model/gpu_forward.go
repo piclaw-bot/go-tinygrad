@@ -772,11 +772,18 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 				if usePLIGPU {
 					gpu.DevGemv(g.perLayerProjBuf, g.hidden, g.perLayerModelProj, totalDim, h)
 					gpu.DevScale(g.perLayerProjBuf, g.perLayerProjBuf, m.PerLayerProjScale)
+					allSliceNormsGPU := true
 					for ll := 0; ll < nl; ll++ {
 						sl := g.perLayerProjBuf.Slice(ll*hpl, hpl)
-						gpu.DevRMSNorm(sl, sl, g.perLayerProjNorm, float32(cfg.RMSNormEps))
+						if !gpu.DevRMSNormOK(sl, sl, g.perLayerProjNorm, float32(cfg.RMSNormEps)) {
+							allSliceNormsGPU = false
+						}
 					}
-					g.perLayerProjBuf.MarkOnGPU()
+					if allSliceNormsGPU {
+						g.perLayerProjBuf.MarkOnGPU()
+					} else {
+						g.perLayerProjBuf.MarkDirty()
+					}
 					if m.EmbedPerLayer != nil && tokID < cfg.VocabPerLayer {
 						embRow := m.EmbedPerLayer[tokID*totalDim : (tokID+1)*totalDim]
 						copy(g.perLayerEmbedBuf.Data(), embRow)

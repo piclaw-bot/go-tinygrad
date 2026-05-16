@@ -392,11 +392,15 @@ func DevSiLU(out, a *DevBuf) {
 }
 
 // RMSNorm: out = x * weight * rsqrt(mean(x^2) + eps)
-func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
+func DevRMSNorm(out, x, weight *DevBuf, eps float32) { _ = DevRMSNormOK(out, x, weight, eps) }
+
+// DevRMSNormOK is DevRMSNorm plus a success flag that reports whether the GPU
+// kernel handled the operation. A false result means the CPU fallback path ran.
+func DevRMSNormOK(out, x, weight *DevBuf, eps float32) bool {
 	initKernels()
 	n := commonLen(x, weight, out) // weight size remains the practical canonical dimension, bounded by x/out.
 	if n <= 0 {
-		return
+		return false
 	}
 	if kernelsLoaded && fitsUint32(n) && n <= 256*8192 && tryGPU(x, weight, out) {
 		nn := uint32(n)
@@ -404,7 +408,7 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
 			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn), unsafe.Pointer(&eps)); err == nil {
 			out.dev = GPU_DEVICE
-			return
+			return true
 		}
 	}
 	// CPU fallback
@@ -419,6 +423,7 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	for i := 0; i < n; i++ {
 		out.cpu[i] = x.cpu[i] * ss * weight.cpu[i]
 	}
+	return false
 }
 
 // DevRMSNormNoScale: normalize x by RMS without weight. out = x / rms(x)
