@@ -232,6 +232,25 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestUpdateQwen35LinearConvState(t *testing.T) {
+	next, err := updateQwen35LinearConvState([]float32{1, 2, 3, 4, 5, 6}, []float32{7, 8}, 3)
+	if err != nil {
+		t.Fatalf("updateQwen35LinearConvState: %v", err)
+	}
+	want := []float32{3, 4, 5, 6, 7, 8}
+	for i := range want {
+		if next[i] != want[i] {
+			t.Fatalf("next=%v want %v", next, want)
+		}
+	}
+	if _, err := updateQwen35LinearConvState([]float32{1, 2}, []float32{3, 4}, 0); err == nil {
+		t.Fatal("bad kernel returned nil error")
+	}
+	if _, err := updateQwen35LinearConvState([]float32{1, 2}, []float32{3, 4}, 2); err == nil {
+		t.Fatal("bad state len returned nil error")
+	}
+}
+
 func TestNewQwen35LinearAttentionState(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	state, err := NewQwen35LinearAttentionState(meta)

@@ -366,6 +366,25 @@ func splitQwen35LinearQKVZ(projected []float32, shapes loaderconfig.Qwen35Linear
 	return out, nil
 }
 
+func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]float32, error) {
+	if kernel <= 0 {
+		return nil, fmt.Errorf("invalid Qwen3.5 linear-attention conv kernel %d", kernel)
+	}
+	if len(x) == 0 {
+		return nil, fmt.Errorf("empty Qwen3.5 linear-attention conv input")
+	}
+	want := len(x) * kernel
+	if len(state) != want {
+		return nil, fmt.Errorf("Qwen3.5 linear-attention conv state len=%d want %d", len(state), want)
+	}
+	next := make([]float32, len(state))
+	if kernel > 1 {
+		copy(next[:len(x)*(kernel-1)], state[len(x):])
+	}
+	copy(next[len(x)*(kernel-1):], x)
+	return next, nil
+}
+
 func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwen35LinearAttentionState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35LinearAttentionState, error) {
 	if l == nil {
 		return nil, state, fmt.Errorf("nil Qwen3.5 linear-attention layer")
