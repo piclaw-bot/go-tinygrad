@@ -28,6 +28,7 @@ type Report struct {
 
 func main() {
 	dir := flag.String("model", "", "model directory")
+	strict := flag.Bool("strict", false, "exit non-zero if native MTP is configured but required MTP tensors are incomplete")
 	flag.Parse()
 	if *dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: qwenmtpmeta -model <dir>")
@@ -70,6 +71,10 @@ func main() {
 	if err := enc.Encode(report); err != nil {
 		fmt.Fprintf(os.Stderr, "json: %v\n", err)
 		os.Exit(2)
+	}
+	if *strict && meta.HasNativeMTP && !report.MTPTensorComplete {
+		fmt.Fprintf(os.Stderr, "qwenmtpmeta: native MTP tensor set incomplete: missing=%d available=%d\n", report.MissingMTPTensorCount, report.MTPTensorCount)
+		os.Exit(1)
 	}
 }
 
