@@ -257,8 +257,8 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	if quantMeta, err := loaderconfig.ParseQuantizationMetadata(cfgData); err == nil && quantMeta.UnsupportedFP4 {
 		return nil, fmt.Errorf("unsupported FP4/NVFP4 quantization: quant_algo=%q quant_method=%q", quantMeta.Algo, quantMeta.Method)
 	}
-	if cfg.HasNativeMTP() && (cfg.ModelType == "qwen3_5" || cfg.ModelType == "qwen3_5_text") {
-		return nil, fmt.Errorf("unsupported Qwen3.5/Qwen3.6 native MTP architecture: model_type=%q mtp_num_hidden_layers=%d requires qwen3_5 linear-attention base support", cfg.ModelType, cfg.MTPNumHiddenLayers)
+	if qwenMTP, err := loaderconfig.ParseQwenNativeMTPMetadata(cfgData); err == nil && qwenMTP.HasNativeMTP && (qwenMTP.ModelType == "qwen3_5" || qwenMTP.ModelType == "qwen3_5_text") {
+		return nil, fmt.Errorf("unsupported Qwen3.5/Qwen3.6 native MTP architecture: model_type=%q architecture=%q mtp_num_hidden_layers=%d linear_attention=%v requires qwen3_5 base support", qwenMTP.ModelType, qwenMTP.Architecture, qwenMTP.MTPNumHiddenLayers, qwenMTP.HasLinearAttention)
 	}
 
 	// Try sharded first, then single file

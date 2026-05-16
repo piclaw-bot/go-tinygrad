@@ -97,8 +97,8 @@ func TestLoadLlamaRejectsQwen35NativeMTPBeforeWeights(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := LoadLlama(dir)
-	if err == nil || !strings.Contains(err.Error(), "unsupported Qwen3.5/Qwen3.6 native MTP architecture") {
-		t.Fatalf("LoadLlama err=%v, want unsupported Qwen3.5/Qwen3.6 native MTP", err)
+	if err == nil || !strings.Contains(err.Error(), "unsupported Qwen3.5/Qwen3.6 native MTP architecture") || !strings.Contains(err.Error(), "linear_attention=true") {
+		t.Fatalf("LoadLlama err=%v, want unsupported Qwen3.5/Qwen3.6 native MTP with linear_attention=true", err)
 	}
 }
 
