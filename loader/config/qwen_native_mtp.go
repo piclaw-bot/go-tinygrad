@@ -15,6 +15,15 @@ type QwenNativeMTPMetadata struct {
 	MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 	MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
 	LayerTypes                []string `json:"layer_types,omitempty"`
+	NumAttentionHeads         int      `json:"num_attention_heads,omitempty"`
+	NumKeyValueHeads          int      `json:"num_key_value_heads,omitempty"`
+	HeadDim                   int      `json:"head_dim,omitempty"`
+	LinearConvKernelDim       int      `json:"linear_conv_kernel_dim,omitempty"`
+	LinearKeyHeadDim          int      `json:"linear_key_head_dim,omitempty"`
+	LinearNumKeyHeads         int      `json:"linear_num_key_heads,omitempty"`
+	LinearNumValueHeads       int      `json:"linear_num_value_heads,omitempty"`
+	LinearValueHeadDim        int      `json:"linear_value_head_dim,omitempty"`
+	FullAttentionInterval     int      `json:"full_attention_interval,omitempty"`
 	HasNativeMTP              bool     `json:"has_native_mtp"`
 	HasLinearAttention        bool     `json:"has_linear_attention"`
 }
@@ -30,12 +39,30 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 			MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 			MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
 			LayerTypes                []string `json:"layer_types"`
+			NumAttentionHeads         int      `json:"num_attention_heads"`
+			NumKeyValueHeads          int      `json:"num_key_value_heads"`
+			HeadDim                   int      `json:"head_dim"`
+			LinearConvKernelDim       int      `json:"linear_conv_kernel_dim"`
+			LinearKeyHeadDim          int      `json:"linear_key_head_dim"`
+			LinearNumKeyHeads         int      `json:"linear_num_key_heads"`
+			LinearNumValueHeads       int      `json:"linear_num_value_heads"`
+			LinearValueHeadDim        int      `json:"linear_value_head_dim"`
+			FullAttentionInterval     int      `json:"full_attention_interval"`
 		} `json:"text_config"`
 		HiddenSize                int      `json:"hidden_size"`
 		NumHiddenLayers           int      `json:"num_hidden_layers"`
 		MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
 		MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
 		LayerTypes                []string `json:"layer_types"`
+		NumAttentionHeads         int      `json:"num_attention_heads"`
+		NumKeyValueHeads          int      `json:"num_key_value_heads"`
+		HeadDim                   int      `json:"head_dim"`
+		LinearConvKernelDim       int      `json:"linear_conv_kernel_dim"`
+		LinearKeyHeadDim          int      `json:"linear_key_head_dim"`
+		LinearNumKeyHeads         int      `json:"linear_num_key_heads"`
+		LinearNumValueHeads       int      `json:"linear_num_value_heads"`
+		LinearValueHeadDim        int      `json:"linear_value_head_dim"`
+		FullAttentionInterval     int      `json:"full_attention_interval"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return QwenNativeMTPMetadata{}, err
@@ -53,12 +80,30 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		meta.MTPNumHiddenLayers = raw.TextConfig.MTPNumHiddenLayers
 		meta.MTPUseDedicatedEmbeddings = raw.TextConfig.MTPUseDedicatedEmbeddings
 		meta.LayerTypes = append([]string(nil), raw.TextConfig.LayerTypes...)
+		meta.NumAttentionHeads = raw.TextConfig.NumAttentionHeads
+		meta.NumKeyValueHeads = raw.TextConfig.NumKeyValueHeads
+		meta.HeadDim = raw.TextConfig.HeadDim
+		meta.LinearConvKernelDim = raw.TextConfig.LinearConvKernelDim
+		meta.LinearKeyHeadDim = raw.TextConfig.LinearKeyHeadDim
+		meta.LinearNumKeyHeads = raw.TextConfig.LinearNumKeyHeads
+		meta.LinearNumValueHeads = raw.TextConfig.LinearNumValueHeads
+		meta.LinearValueHeadDim = raw.TextConfig.LinearValueHeadDim
+		meta.FullAttentionInterval = raw.TextConfig.FullAttentionInterval
 	} else {
 		meta.HiddenSize = raw.HiddenSize
 		meta.NumHiddenLayers = raw.NumHiddenLayers
 		meta.MTPNumHiddenLayers = raw.MTPNumHiddenLayers
 		meta.MTPUseDedicatedEmbeddings = raw.MTPUseDedicatedEmbeddings
 		meta.LayerTypes = append([]string(nil), raw.LayerTypes...)
+		meta.NumAttentionHeads = raw.NumAttentionHeads
+		meta.NumKeyValueHeads = raw.NumKeyValueHeads
+		meta.HeadDim = raw.HeadDim
+		meta.LinearConvKernelDim = raw.LinearConvKernelDim
+		meta.LinearKeyHeadDim = raw.LinearKeyHeadDim
+		meta.LinearNumKeyHeads = raw.LinearNumKeyHeads
+		meta.LinearNumValueHeads = raw.LinearNumValueHeads
+		meta.LinearValueHeadDim = raw.LinearValueHeadDim
+		meta.FullAttentionInterval = raw.FullAttentionInterval
 	}
 	meta.HasNativeMTP = meta.MTPNumHiddenLayers > 0
 	for _, lt := range meta.LayerTypes {

@@ -12,9 +12,11 @@ import (
 )
 
 type Report struct {
-	Config            loaderconfig.QwenNativeMTPMetadata `json:"config"`
-	MTPTensors        []string                           `json:"mtp_tensors,omitempty"`
-	MissingMTPTensors []string                           `json:"missing_mtp_tensors,omitempty"`
+	Config                loaderconfig.QwenNativeMTPMetadata        `json:"config"`
+	FullAttentionShapes   *loaderconfig.Qwen35FullAttentionShapes   `json:"full_attention_shapes,omitempty"`
+	LinearAttentionShapes *loaderconfig.Qwen35LinearAttentionShapes `json:"linear_attention_shapes,omitempty"`
+	MTPTensors            []string                                  `json:"mtp_tensors,omitempty"`
+	MissingMTPTensors     []string                                  `json:"missing_mtp_tensors,omitempty"`
 }
 
 func main() {
@@ -35,6 +37,12 @@ func main() {
 		os.Exit(2)
 	}
 	report := Report{Config: meta}
+	if shapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim); err == nil {
+		report.FullAttentionShapes = &shapes
+	}
+	if shapes, err := loaderconfig.Qwen35LinearAttentionShapesFor(meta.HiddenSize, meta.LinearValueHeadDim*meta.LinearNumValueHeads, meta.LinearKeyHeadDim, meta.LinearConvKernelDim, meta.LinearNumValueHeads, meta.LinearNumKeyHeads); err == nil {
+		report.LinearAttentionShapes = &shapes
+	}
 	if names, err := safetensorNames(*dir); err == nil {
 		for _, name := range names {
 			if loaderconfig.IsQwenNativeMTPTensorName(name) {

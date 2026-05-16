@@ -145,6 +145,15 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 			"model_type":"qwen3_5_text",
 			"hidden_size":5120,
 			"num_hidden_layers":64,
+			"num_attention_heads":24,
+			"num_key_value_heads":4,
+			"head_dim":256,
+			"linear_conv_kernel_dim":4,
+			"linear_key_head_dim":128,
+			"linear_num_key_heads":4,
+			"linear_num_value_heads":16,
+			"linear_value_head_dim":64,
+			"full_attention_interval":4,
 			"mtp_num_hidden_layers":1,
 			"mtp_use_dedicated_embeddings":false,
 			"layer_types":["linear_attention","linear_attention","linear_attention","full_attention"]
@@ -154,7 +163,7 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseQwenNativeMTPMetadata: %v", err)
 	}
-	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.NumHiddenLayers != 64 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
+	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.NumHiddenLayers != 64 || got.NumAttentionHeads != 24 || got.NumKeyValueHeads != 4 || got.HeadDim != 256 || got.LinearNumValueHeads != 16 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
 		t.Fatalf("metadata=%+v", got)
 	}
 }
