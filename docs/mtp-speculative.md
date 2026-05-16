@@ -7,6 +7,12 @@ several candidate tokens, and the large **verifier model** validates them in one
 batched forward pass. If the drafter's predictions match, multiple tokens are
 accepted per step — up to 3× speedup.
 
+This document covers the custom-drafter/MTP track. The separate stock-weight
+speculative scaffold inspired by Orthrus lives in [orthrus.md](orthrus.md): it
+uses normal model weights, pluggable cheap proposers, structured stats, and the
+`cmd/specbench` CSV harness, but currently verifies with `backend=replay` until
+a KV-reusing verifier block is implemented.
+
 ## Architecture
 
 ### Drafter model (Gemma4-E2B-it-assistant)

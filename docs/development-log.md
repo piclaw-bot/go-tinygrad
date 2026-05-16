@@ -1943,3 +1943,25 @@ A follow-up audit tightened the transitional `gpu`/`model` boundary before deepe
 - Centralized CUDA byte-size validation across allocation, upload/download, D2D copies, SGEMM/JIT dispatch, and Q4/MLX buffer-capacity checks to avoid unchecked `n*4` arithmetic.
 - Preserved complete MoE output if adding CPU fallback work back into a GPU accumulator fails; the CPU return path now includes already-computed GPU expert contributions.
 - Hardened GPU model byte-size arithmetic and KV-cache copy failure handling so allocation/copy failures fall back instead of silently marking stale state authoritative.
+
+### Step 128 — Stock-weight speculative scaffold and Orthrus analysis
+
+Reviewed `chiennv2000/orthrus` as an algorithmic reference and decided not to depend on its custom-trained `*_diff` checkpoint weights. Added `docs/orthrus.md` to capture the distinction between Orthrus' dual-view diffusion proposer and a stock-weight verifier scaffold suitable for go-pherence.
+
+Implemented an opt-in CPU speculative generation path for normal model weights:
+
+- `SpeculativeConfig` with CLI/env knobs for block size, n-gram size, minimum proposal length, proposer selection, backend selection, and debug output.
+- `SpeculativeProposer` with `prompt`, `repeat-last`, and `none` implementations.
+- `GenerateSpeculative` / `GenerateSpeculativeWithStats` for exact greedy output with structured stats.
+- `CPUDecodeState` with output/KV checkpoint, restore, greedy fallback, verifier-block, and commit contracts.
+- `backend=replay` as the current exact verifier scaffold. The `kv` selector is accepted but safely falls back to `replay` until a stateful KV-reusing verifier lands.
+- `llmgen`, `llmchat`, and `llmserver` expose `--speculative` on CPU; GPU speculative verification remains disabled.
+- `cmd/specbench` emits CSV normal-vs-speculative benchmarks with parity, speedup, backend/proposer identity, proposal/acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, repeat averaging, prompt-file workloads, and aggregate rows.
+
+Audit fixes during this work:
+
+- Corrected speculative stats accounting so accepted/bonus counters are only updated after successful commit; failed commits are counted as fallback.
+- Normalized speculative selector strings (trim/lowercase) for CLI/env robustness.
+- Fixed `specbench` token accounting to use `PreparedGenerateTokens`, because CPU generation may add BOS/chat-template tokens before decoding.
+
+Current result: the path is exact and observable but intentionally slower with `backend=replay`. Real speedups require replacing replay verification with a KV-reusing verifier block and then measuring proposer quality with `specbench`.

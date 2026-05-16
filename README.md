@@ -124,6 +124,26 @@ End-to-end BF16 pipeline for models trained in BF16 (Gemma3/4):
 go run ./cmd/llmgen -model models/qwen3-0.6b-mlx4 -gpu -tokens 50 -prompt "The meaning of life is"
 ```
 
+CPU generation has an opt-in stock-weight speculative path for experimentation:
+
+```bash
+go run ./cmd/llmgen -model models/smollm2-135m -tokens 32 \
+  -prompt "abc abc abc abc" \
+  -speculative -speculative-proposer prompt -speculative-debug
+```
+
+Current speculative backend is `replay`, a correctness scaffold that reuses the CPU generator and can be slower. It is useful for measuring proposer acceptance before the planned KV-reusing verifier backend lands. Available proposer choices are `prompt`, `repeat-last`, and `none`; `-speculative-min-proposal` gates tiny proposals.
+
+### specbench — speculative decoding benchmark CSV
+
+```bash
+go run ./cmd/specbench -model models/smollm2-135m \
+  -prompt-file prompts.txt -tokens 16 -repeat 3 \
+  -speculative-proposer prompt -csv specbench.csv
+```
+
+`specbench` emits normal/speculative rows with output parity, speedup vs normal, verifier backend, proposer, acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, and aggregate total rows for multi-prompt workloads.
+
 ### llmchat — interactive chat
 
 ```bash
@@ -143,12 +163,14 @@ curl -s http://localhost:8080/v1/chat/completions \
   -d '{"model":"gemma4-e2b-mlx4","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-All commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU).
+All generation/chat/server commands support `--gpu-layers N` for hybrid CPU/GPU inference (0=all on GPU).
 Use `--eager-load` to pre-fault mmap'd safetensors weights at startup for more
 predictable first-token latency. CPU generation also supports `--turbo-quant` to
 enable TurboQuant KV-cache compression (4-bit keys, 2-bit values, protected
 first/last layers, 128-token residual window). TurboQuant is currently CPU-backend
-only; GPU KV compression is a future step.
+only; GPU KV compression is a future step. `llmgen`, `llmchat`, and `llmserver`
+also support `--speculative` for the stock-weight speculative scaffold on the CPU
+backend; GPU speculative verification is not enabled yet.
 
 ## Architecture Details
 
@@ -177,7 +199,8 @@ Current package ownership is now organized around explicit loader/runtime/backen
 - **Sliding window attention** — alternating local/global with window masking (Gemma3/4)
 - **Per-layer input gating** — PLI with GELU gate, projection, norm (Gemma4)
 - **KV sharing** — shared layers reuse source-layer KV cache (Gemma4)
-- **MTP speculative decoding internals** — Gemma4 assistant drafter loader, alias-safe projection helpers, verifier plan/result validation, initial CPU verifier-forward loop, projection-only/synthetic/real-asset q-only drafter contract tests, bounded multi-step drafter loop, multi-draft drafter→verifier seam, LiteRT-style stats, and staged KV commit/rollback; public speculative generation remains disabled until full Gemma4 PLI/batched verifier and CPU/GPU smokes are complete
+- **MTP speculative decoding internals** — Gemma4 assistant drafter loader, alias-safe projection helpers, verifier plan/result validation, initial CPU verifier-forward loop, projection-only/synthetic/real-asset q-only drafter contract tests, bounded multi-step drafter loop, multi-draft drafter→verifier seam, LiteRT-style stats, and staged KV commit/rollback; public MTP generation remains disabled until full Gemma4 PLI/batched verifier and CPU/GPU smokes are complete
+- **Stock-weight speculative scaffold** — opt-in CPU path inspired by Orthrus-style verification but without custom weights; pluggable prompt/repeat/no-op proposers, replay verifier backend, decode-state checkpoint/commit contracts, structured stats, and `cmd/specbench` benchmarking. Current `backend=replay` is exact but can be slower; speedup depends on a future KV-reusing verifier backend and proposer quality.
 - **TurboQuant KV compression** — `runtime/kv`, optional CPU KV cache compression via `--turbo-quant`
 - **Layer scalar** — per-layer output scaling (Gemma4)
 - **Embedding scaling** — `× √hidden_size` (Gemma3/4)
@@ -217,6 +240,7 @@ go vet ./...
 - **[docs/weight-budget.md](docs/weight-budget.md)** — tiered weight budget manager (ds4-inspired)
 - **[docs/nvfp4.md](docs/nvfp4.md)** — NVFP4/FP4 support track and relevant Gemma/Qwen checkpoint findings
 - **[docs/mtp-speculative.md](docs/mtp-speculative.md)** — Gemma4/Qwen3.6 MTP research plus current internal implementation status
+- **[docs/orthrus.md](docs/orthrus.md)** — Orthrus analysis and stock-weight speculative decoding scaffold/benchmark notes
 - **[docs/performance.md](docs/performance.md)** — benchmarks, kernel timings
 - **[docs/gpu-options.md](docs/gpu-options.md)** — GPU compute paths (CUDA, Vulkan)
 - **[docs/development-log.md](docs/development-log.md)** — build process

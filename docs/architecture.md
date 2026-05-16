@@ -37,7 +37,7 @@ Phase 6.5 has moved the repository toward explicit ownership boundaries. Remaini
 
 | Area | Current package | Notes |
 |---|---|---|
-| CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver` | Flags and user/server I/O only |
+| CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver`, `cmd/specbench` | Flags and user/server I/O only; `specbench` emits normal-vs-speculative CSV benchmark rows |
 | Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources; safetensors metadata, nil helpers, deterministic names, checked eager totals, partial sharded-open cleanup, and tokenizer merge helpers are guarded |
 | Placement policy | `backends/placement` | Backend-neutral budget manager and layer placement estimator; device memory availability is caller-supplied; accounting rejects invalid categories and estimator math is saturating |
 | SIMD backend | `backends/simd` | Package name remains `simd`; import path is backend-owned; `backends/simd` is the facade for future CPU-family subpackages; scalar fallbacks, BF16 GEMV, empty-slice dispatch, per-call GEBP scratch, and SGEMM/GEBP/gather byte offsets are bounds/overflow-guarded |
@@ -46,7 +46,7 @@ Phase 6.5 has moved the repository toward explicit ownership boundaries. Remaini
 | KV runtime | `runtime/kv` | TurboQuant state, compressed KV cache, and staging/rollback helpers with layout, accessor, memory-accounting, protected-layer input, and overflow guards |
 | Memory runtime | `runtime/memory` | mmap residency advice/range tracking used by safetensors eager loading and future streaming; nil advisors are inert and malformed tracked ranges are sanitized with saturating accounting |
 | Quant runtime | `runtime/quant` | MLX/GPTQ CPU quant formats, dtype/shape validation, checked expected-size/dequant output arithmetic, dequantization, and guarded on-the-fly Q4 GEMV helpers |
-| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, model-specific KV sizing; package split deferred to Phase 6.8 and generation extraction to Phase 6.9; helper guards cover MTP drafter/verifier/acceptance/KV commit edges, CPU decode finish/final norm, generation allocation setup, MoE, inference helpers, CPU forward-layer entrypoints, KV sizing, GPU prefill/LM-head, GEMV, GQA arithmetic, and opt-in loader/prefill logging |
+| Decoder transition package | `model` | LLaMA-family loader/forward, Gemma/Qwen/MoE/MTP, stock-weight speculative scaffold, model-specific KV sizing; package split deferred to Phase 6.8 and generation extraction to Phase 6.9; helper guards cover MTP drafter/verifier/acceptance/KV commit edges, speculative proposer/config/stats/checkpoint paths, CPU decode finish/final norm, generation allocation setup, MoE, inference helpers, CPU forward-layer entrypoints, KV sizing, GPU prefill/LM-head, GEMV, GQA arithmetic, and opt-in loader/prefill logging |
 | GPU transition package | `gpu`, `backends/cuda/ptx` | CUDA runtime dispatch and GPU-resident expert cache remain in `gpu` until the Phase 6.7 CUDA runtime split; embedded PTX source assets live under `backends/cuda/ptx`; DevBuf/stream/Q4/MLX/expert/NV/dense/JIT/BF16 validation and opt-in GPU diagnostics are hardened before that split |
 | Tensor graph | `tensor` | Lazy tensor DAG/runtime; transitional direct import of `backends/simd`; malformed-input validation across shapes, unsafe views, broadcasting, realization, rewrite/fusion, NN/convenience helpers, matmul/linear, and modules |
 
@@ -105,6 +105,13 @@ loader/safetensors + loader/weights (GetFloat32, GetBF16, GetInt32, GetRaw)
 
 ## Speculative Decoding / MTP
 
+There are two distinct speculative tracks:
+
+1. **Gemma4/Qwen MTP internals** — custom drafter/checkpoint assets, still disabled in public generation.
+2. **Stock-weight speculative scaffold** — Orthrus-inspired verifier mechanics without custom weights, opt-in on the CPU backend via `--speculative`.
+
+### MTP internals
+
 Gemma4 MTP support now has internal verifier/drafter integration pieces, but it remains deliberately disabled in public generation/CLI paths. Implemented pieces:
 
 - `LoadGemma4MTPDrafter` for `gemma4_assistant` safetensors assets with q-only attention blocks.
@@ -115,7 +122,19 @@ Gemma4 MTP support now has internal verifier/drafter integration pieces, but it 
 - `runtime/kv` staging helpers for candidate rollback/commit in both uncompressed and TurboQuant-backed caches; model-aware verifier plans/results validate vocab/token/position/logit/activation dimensions before deriving acceptance.
 - Internal drafter/verifier seams: projection-only, synthetic q-only, and local real-asset contract tests can run against an explicit external-KV view; bounded multi-step drafter and multi-draft speculative helpers record LiteRT-style stats and restore staged verifier KV on verifier/stat errors.
 
-Remaining architecture work is full Gemma4 PLI/batched verifier semantics, production q-only drafter parity against real assistant assets, adaptive draft-count policy, GPU/hybrid support, and public generation wiring after CPU/GPU smokes.
+Remaining MTP architecture work is full Gemma4 PLI/batched verifier semantics, production q-only drafter parity against real assistant assets, adaptive draft-count policy, GPU/hybrid support, and public generation wiring after CPU/GPU smokes.
+
+### Stock-weight speculative scaffold
+
+The stock-weight path deliberately avoids Orthrus custom `*_diff` tensors and instead provides a reusable verification/proposer scaffold for normal Qwen/Gemma/LLaMA weights:
+
+- `GenerateSpeculative` / `GenerateSpeculativeWithStats` are opt-in CPU entrypoints used by `llmgen`, `llmchat`, and `llmserver` when `--speculative` is set.
+- `SpeculativeProposer` is pluggable. Current proposers are `prompt` (prompt/suffix lookup), `repeat-last` (cheap verifier stress), and `none` (fallback overhead baseline).
+- `CPUDecodeState` owns output/KV checkpoint, restore, `GenerateGreedy`/`DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contracts.
+- Current verifier backend is `replay`: exact greedy verification by replaying the prepared CPU prompt. It is a correctness/measurement scaffold and can be slower.
+- The `kv` backend selector is accepted but falls back to `replay` until a stateful KV-reusing verifier replaces the replay body.
+- `SpeculativeStats` records backend, proposer, proposal/acceptance/fallback counters, emitted-token counts, tokens/step, average proposal length, plus reusable add/average helpers for benchmarks.
+- `cmd/specbench` compares normal vs speculative output, validates parity, supports prompt-file workloads and repeat averaging, and emits CSV suitable for tracking `backend=replay` to future `backend=kv` improvements.
 
 ## BF16 Pipeline
 

@@ -48,6 +48,42 @@ Hardware: RTX 3060 12GB (sm_86, Ampere) + i7-12700 6-core + 64GB DDR4
 | Embedding + sampling | ~0.1 ms/token | ~0.1 ms/token |
 | **Total** | **~120 tok/s no-profile, up to ~158 tok/s profiled short run** | **~1 tok/s** |
 
+## Stock-weight speculative decoding scaffold
+
+The Orthrus-inspired stock-weight speculative path is currently an **opt-in CPU-only correctness scaffold**, not a performance feature yet:
+
+```bash
+go run ./cmd/llmgen -model models/smollm2-135m \
+  -prompt "abc abc abc abc" -tokens 8 \
+  -speculative -speculative-proposer prompt -speculative-debug
+```
+
+Current backend/proposer status:
+
+| Component | Options | Status |
+|---|---|---|
+| Verifier backend | `replay` | Exact greedy verification by replaying the prepared CPU prompt; useful for parity/acceptance measurement but often slower |
+| Future verifier backend | `kv` selector accepted but falls back to `replay` | Planned KV-reusing verifier block |
+| Proposers | `prompt`, `repeat-last`, `none` | Stock-weight only; no Orthrus custom diffusion weights |
+| Benchmark harness | `cmd/specbench` | Emits CSV with parity, speedup, backend/proposer, acceptance/fallback, emitted tokens, tokens/step, average proposal length, and aggregate workload rows |
+
+Example replay-backend smoke results on `smollm2-135m` are intentionally slower than normal generation, despite exact output parity:
+
+| Prompt | Tokens | Proposer | Backend | Normal tok/s | Spec tok/s | Speedup | Notes |
+|---|---:|---|---|---:|---:|---:|---|
+| `abc abc abc abc` | 4 | `prompt` | `replay` | ~15.8 | ~5.3 | ~0.33× | prompt lookup gated tiny proposals, so fallback-only |
+| `ha ha ha ha` | 4 | `repeat-last` | `replay` | ~15.1 | ~5.3 | ~0.35× | multi-token proposal accepted, but replay verifier dominates |
+
+Use `specbench` for less noisy comparisons:
+
+```bash
+go run ./cmd/specbench -model models/smollm2-135m \
+  -prompt-file prompts.txt -tokens 16 -repeat 3 \
+  -speculative-proposer prompt -csv specbench.csv
+```
+
+The expected benefit requires replacing `backend=replay` with a stateful/KV-reusing verifier block. Until then, the useful metrics are acceptance rate, emitted tokens, and tokens/step, not raw speedup.
+
 ## NVFP4 / FP4 watchlist
 
 NVFP4 is now a roadmap item rather than an implemented format. Public Hugging
