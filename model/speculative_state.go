@@ -61,6 +61,19 @@ func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens in
 	return st, nil
 }
 
+func (s *CPUDecodeState) DecodeOneGreedy() (int, error) {
+	if s == nil || s.Model == nil {
+		return 0, fmt.Errorf("nil decode state/model")
+	}
+	verified := s.Model.generatePrepared(s.Output, 1)
+	if len(verified) <= len(s.Output) {
+		return 0, fmt.Errorf("decode produced no token")
+	}
+	tok := verified[len(s.Output)]
+	s.Output = append(s.Output, tok)
+	return tok, nil
+}
+
 func (s *CPUDecodeState) Checkpoint() CPUDecodeCheckpoint {
 	cp := CPUDecodeCheckpoint{OutputLen: len(s.Output)}
 	if s.CompressedKV != nil {
@@ -104,11 +117,16 @@ func (s *CPUDecodeState) VerifyGreedyBlock(drafted []int) (MTPAcceptance, error)
 		return MTPAcceptance{}, fmt.Errorf("nil decode state/model")
 	}
 	verifyN := len(drafted) + 1
-	verified := s.Model.generatePrepared(s.Output, verifyN)
-	if len(verified) < len(s.Output)+verifyN {
-		return MTPAcceptance{}, fmt.Errorf("verifier produced %d new tokens, want %d", len(verified)-len(s.Output), verifyN)
+	shadow := *s
+	shadow.Output = append([]int(nil), s.Output...)
+	verifierTokens := make([]int, 0, verifyN)
+	for i := 0; i < verifyN; i++ {
+		tok, err := shadow.DecodeOneGreedy()
+		if err != nil {
+			return MTPAcceptance{}, fmt.Errorf("verifier token %d: %w", i, err)
+		}
+		verifierTokens = append(verifierTokens, tok)
 	}
-	verifierTokens := verified[len(s.Output) : len(s.Output)+verifyN]
 	return AcceptMTPDraft(drafted, verifierTokens)
 }
 

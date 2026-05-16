@@ -70,7 +70,7 @@ Current opt-in hook:
 - The first proposer is `PromptLookupProposal`, an n-gram/prompt-lookup proposer for repeated text.
 - The current verifier scaffold runs greedy verification with the real model and accepts the longest matching prompt-lookup prefix.
 - This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.
-- `CPUDecodeState` now defines the KV/output checkpoint, restore, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
+- `CPUDecodeState` now defines the KV/output checkpoint, restore, `DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
 
 Candidate non-custom proposers:
 

@@ -130,11 +130,9 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		proposal := PromptLookupProposal(state.Output, block, cfg.NGram)
 		if len(proposal) == 0 {
 			stats.FallbackSteps++
-			verified := m.generatePrepared(state.Output, 1)
-			if len(verified) <= len(state.Output) {
+			if _, err := state.DecodeOneGreedy(); err != nil {
 				return state.Output
 			}
-			state.Output = append(state.Output, verified[len(state.Output)])
 			continue
 		}
 
@@ -149,22 +147,18 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if err != nil {
 			stats.FallbackSteps++
 			_ = state.Restore(checkpoint)
-			verified := m.generatePrepared(state.Output, 1)
-			if len(verified) <= len(state.Output) {
+			if _, err := state.DecodeOneGreedy(); err != nil {
 				return state.Output
 			}
-			state.Output = append(state.Output, verified[len(state.Output)])
 			continue
 		}
 		stats.AcceptedTokens += acceptance.AcceptedPrefixLen
 		stats.BonusTokens++
 		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
 			_ = state.Restore(checkpoint)
-			verified := m.generatePrepared(state.Output, 1)
-			if len(verified) <= len(state.Output) {
+			if _, err := state.DecodeOneGreedy(); err != nil {
 				return state.Output
 			}
-			state.Output = append(state.Output, verified[len(state.Output)])
 		}
 		if len(state.Output) > len(prepared)+maxTokens {
 			state.Output = state.Output[:len(prepared)+maxTokens]

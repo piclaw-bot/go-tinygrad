@@ -30,6 +30,13 @@ func TestCPUDecodeStateCommitAcceptedFloatKV(t *testing.T) {
 	}
 }
 
+func TestCPUDecodeStateDecodeOneGreedyNilState(t *testing.T) {
+	var st *CPUDecodeState
+	if _, err := st.DecodeOneGreedy(); err == nil {
+		t.Fatal("nil state DecodeOneGreedy returned nil error")
+	}
+}
+
 func TestCPUDecodeStateVerifyGreedyBlockNilState(t *testing.T) {
 	var st *CPUDecodeState
 	if _, err := st.VerifyGreedyBlock([]int{1}); err == nil {
