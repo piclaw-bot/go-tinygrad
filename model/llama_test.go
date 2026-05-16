@@ -34,6 +34,19 @@ func gemma4Path() string {
 	return p
 }
 
+func TestPreparedGenerateTokensCopiesPrompt(t *testing.T) {
+	m := &LlamaModel{}
+	prompt := []int{1, 2, 3}
+	prepared := m.PreparedGenerateTokens(prompt)
+	if !sameInts(prepared, prompt) {
+		t.Fatalf("prepared=%v want %v", prepared, prompt)
+	}
+	prepared[0] = 99
+	if prompt[0] != 1 {
+		t.Fatalf("PreparedGenerateTokens aliased prompt slice")
+	}
+}
+
 func TestLlamaConfigDetectsOrthrus(t *testing.T) {
 	cfg := LlamaConfig{
 		ModelType:          "qwen3",

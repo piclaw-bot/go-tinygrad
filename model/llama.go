@@ -860,6 +860,13 @@ func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 	}
 }
 
+// PreparedGenerateTokens returns the token sequence that Generate will actually
+// process after model-specific BOS/chat-template wrapping. It is useful for
+// callers that need accurate prompt/generation accounting.
+func (m *LlamaModel) PreparedGenerateTokens(tokenIDs []int) []int {
+	return append([]int(nil), m.prepareGenerateTokens(tokenIDs)...)
+}
+
 func (m *LlamaModel) prepareGenerateTokens(tokenIDs []int) []int {
 	cfg := m.Config
 

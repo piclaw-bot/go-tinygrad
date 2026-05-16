@@ -80,6 +80,7 @@ func main() {
 	results := make([]result, 0, len(prompts))
 	for pi, promptText := range prompts {
 		ids := tok.Encode(promptText)
+		preparedPromptLen := len(m.PreparedGenerateTokens(ids))
 		var normal, spec []int
 		var normalElapsed, specElapsed time.Duration
 		var stats model.SpeculativeStats
@@ -107,9 +108,9 @@ func main() {
 		stats = stats.Average(*repeat)
 		results = append(results, result{
 			promptIdx:       pi,
-			promptTokens:    len(ids),
-			normalGenerated: len(normal) - len(ids),
-			specGenerated:   len(spec) - len(ids),
+			promptTokens:    preparedPromptLen,
+			normalGenerated: generatedTokenCount(normal, preparedPromptLen),
+			specGenerated:   generatedTokenCount(spec, preparedPromptLen),
 			normalElapsed:   normalElapsed,
 			specElapsed:     specElapsed,
 			match:           match,
@@ -222,6 +223,13 @@ func loadPrompts(prompt, promptFile string) ([]string, error) {
 		return nil, fmt.Errorf("no prompts in %s", promptFile)
 	}
 	return prompts, nil
+}
+
+func generatedTokenCount(output []int, promptLen int) int {
+	if promptLen < 0 || len(output) <= promptLen {
+		return 0
+	}
+	return len(output) - promptLen
 }
 
 func tokensPerSecond(generated int, elapsed time.Duration) float64 {
