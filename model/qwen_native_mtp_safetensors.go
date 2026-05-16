@@ -19,6 +19,7 @@ type ShardedSafetensorsQwenNativeMTPTensorSource struct {
 
 type qwenNativeMTPClosableTensorSource interface {
 	QwenNativeMTPTensorSource
+	Qwen35RawTensorSource
 	Close() error
 }
 
@@ -73,6 +74,13 @@ func (s qwenNativeMTPShardedFileSource) Close() error {
 	return s.File.Close()
 }
 
+func (s SafetensorsQwenNativeMTPTensorSource) GetRaw(name string) ([]byte, string, []int, error) {
+	if s.File == nil {
+		return nil, "", nil, fmt.Errorf("nil safetensors file for %s", name)
+	}
+	return s.File.GetRaw(name)
+}
+
 func (s SafetensorsQwenNativeMTPTensorSource) Get(name string, shape []int) (*tensor.Tensor, error) {
 	if s.File == nil {
 		return nil, fmt.Errorf("nil safetensors file for %s", name)
@@ -89,6 +97,13 @@ func (s SafetensorsQwenNativeMTPTensorSource) Get(name string, shape []int) (*te
 		}
 	}
 	return tensor.FromFloat32(data, shape), nil
+}
+
+func (s ShardedSafetensorsQwenNativeMTPTensorSource) GetRaw(name string) ([]byte, string, []int, error) {
+	if s.File == nil {
+		return nil, "", nil, fmt.Errorf("nil sharded safetensors file for %s", name)
+	}
+	return s.File.GetRaw(name)
 }
 
 func (s ShardedSafetensorsQwenNativeMTPTensorSource) Get(name string, shape []int) (*tensor.Tensor, error) {

@@ -23,6 +23,7 @@ Reference: `/tmp/llama-mtp-clean/src/models/qwen35.cpp` and `/tmp/llama-mtp-clea
 ## Still approximate / needs parity
 
 - `applyQwen35LinearDeltaUpdate` is a scalar correctness-first approximation of `build_recurrent_attn`, not proven equivalent to ggml fused/non-fused GDN.
+- Base Qwen3.6 ModelOpt/NVFP4 U8 tensors can now be loaded as packed `runtime/quant.NVFP4Weight` records with scale companions; they are not yet wired into the base layer structs/forward path.
 - Conv kernel orientation may still need real tensor parity checks against a converted checkpoint.
 - State tensor ordering is plausible but must be checked against `llama-memory-recurrent` layout. The scalar recurrence now explicitly uses tiled key-head mapping (`value_head % key_heads`) to mirror the reference repeat path when `num_v_heads > num_k_heads`.
 - MRoPE section handling is not fully equivalent; current Go RoPE path is simple frequency-table driven.
