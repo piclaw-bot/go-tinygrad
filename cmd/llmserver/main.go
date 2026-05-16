@@ -89,12 +89,13 @@ type ModelListResponse struct {
 // Server
 
 type Server struct {
-	cpuModel *model.LlamaModel
-	gpuModel *model.GPUModel
-	tok      *tokenizer.Tokenizer
-	mu       sync.Mutex
-	modelID  string
-	maxCtx   int
+	cpuModel    *model.LlamaModel
+	gpuModel    *model.GPUModel
+	tok         *tokenizer.Tokenizer
+	mu          sync.Mutex
+	modelID     string
+	maxCtx      int
+	speculative bool
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +166,8 @@ func (s *Server) generate(ids []int, maxTokens int, emit func(token int, text st
 	var output []int
 	if s.gpuModel != nil {
 		output = s.gpuModel.Generate(ids, maxTokens)
+	} else if s.speculative {
+		output = s.cpuModel.GenerateSpeculative(ids, maxTokens, model.SpeculativeConfigFromEnv())
 	} else {
 		output = s.cpuModel.Generate(ids, maxTokens)
 	}
@@ -307,6 +310,10 @@ func main() {
 	useGPU := flag.Bool("gpu", false, "use GPU")
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
+	speculative := flag.Bool("speculative", false, "enable opt-in stock-weight speculative decoding path (CPU backend)")
+	specBlock := flag.Int("speculative-block", 8, "speculative proposal block size")
+	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
+	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
 
@@ -322,6 +329,17 @@ func main() {
 		model.ForceOnTheFly = true
 		if *turboQuant {
 			log.Printf("warning: --turbo-quant currently applies to the CPU backend only")
+		}
+		if *speculative {
+			log.Printf("warning: --speculative currently applies to the CPU backend only")
+		}
+	}
+	if *speculative {
+		os.Setenv("GO_PHERENCE_SPECULATIVE", "1")
+		os.Setenv("GO_PHERENCE_SPECULATIVE_BLOCK", fmt.Sprint(*specBlock))
+		os.Setenv("GO_PHERENCE_SPECULATIVE_NGRAM", fmt.Sprint(*specNGram))
+		if *specDebug {
+			os.Setenv("GO_PHERENCE_SPECULATIVE_DEBUG", "1")
 		}
 	}
 
@@ -341,7 +359,7 @@ func main() {
 		m.Config.NumLayers, m.Config.HiddenSize)
 
 	modelID := filepath.Base(*dir)
-	srv := &Server{cpuModel: m, tok: tok, modelID: modelID, maxCtx: 4096}
+	srv := &Server{cpuModel: m, tok: tok, modelID: modelID, maxCtx: 4096, speculative: *speculative}
 
 	if *useGPU {
 		g, err := model.LoadGPUModelWithLayers(m, *gpuLayers)
