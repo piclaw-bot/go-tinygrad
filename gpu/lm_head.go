@@ -34,13 +34,14 @@ func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
 		gridX = 65535
 	}
 
-	LaunchKernel(fnLMHead, gridX, gridY, 1, 64, 1, 1, 64*4,
+	if err := LaunchKernel(fnLMHead, gridX, gridY, 1, 64, 1, 1, 64*4,
 		unsafe.Pointer(&W.gpu.Ptr),
 		unsafe.Pointer(&x.gpu.Ptr),
 		unsafe.Pointer(&logits.gpu.Ptr),
 		unsafe.Pointer(&v),
-		unsafe.Pointer(&dim))
-	logits.dev = GPU_DEVICE
+		unsafe.Pointer(&dim)); err == nil {
+		logits.dev = GPU_DEVICE
+	}
 }
 
 var fnLMHead CUfunction

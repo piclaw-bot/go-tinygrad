@@ -40,7 +40,7 @@ func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
 	gridX := outDim
 	gridY := batchSize
 
-	LaunchKernel(fnGemmQ4, gridX, gridY, 1, 256, 1, 1, 256*4,
+	if err := LaunchKernel(fnGemmQ4, gridX, gridY, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&input.gpu.Ptr),
 		unsafe.Pointer(&w.QWeight.Ptr),
 		unsafe.Pointer(&w.GIdx.Ptr),
@@ -50,8 +50,9 @@ func GemmQ4(out, input *DevBuf, w *GPUQuantWeight, B int) {
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups),
 		unsafe.Pointer(&batchSize),
-	)
-	out.dev = GPU_DEVICE
+	); err == nil {
+		out.dev = GPU_DEVICE
+	}
 }
 
 var fnGemmQ4 CUfunction

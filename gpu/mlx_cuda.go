@@ -303,15 +303,16 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 			inDim := uint32(w.InDim)
 			groups := uint32(w.Groups)
 			groupSz := uint32(w.GroupSz)
-			LaunchKernel(fnMLXCorrect, outDim, 1, 1, 256, 1, 1, 256*4,
+			if err := LaunchKernel(fnMLXCorrect, outDim, 1, 1, 256, 1, 1, 256*4,
 				unsafe.Pointer(&x.gpu.Ptr),
 				unsafe.Pointer(&w.Correction.Ptr),
 				unsafe.Pointer(&out.gpu.Ptr),
 				unsafe.Pointer(&inDim),
 				unsafe.Pointer(&outDim),
 				unsafe.Pointer(&groups),
-				unsafe.Pointer(&groupSz))
-			out.dev = GPU_DEVICE
+				unsafe.Pointer(&groupSz)); err == nil {
+				out.dev = GPU_DEVICE
+			}
 		}
 		return
 	}
@@ -328,7 +329,7 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 	// Shared memory: 256*4 (reduction) + inDim*4 (x cache)
 	sharedMem := uint32(256 * 4)
 
-	LaunchKernel(fnMLXGemv, outDim, 1, 1, 256, 1, 1, sharedMem,
+	if err := LaunchKernel(fnMLXGemv, outDim, 1, 1, 256, 1, 1, sharedMem,
 		unsafe.Pointer(&x.gpu.Ptr),
 		unsafe.Pointer(&w.QWeight.Ptr),
 		unsafe.Pointer(&w.Scales.Ptr),
@@ -337,8 +338,9 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		unsafe.Pointer(&inDim),
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups),
-		unsafe.Pointer(&groupSz))
-	out.dev = GPU_DEVICE
+		unsafe.Pointer(&groupSz)); err == nil {
+		out.dev = GPU_DEVICE
+	}
 }
 
 // GemmMLX performs batched GPU GEMM with MLX quantized weights.
@@ -359,7 +361,7 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 	groupSz := uint32(w.GroupSz)
 	batchSize := uint32(B)
 
-	LaunchKernel(fnMLXGemm, outDim, batchSize, 1, 256, 1, 1, 256*4,
+	if err := LaunchKernel(fnMLXGemm, outDim, batchSize, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&input.gpu.Ptr),
 		unsafe.Pointer(&w.QWeight.Ptr),
 		unsafe.Pointer(&w.Scales.Ptr),
@@ -369,8 +371,9 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups),
 		unsafe.Pointer(&groupSz),
-		unsafe.Pointer(&batchSize))
-	out.dev = GPU_DEVICE
+		unsafe.Pointer(&batchSize)); err == nil {
+		out.dev = GPU_DEVICE
+	}
 }
 
 var fnMLXGemv CUfunction
@@ -395,7 +398,7 @@ func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 
 	sharedMem := uint32(256 * 4)
 
-	LaunchKernel(fnMLXGemv, outDim, 1, 1, 256, 1, 1, sharedMem,
+	if err := LaunchKernel(fnMLXGemv, outDim, 1, 1, 256, 1, 1, sharedMem,
 		unsafe.Pointer(&x.gpu.Ptr),
 		unsafe.Pointer(&w.QWeight.Ptr),
 		unsafe.Pointer(&w.Scales.Ptr),
@@ -404,6 +407,7 @@ func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		unsafe.Pointer(&inDim),
 		unsafe.Pointer(&outDim),
 		unsafe.Pointer(&groups),
-		unsafe.Pointer(&groupSz))
-	out.dev = GPU_DEVICE
+		unsafe.Pointer(&groupSz)); err == nil {
+		out.dev = GPU_DEVICE
+	}
 }
