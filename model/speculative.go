@@ -159,22 +159,27 @@ func PromptLookupProposal(context []int, max int, maxNGram int) []int {
 // now it preserves exact behavior by falling back to normal generation when no
 // verified block path is available.
 func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg SpeculativeConfig) []int {
+	out, _ := m.GenerateSpeculativeWithStats(tokenIDs, maxTokens, cfg)
+	return out
+}
+
+func (m *LlamaModel) GenerateSpeculativeWithStats(tokenIDs []int, maxTokens int, cfg SpeculativeConfig) ([]int, SpeculativeStats) {
 	if !cfg.Enabled || maxTokens <= 0 {
-		return m.Generate(tokenIDs, maxTokens)
+		return m.Generate(tokenIDs, maxTokens), SpeculativeStats{}
 	}
 	cfg = cfg.Normalize()
 	prepared := m.prepareGenerateTokens(tokenIDs)
 	if maxTokens < 0 {
-		return append([]int(nil), prepared...)
+		return append([]int(nil), prepared...), SpeculativeStats{}
 	}
 	maxInt := int(^uint(0) >> 1)
 	if maxTokens > maxInt-len(prepared) {
-		return append([]int(nil), prepared...)
+		return append([]int(nil), prepared...), SpeculativeStats{}
 	}
 	proposer := NewSpeculativeProposer(cfg)
 	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens)
 	if err != nil {
-		return m.generatePrepared(prepared, maxTokens)
+		return m.generatePrepared(prepared, maxTokens), SpeculativeStats{}
 	}
 	stats := SpeculativeStats{VerifierBackend: state.VerifierBackend(), Proposer: proposer.Name()}
 	defer func() {
@@ -194,7 +199,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if len(proposal) < cfg.MinProposal {
 			stats.FallbackSteps++
 			if err := state.GenerateGreedy(1); err != nil {
-				return state.Output
+				return state.Output, stats
 			}
 			continue
 		}
@@ -211,7 +216,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 			stats.FallbackSteps++
 			_ = state.Restore(checkpoint)
 			if err := state.GenerateGreedy(1); err != nil {
-				return state.Output
+				return state.Output, stats
 			}
 			continue
 		}
@@ -220,12 +225,12 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
 			_ = state.Restore(checkpoint)
 			if err := state.GenerateGreedy(1); err != nil {
-				return state.Output
+				return state.Output, stats
 			}
 		}
 		if len(state.Output) > len(prepared)+maxTokens {
 			state.Output = state.Output[:len(prepared)+maxTokens]
 		}
 	}
-	return state.Output
+	return state.Output, stats
 }

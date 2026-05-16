@@ -2,6 +2,17 @@ package model
 
 import "testing"
 
+func TestGenerateSpeculativeWithStatsDisabled(t *testing.T) {
+	m := &LlamaModel{}
+	out, stats := m.GenerateSpeculativeWithStats([]int{1, 2}, -1, SpeculativeConfig{})
+	if !sameInts(out, []int{1, 2}) {
+		t.Fatalf("out=%v want prompt", out)
+	}
+	if stats.Steps != 0 || stats.ProposalSteps != 0 {
+		t.Fatalf("stats=%+v want zero", stats)
+	}
+}
+
 func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
 	stats := SpeculativeStats{VerifierBackend: "replay", ProposedTokens: 4, AcceptedTokens: 3}
 	if got := stats.AcceptanceRate(); got != 0.75 {
