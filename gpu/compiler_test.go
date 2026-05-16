@@ -37,7 +37,9 @@ func TestCompilerSiLUMul(t *testing.T) {
 	a.ToGPU()
 	b.ToGPU()
 	out.ToGPU()
-	k.Launch(n, a.GPUPtr(), b.GPUPtr(), out.GPUPtr())
+	if !k.Launch(n, a.GPUPtr(), b.GPUPtr(), out.GPUPtr()) {
+		t.Fatal("JIT SiLU*Mul launch failed")
+	}
 	Sync()
 	gpuOut := out.Data()
 
@@ -78,7 +80,9 @@ func TestCompilerAdd(t *testing.T) {
 	a.ToGPU()
 	b.ToGPU()
 	out.ToGPU()
-	k.Launch(n, a.GPUPtr(), b.GPUPtr(), out.GPUPtr())
+	if !k.Launch(n, a.GPUPtr(), b.GPUPtr(), out.GPUPtr()) {
+		t.Fatal("JIT Add launch failed")
+	}
 	Sync()
 
 	d := out.Data()
@@ -127,11 +131,23 @@ func TestCompilerValidationRejectsMalformedSpecs(t *testing.T) {
 		t.Fatal("Compile accepted nil node input")
 	}
 	var k *CompiledKernel
-	k.Launch(1)
-	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 0, BlockSz: 256}).Launch(1, &Buffer{Ptr: 1, Size: 4})
-	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1)
-	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1, &Buffer{Ptr: 0, Size: 4})
+	if k.Launch(1) {
+		t.Fatal("nil compiled kernel launch reported success")
+	}
+	if (&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 0, BlockSz: 256}).Launch(1, &Buffer{Ptr: 1, Size: 4}) {
+		t.Fatal("zero grid divisor launch reported success")
+	}
+	if (&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1) {
+		t.Fatal("missing buffer launch reported success")
+	}
+	if (&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(1, &Buffer{Ptr: 0, Size: 4}) {
+		t.Fatal("zero pointer launch reported success")
+	}
 	maxU32 := int(^uint32(0))
-	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(maxU32+1, &Buffer{Ptr: 1, Size: maxU32})
-	(&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: maxU32 + 1}).Launch(1, &Buffer{Ptr: 1, Size: 4})
+	if (&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: 256}).Launch(maxU32+1, &Buffer{Ptr: 1, Size: maxU32}) {
+		t.Fatal("oversized element count launch reported success")
+	}
+	if (&CompiledKernel{Fn: 1, NumBufs: 1, GridDiv: 1, BlockSz: maxU32 + 1}).Launch(1, &Buffer{Ptr: 1, Size: 4}) {
+		t.Fatal("oversized block size launch reported success")
+	}
 }

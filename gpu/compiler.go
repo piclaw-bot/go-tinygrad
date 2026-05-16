@@ -121,21 +121,22 @@ func Compile(spec *KernelSpec) (*CompiledKernel, error) {
 }
 
 // Launch executes a compiled kernel with the given buffers and element count.
-func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
+// It returns true only when the CUDA launch was accepted by the driver.
+func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) bool {
 	if k == nil || k.Fn == 0 || n <= 0 || k.GridDiv <= 0 || k.BlockSz <= 0 || len(bufs) < k.NumBufs {
-		return
+		return false
 	}
 	bytes, err := checkedByteSize(n, -1)
 	if err != nil || !fitsUint32(n) || !fitsUint32(k.BlockSz) || !fitsUint32(k.SharedMem) {
-		return
+		return false
 	}
 	gridInt := (n + k.GridDiv - 1) / k.GridDiv
 	if !fitsUint32(gridInt) {
-		return
+		return false
 	}
 	for i := 0; i < k.NumBufs; i++ {
 		if bufs[i] == nil || bufs[i].Ptr == 0 || bufs[i].Size < int(bytes) {
-			return
+			return false
 		}
 	}
 	EnsureContext()
@@ -146,7 +147,7 @@ func (k *CompiledKernel) Launch(n int, bufs ...*Buffer) {
 	}
 	nn := uint32(n)
 	args[len(bufs)] = unsafe.Pointer(&nn)
-	LaunchKernel(k.Fn, grid, 1, 1, uint32(k.BlockSz), 1, 1, uint32(k.SharedMem), args...)
+	return LaunchKernel(k.Fn, grid, 1, 1, uint32(k.BlockSz), 1, 1, uint32(k.SharedMem), args...) == nil
 }
 
 func (k *CompiledKernel) Destroy() {
