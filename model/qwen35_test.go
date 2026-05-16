@@ -249,7 +249,7 @@ func linearQwen35LayerSource(meta loaderconfig.QwenNativeMTPMetadata, prefix str
 		prefix + ".post_attention_layernorm.weight": tensor.Ones([]int{4}),
 		prefix + ".linear_attn.in_proj_qkvz.weight": tensor.Zeros(shapes.QKV),
 		prefix + ".linear_attn.in_proj_gate.weight": tensor.Zeros(shapes.Gate),
-		prefix + ".linear_attn.conv1d.weight":       tensor.Zeros(shapes.Conv1D),
+		prefix + ".linear_attn.conv1d.weight":       tensor.Zeros([]int{shapes.ConvDim, 1, meta.LinearConvKernelDim}),
 		prefix + ".linear_attn.dt_bias":             tensor.Zeros(shapes.DTBias),
 		prefix + ".linear_attn.A":                   tensor.Zeros(shapes.A),
 		prefix + ".linear_attn.in_proj_ba.weight":   tensor.Zeros(shapes.Beta),
@@ -476,7 +476,7 @@ func TestValidateQwen35LinearAttentionLayer(t *testing.T) {
 	}
 	l := &Qwen35LinearAttentionLayer{
 		InputNorm: tensor.Ones([]int{4}), PostNorm: tensor.Ones([]int{4}),
-		QKVW: tensor.Zeros(shapes.QKV), GateW: tensor.Zeros(shapes.Gate), Conv1D: tensor.Zeros(shapes.Conv1D),
+		QKVW: tensor.Zeros(shapes.QKV), GateW: tensor.Zeros(shapes.Gate), Conv1D: tensor.Zeros([]int{shapes.ConvDim, 1, meta.LinearConvKernelDim}),
 		DTBias: tensor.Zeros(shapes.DTBias), A: tensor.Zeros(shapes.A), BetaW: tensor.Zeros(shapes.Beta), AlphaW: tensor.Zeros(shapes.Alpha),
 		Norm: tensor.Ones(shapes.Norm), OutW: tensor.Zeros(shapes.Out),
 		MLPGateW: tensor.Zeros([]int{6, 4}), MLPUpW: tensor.Zeros([]int{6, 4}), MLPDownW: tensor.Zeros([]int{4, 6}),
