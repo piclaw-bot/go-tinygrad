@@ -233,6 +233,14 @@ Use `cmd/speccheck` to compare:
 
 Do not optimize GPU until CPU token parity is stable.
 
+Synthetic command-line harness while real Qwen3.6 loading is gated:
+
+```bash
+go run ./cmd/qwenmtpsynth -steps 2
+```
+
+This exercises the native-MTP plan/draft/acceptance/stat plumbing over tiny deterministic tensors and exits non-zero on acceptance failure.
+
 ## Immediate execution plan
 
 This supersedes the prior Orthrus/stock-weight speculative exploration as the main implementation track.
