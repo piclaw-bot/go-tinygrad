@@ -1,6 +1,10 @@
 package model
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
 
 // SpeculativeConfig controls the opt-in stock-weight speculative decoding path.
 // It intentionally does not depend on Orthrus custom diffusion weights: the
@@ -9,17 +13,42 @@ type SpeculativeConfig struct {
 	Enabled   bool
 	BlockSize int
 	NGram     int
+	Debug     bool
+}
+
+type SpeculativeStats struct {
+	Steps          int
+	ProposalSteps  int
+	ProposedTokens int
+	AcceptedTokens int
+	BonusTokens    int
+	FallbackSteps  int
+}
+
+func (s SpeculativeStats) AcceptanceRate() float64 {
+	if s.ProposedTokens <= 0 {
+		return 0
+	}
+	return float64(s.AcceptedTokens) / float64(s.ProposedTokens)
 }
 
 func SpeculativeConfigFromEnv() SpeculativeConfig {
-	cfg := SpeculativeConfig{Enabled: os.Getenv("GO_PHERENCE_SPECULATIVE") == "1", BlockSize: 8, NGram: 4}
-	if cfg.BlockSize <= 0 {
-		cfg.BlockSize = 8
-	}
-	if cfg.NGram <= 0 {
-		cfg.NGram = 4
+	cfg := SpeculativeConfig{
+		Enabled:   os.Getenv("GO_PHERENCE_SPECULATIVE") == "1",
+		BlockSize: envPositiveInt("GO_PHERENCE_SPECULATIVE_BLOCK", 8),
+		NGram:     envPositiveInt("GO_PHERENCE_SPECULATIVE_NGRAM", 4),
+		Debug:     os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
 	}
 	return cfg
+}
+
+func envPositiveInt(name string, def int) int {
+	if v := os.Getenv(name); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }
 
 // PromptLookupProposal proposes up to max tokens by finding the longest suffix
@@ -81,7 +110,15 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		return append([]int(nil), prepared...)
 	}
 	out := append([]int(nil), prepared...)
+	stats := SpeculativeStats{}
+	defer func() {
+		if cfg.Debug {
+			fmt.Fprintf(os.Stderr, "speculative steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
+				stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
+		}
+	}()
 	for len(out) < len(prepared)+maxTokens {
+		stats.Steps++
 		remaining := len(prepared) + maxTokens - len(out)
 		block := cfg.BlockSize
 		if block <= 0 || block > remaining-1 {
@@ -89,6 +126,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		}
 		proposal := PromptLookupProposal(out, block, cfg.NGram)
 		if len(proposal) == 0 {
+			stats.FallbackSteps++
 			verified := m.generatePrepared(out, 1)
 			if len(verified) <= len(out) {
 				return out
@@ -102,6 +140,8 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		// intentionally conservative for the first implementation: it reuses the
 		// proven CPU generator rather than a stateful batched verifier, so it is a
 		// correctness scaffold before the fast verifier-block path lands.
+		stats.ProposalSteps++
+		stats.ProposedTokens += len(proposal)
 		verifyN := len(proposal) + 1
 		if verifyN > remaining {
 			verifyN = remaining
@@ -116,6 +156,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		}
 		acceptance, err := AcceptMTPDraft(proposal, verifierTokens)
 		if err != nil {
+			stats.FallbackSteps++
 			verified = m.generatePrepared(out, 1)
 			if len(verified) <= len(out) {
 				return out
@@ -123,6 +164,8 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 			out = append(out, verified[len(out)])
 			continue
 		}
+		stats.AcceptedTokens += acceptance.AcceptedPrefixLen
+		stats.BonusTokens++
 		for _, tok := range acceptance.OutputTokens {
 			if len(out) >= len(prepared)+maxTokens {
 				break

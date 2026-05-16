@@ -66,6 +66,7 @@ model.layers.N.self_attn.k_norm_diff.weight
 Current opt-in hook:
 
 - `llmgen -speculative` / `GO_PHERENCE_SPECULATIVE=1` routes CPU generation through `GenerateSpeculative`.
+- Tunables: `-speculative-block`, `-speculative-ngram`, `-speculative-debug` or `GO_PHERENCE_SPECULATIVE_BLOCK`, `GO_PHERENCE_SPECULATIVE_NGRAM`, `GO_PHERENCE_SPECULATIVE_DEBUG=1`.
 - The first proposer is `PromptLookupProposal`, an n-gram/prompt-lookup proposer for repeated text.
 - The current verifier scaffold runs greedy verification with the real model and accepts the longest matching prompt-lookup prefix.
 - This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.

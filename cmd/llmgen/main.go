@@ -19,6 +19,9 @@ func main() {
 	gpuLayers := flag.Int("gpu-layers", 0, "number of layers on GPU (0=all)")
 	turboQuant := flag.Bool("turbo-quant", false, "enable TurboQuant KV cache compression on CPU backend")
 	speculative := flag.Bool("speculative", false, "enable opt-in stock-weight speculative decoding path (CPU backend)")
+	specBlock := flag.Int("speculative-block", 8, "speculative proposal block size")
+	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
+	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
 
@@ -36,6 +39,11 @@ func main() {
 	}
 	if *speculative {
 		os.Setenv("GO_PHERENCE_SPECULATIVE", "1")
+		os.Setenv("GO_PHERENCE_SPECULATIVE_BLOCK", fmt.Sprint(*specBlock))
+		os.Setenv("GO_PHERENCE_SPECULATIVE_NGRAM", fmt.Sprint(*specNGram))
+		if *specDebug {
+			os.Setenv("GO_PHERENCE_SPECULATIVE_DEBUG", "1")
+		}
 	}
 
 	if *dir == "" {
