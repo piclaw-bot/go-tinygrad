@@ -87,9 +87,11 @@ func DevNativeBF16RMSNorm(x, w *Buffer, n int, eps float32) {
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnNativeBF16RMSNorm, 1, 1, 1, 256, 1, 1, 256*4,
+	if err := LaunchKernel(fnNativeBF16RMSNorm, 1, 1, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&x.Ptr), unsafe.Pointer(&w.Ptr),
-		unsafe.Pointer(&nn), unsafe.Pointer(&eps))
+		unsafe.Pointer(&nn), unsafe.Pointer(&eps)); err != nil {
+		DevBF16RMSNorm(x, w, n, eps)
+	}
 }
 
 // DevNativeBF16VecAdd runs hardware BF16 add on Ampere+.
@@ -103,7 +105,9 @@ func DevNativeBF16VecAdd(dst, a, b *Buffer, n int) {
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnNativeBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	if err := LaunchKernel(fnNativeBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&a.Ptr), unsafe.Pointer(&b.Ptr),
-		unsafe.Pointer(&dst.Ptr), unsafe.Pointer(&nn))
+		unsafe.Pointer(&dst.Ptr), unsafe.Pointer(&nn)); err != nil {
+		DevBF16VecAdd(dst, a, b, n)
+	}
 }
