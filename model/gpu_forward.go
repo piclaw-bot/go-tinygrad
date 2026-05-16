@@ -421,10 +421,16 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 		g.normGPU = gpu.NewDevBuf(len(g.normWeight))
 		copy(g.normGPU.Data(), g.normWeight)
 		g.normGPU.MarkDirty()
-		g.normGPU.ToGPU()
+		if err := g.normGPU.ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload final norm buffer: %w", err)
+		}
 
 		g.logitsGPU = gpu.NewDevBuf(cfg.VocabSize)
-		g.logitsGPU.ToGPU()
+		if err := g.logitsGPU.ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload logits buffer: %w", err)
+		}
 	}
 
 	// Gemma4: precompute dual RoPE tables
@@ -433,10 +439,16 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 		g.ropeHalfFull = m.RopeHalfFull
 		// Upload SWA table
 		g.ropeCosSinSWA = gpu.NewDevBufFrom(m.RopeFreqsSWA)
-		g.ropeCosSinSWA.ToGPU()
+		if err := g.ropeCosSinSWA.ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload Gemma4 SWA RoPE table: %w", err)
+		}
 		// Upload Full table
 		g.ropeCosSinFull = gpu.NewDevBufFrom(m.RopeFreqsFull)
-		g.ropeCosSinFull.ToGPU()
+		if err := g.ropeCosSinFull.ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload Gemma4 full RoPE table: %w", err)
+		}
 	}
 
 	device := "CPU"
@@ -456,7 +468,10 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 			}
 		}
 		g.ropeCosSin = gpu.NewDevBufFrom(csData)
-		g.ropeCosSin.ToGPU()
+		if err := g.ropeCosSin.ToGPU(); err != nil {
+			g.Close()
+			return nil, fmt.Errorf("upload RoPE table: %w", err)
+		}
 	}
 
 	// GPU KV cache: per-layer kvDim
