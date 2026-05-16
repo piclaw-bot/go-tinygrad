@@ -232,6 +232,19 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestPrepareQwen35LinearDeltaParams(t *testing.T) {
+	dt, decay, err := prepareQwen35LinearDeltaParams([]float32{0, 1}, []float32{2, 3}, []float32{0, -1}, []float32{1, 2}, 2)
+	if err != nil {
+		t.Fatalf("prepareQwen35LinearDeltaParams: %v", err)
+	}
+	if len(dt) != 2 || len(decay) != 2 || dt[0] <= 0 || decay[0] <= 0 || decay[0] > 1 {
+		t.Fatalf("dt/decay=%v/%v", dt, decay)
+	}
+	if _, _, err := prepareQwen35LinearDeltaParams([]float32{1}, []float32{1}, []float32{1}, []float32{1}, 2); err == nil {
+		t.Fatal("bad lengths returned nil error")
+	}
+}
+
 func TestProjectQwen35LinearAlphaBeta(t *testing.T) {
 	input := []float32{1, 2, 3}
 	alphaW := []float32{1, 10, 2, 20, 3, 30}

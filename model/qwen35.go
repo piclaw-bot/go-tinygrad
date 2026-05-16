@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/rcarmo/go-pherence/backends/simd"
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
@@ -385,6 +386,29 @@ func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]fl
 	return next, nil
 }
 
+func softplus(x float32) float32 {
+	if x > 20 {
+		return x
+	}
+	return float32(math.Log1p(math.Exp(float64(x))))
+}
+
+func prepareQwen35LinearDeltaParams(alpha, beta, dtBias, a []float32, rank int) (dt, decay []float32, err error) {
+	if rank <= 0 {
+		return nil, nil, fmt.Errorf("invalid Qwen3.5 linear-attention rank %d", rank)
+	}
+	if len(alpha) != rank || len(beta) != rank || len(dtBias) != rank || len(a) != rank {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta lens alpha/beta/dt_bias/A=%d/%d/%d/%d want %d", len(alpha), len(beta), len(dtBias), len(a), rank)
+	}
+	dt = make([]float32, rank)
+	decay = make([]float32, rank)
+	for i := 0; i < rank; i++ {
+		dt[i] = softplus(alpha[i] + dtBias[i])
+		decay[i] = float32(math.Exp(float64(-dt[i] * a[i])))
+	}
+	return dt, decay, nil
+}
+
 func projectQwen35LinearAlphaBeta(input []float32, alphaW, betaW []float32, hidden, rank int) (alpha, beta []float32, err error) {
 	if hidden <= 0 || rank <= 0 {
 		return nil, nil, fmt.Errorf("invalid Qwen3.5 linear-attention alpha/beta dims hidden=%d rank=%d", hidden, rank)
@@ -475,7 +499,11 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	if _, _, err := splitQwen35LinearConvOutput(convOut, shapes); err != nil {
 		return nil, state, err
 	}
-	if _, _, err := projectQwen35LinearAlphaBeta(cur, l.AlphaW.Data(), l.BetaW.Data(), meta.HiddenSize, meta.LinearNumValueHeads); err != nil {
+	alpha, beta, err := projectQwen35LinearAlphaBeta(cur, l.AlphaW.Data(), l.BetaW.Data(), meta.HiddenSize, meta.LinearNumValueHeads)
+	if err != nil {
+		return nil, state, err
+	}
+	if _, _, err := prepareQwen35LinearDeltaParams(alpha, beta, l.DTBias.Data(), l.A.Data(), meta.LinearNumValueHeads); err != nil {
 		return nil, state, err
 	}
 	state.Conv = nextConv
