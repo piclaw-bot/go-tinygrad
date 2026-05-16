@@ -255,6 +255,23 @@ func TestQwenNativeMTPDraftStepState(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPSharedHeadLogitsFallback(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	logits := make([]float32, m.Config.VocabSize)
+	if err := head.SharedHeadLogitsInto(m, logits, []float32{1, 0, 0, 0}); err != nil {
+		t.Fatalf("SharedHeadLogitsInto: %v", err)
+	}
+	if logits[0] <= logits[1] {
+		t.Fatalf("logits=%v", logits)
+	}
+	m.LMHead = nil
+	if err := head.SharedHeadLogitsInto(m, logits, []float32{1, 0, 0, 0}); err == nil {
+		t.Fatal("missing LM head returned nil error")
+	}
+}
+
 func TestQwenNativeMTPSharedHeadNormFallback(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)

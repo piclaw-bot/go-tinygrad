@@ -319,7 +319,7 @@ func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenN
 	logitHidden := append([]float32(nil), nextHidden...)
 	rmsNormInPlace(logitHidden, headNorm.Data(), eps)
 	logits := make([]float32, m.Config.VocabSize)
-	if err := m.LMHeadLogitsInto(logits, logitHidden); err != nil {
+	if err := head.SharedHeadLogitsInto(m, logits, logitHidden); err != nil {
 		return state, nil, 0, err
 	}
 	token, _, err := ArgmaxLogits(logits)
@@ -333,6 +333,19 @@ func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenN
 		Pos:    state.Pos + 1,
 	}
 	return nextState, logits, token, nil
+}
+
+func (head *QwenNativeMTPHead) SharedHeadLogitsInto(m *LlamaModel, logits, hidden []float32) error {
+	if m == nil {
+		return fmt.Errorf("Qwen native MTP: nil main model for shared head")
+	}
+	// llama.cpp uses nextn.shared_head_head when present and falls back to the
+	// model output head. go-pherence does not yet expose a dedicated MTP head
+	// tensor, so the explicit supported path is the model LM head fallback.
+	if err := m.LMHeadLogitsInto(logits, hidden); err != nil {
+		return fmt.Errorf("Qwen native MTP shared head logits: %w", err)
+	}
+	return nil
 }
 
 func (head *QwenNativeMTPHead) SharedHeadNorm(m *LlamaModel) (*tensor.Tensor, error) {
