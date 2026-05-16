@@ -48,8 +48,11 @@ func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
 		unsafe.Pointer(&alpha),
 	}
 
-	gridX := (uint32(N) + 15) / 16
-	gridY := (uint32(M) + 15) / 16
+	gridX, okGX := grid1DFor(N, 16)
+	gridY, okGY := grid1DFor(M, 16)
+	if !okGX || !okGY {
+		return fmt.Errorf("invalid SGEMM grid dimensions M=%d N=%d", M, N)
+	}
 
 	return LaunchKernel(sgemmFn, gridX, gridY, 1, 16, 16, 1, 0, args...)
 }

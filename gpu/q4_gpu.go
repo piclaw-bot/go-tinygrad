@@ -142,7 +142,12 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 	outDim := uint32(w.OutDim)
 	groups := uint32(w.Groups)
 
-	if err := LaunchKernel(q4Fn, (outDim+255)/256, 1, 1, 256, 1, 1, 0,
+	grid, okGrid := grid1DFor(w.OutDim, 256)
+	if !okGrid {
+		gemvQ4CPU(out, x, w)
+		return
+	}
+	if err := LaunchKernel(q4Fn, grid, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&x.gpu.Ptr),
 		unsafe.Pointer(&w.QWeight.Ptr),
 		unsafe.Pointer(&w.Scales.Ptr),

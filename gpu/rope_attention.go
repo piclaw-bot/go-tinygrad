@@ -23,8 +23,6 @@ var (
 
 func initRoPEAttn() { loadMegaModule() }
 
-func fitsUint32(v int) bool { return v >= 0 && uint64(v) <= uint64(^uint32(0)) }
-
 // DevRoPE applies rotary position embedding on GPU (in-place).
 // cosSin is a precomputed [maxSeq * headDim] buffer with interleaved cos,sin pairs.
 func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {

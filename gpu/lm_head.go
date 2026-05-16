@@ -29,8 +29,13 @@ func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
 	// Grid: vocab may exceed 65535 max blocks in x. Use 2D grid.
 	gridX := uint32(vocab)
 	gridY := uint32(1)
-	if gridX > 65535 {
-		gridY = (gridX + 65534) / 65535
+	if vocab > 65535 {
+		gy := (uint64(vocab) + 65534) / 65535
+		if gy > uint64(^uint32(0)) {
+			DevGemv(logits, x, W, vocab, h)
+			return
+		}
+		gridY = uint32(gy)
 		gridX = 65535
 	}
 
