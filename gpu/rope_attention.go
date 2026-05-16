@@ -23,13 +23,16 @@ var (
 
 func initRoPEAttn() { loadMegaModule() }
 
+func fitsUint32(v int) bool { return v >= 0 && uint64(v) <= uint64(^uint32(0)) }
+
 // DevRoPE applies rotary position embedding on GPU (in-place).
 // cosSin is a precomputed [maxSeq * headDim] buffer with interleaved cos,sin pairs.
 func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 	initRoPEAttn()
 	total, okTotal := checkedMulInt(nHeads, headDim)
 	halfDim, okHalf := checkedMulInt(nHeads, headDim/2)
-	if ropeReady && pos >= 0 && nHeads > 0 && headDim > 0 && headDim%2 == 0 && okTotal && okHalf && x != nil && cosSin != nil && x.n >= total && cosSin.n >= total && tryGPU(x, cosSin) {
+	cosNeed, okCosNeed := checkedMulInt(pos+1, headDim)
+	if ropeReady && fitsUint32(pos) && nHeads > 0 && headDim > 0 && headDim%2 == 0 && okTotal && okHalf && okCosNeed && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosNeed && tryGPU(x, cosSin) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
@@ -50,8 +53,9 @@ func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int
 	initRoPEAttn()
 	total, okTotal := checkedMulInt(nHeads, headDim)
 	totalPairs, okPairs := checkedMulInt(nHeads, rotHalf)
-	cosLen, okCos := checkedMulInt(totalPairs, 2)
-	if ropePartialReady && pos >= 0 && nHeads > 0 && headDim > 0 && rotHalf > 0 && rotHalf <= headDim/2 && okTotal && okPairs && okCos && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosLen && tryGPU(x, cosSin) {
+	posPairs, okPosPairs := checkedMulInt(pos+1, rotHalf)
+	cosNeed, okCosNeed := checkedMulInt(posPairs, 2)
+	if ropePartialReady && fitsUint32(pos) && nHeads > 0 && headDim > 0 && rotHalf > 0 && rotHalf <= headDim/2 && okTotal && okPairs && okPosPairs && okCosNeed && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosNeed && tryGPU(x, cosSin) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)

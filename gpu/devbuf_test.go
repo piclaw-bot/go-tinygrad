@@ -281,6 +281,10 @@ func TestDevRoPEAttentionMalformedDoesNotPanic(t *testing.T) {
 	short := NewDevBuf(1)
 	DevRoPE(short, short, -1, 1, 2)
 	DevRoPE(short, short, 0, 2, 3)
+	DevRoPE(NewDevBuf(2), NewDevBuf(2), 1, 1, 2)
+	if DevRoPEPartial(NewDevBuf(4), NewDevBuf(2), 1, 1, 4, 1) {
+		t.Fatal("partial RoPE accepted cos/sin shorter than requested position")
+	}
 	if DevRoPEPartial(short, short, 0, 2, 4, 3) {
 		t.Fatal("malformed partial RoPE reported success")
 	}
