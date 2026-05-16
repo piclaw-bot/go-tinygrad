@@ -80,7 +80,10 @@ func (b *DevBuf) ToGPU() error {
 		return fmt.Errorf("nil DevBuf")
 	}
 	if b.gpu != nil {
-		if b.dev == CPU && b.cpu != nil {
+		if b.dev == CPU {
+			if b.cpu == nil {
+				return fmt.Errorf("CPU-authoritative DevBuf has nil CPU backing")
+			}
 			// CPU data was modified — re-upload
 			if err := b.gpu.Upload(b.cpu); err != nil {
 				return err
