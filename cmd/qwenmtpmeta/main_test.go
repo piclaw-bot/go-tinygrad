@@ -7,6 +7,22 @@ import (
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 )
 
+func TestShouldFailStrict(t *testing.T) {
+	meta := loaderconfig.QwenNativeMTPMetadata{HasNativeMTP: true}
+	if !shouldFailStrict(true, meta, Report{}) {
+		t.Fatal("strict incomplete native MTP did not fail")
+	}
+	if shouldFailStrict(false, meta, Report{}) {
+		t.Fatal("non-strict failed")
+	}
+	if shouldFailStrict(true, meta, Report{MTPTensorComplete: true}) {
+		t.Fatal("complete tensor set failed")
+	}
+	if shouldFailStrict(true, loaderconfig.QwenNativeMTPMetadata{}, Report{}) {
+		t.Fatal("non-MTP metadata failed")
+	}
+}
+
 func TestReportCanLoadSharedHeadJSON(t *testing.T) {
 	report := Report{Config: loaderconfig.QwenNativeMTPMetadata{HiddenSize: 4, VocabSize: 2}, OptionalSharedHeadTensors: []string{"mtp.shared_head_head.weight"}, CanLoadSharedHead: true, MTPTensorCount: 3, OptionalSharedHeadCount: 1, MissingMTPTensorCount: 2, MTPTensorComplete: false}
 	data, err := json.Marshal(report)

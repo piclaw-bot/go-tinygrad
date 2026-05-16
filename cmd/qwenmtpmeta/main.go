@@ -72,10 +72,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "json: %v\n", err)
 		os.Exit(2)
 	}
-	if *strict && meta.HasNativeMTP && !report.MTPTensorComplete {
+	if shouldFailStrict(*strict, meta, report) {
 		fmt.Fprintf(os.Stderr, "qwenmtpmeta: native MTP tensor set incomplete: missing=%d available=%d\n", report.MissingMTPTensorCount, report.MTPTensorCount)
 		os.Exit(1)
 	}
+}
+
+func shouldFailStrict(strict bool, meta loaderconfig.QwenNativeMTPMetadata, report Report) bool {
+	return strict && meta.HasNativeMTP && !report.MTPTensorComplete
 }
 
 func safetensorNames(dir string) ([]string, error) {
