@@ -78,6 +78,14 @@ func TestQwenNativeMTPStatsFromAcceptance(t *testing.T) {
 	if stats.DraftedTokens != 3 || stats.AcceptedTokens != 2 || stats.BonusTokens != 1 || stats.OutputTokens != 3 || stats.AcceptanceRate() != float64(2)/3 {
 		t.Fatalf("stats=%+v rate=%f", stats, stats.AcceptanceRate())
 	}
+	sum := stats.Add(QwenNativeMTPStats{DraftedTokens: 3, AcceptedTokens: 1, BonusTokens: 1, OutputTokens: 2})
+	if sum.DraftedTokens != 6 || sum.AcceptedTokens != 3 || sum.BonusTokens != 2 || sum.OutputTokens != 5 {
+		t.Fatalf("sum=%+v", sum)
+	}
+	avg := sum.Average(2)
+	if avg.DraftedTokens != 3 || avg.AcceptedTokens != 1 || avg.BonusTokens != 1 || avg.OutputTokens != 2 {
+		t.Fatalf("avg=%+v", avg)
+	}
 	if (QwenNativeMTPStats{}).AcceptanceRate() != 0 {
 		t.Fatal("zero stats acceptance rate not zero")
 	}

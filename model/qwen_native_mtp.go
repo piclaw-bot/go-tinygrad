@@ -110,6 +110,25 @@ type QwenNativeMTPStats struct {
 	OutputTokens   int `json:"output_tokens"`
 }
 
+func (s QwenNativeMTPStats) Add(other QwenNativeMTPStats) QwenNativeMTPStats {
+	s.DraftedTokens += other.DraftedTokens
+	s.AcceptedTokens += other.AcceptedTokens
+	s.BonusTokens += other.BonusTokens
+	s.OutputTokens += other.OutputTokens
+	return s
+}
+
+func (s QwenNativeMTPStats) Average(n int) QwenNativeMTPStats {
+	if n <= 1 {
+		return s
+	}
+	s.DraftedTokens /= n
+	s.AcceptedTokens /= n
+	s.BonusTokens /= n
+	s.OutputTokens /= n
+	return s
+}
+
 func (s QwenNativeMTPStats) AcceptanceRate() float64 {
 	if s.DraftedTokens <= 0 {
 		return 0
