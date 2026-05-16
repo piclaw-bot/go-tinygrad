@@ -119,8 +119,12 @@ func (m *Qwen35BaseModel) ForwardOne(input []float32, state Qwen35BaseForwardSta
 			if err != nil {
 				return nil, state, fmt.Errorf("Qwen3.5 full-attention layer %d: %w", i, err)
 			}
-			state.FullK[i] = append(state.FullK[i], curK...)
-			state.FullV[i] = append(state.FullV[i], curV...)
+			nextK, nextV, err := appendQwen35FullAttentionKV(state.FullK[i], state.FullV[i], curK, curV, meta)
+			if err != nil {
+				return nil, state, fmt.Errorf("Qwen3.5 full-attention layer %d cache: %w", i, err)
+			}
+			state.FullK[i] = nextK
+			state.FullV[i] = nextV
 			cur = out
 		case Qwen35LinearAttentionLayerKind:
 			out, nextLinear, err := layer.Linear.ForwardWithState(cur, state.Linear[i], eps, meta)
@@ -135,6 +139,29 @@ func (m *Qwen35BaseModel) ForwardOne(input []float32, state Qwen35BaseForwardSta
 	}
 	state.Pos = pos + 1
 	return cur, state, nil
+}
+
+func appendQwen35FullAttentionKV(pastK, pastV, curK, curV []float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, []float32, error) {
+	kvDim := meta.NumKeyValueHeads * meta.HeadDim
+	if kvDim <= 0 {
+		return nil, nil, fmt.Errorf("invalid Qwen3.5 KV dim heads=%d head_dim=%d", meta.NumKeyValueHeads, meta.HeadDim)
+	}
+	if len(pastK) != len(pastV) {
+		return nil, nil, fmt.Errorf("past K/V len mismatch %d/%d", len(pastK), len(pastV))
+	}
+	if len(curK) != kvDim || len(curV) != kvDim {
+		return nil, nil, fmt.Errorf("current K/V len=%d/%d want %d", len(curK), len(curV), kvDim)
+	}
+	if len(pastK)%kvDim != 0 {
+		return nil, nil, fmt.Errorf("past KV len=%d not multiple of %d", len(pastK), kvDim)
+	}
+	nextK := make([]float32, 0, len(pastK)+len(curK))
+	nextK = append(nextK, pastK...)
+	nextK = append(nextK, curK...)
+	nextV := make([]float32, 0, len(pastV)+len(curV))
+	nextV = append(nextV, pastV...)
+	nextV = append(nextV, curV...)
+	return nextK, nextV, nil
 }
 
 func LoadQwen35BaseModelLayers(src Qwen35TensorSource, meta loaderconfig.QwenNativeMTPMetadata) (*Qwen35BaseModel, error) {

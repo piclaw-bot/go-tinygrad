@@ -42,6 +42,23 @@ func fullQwen35LayerSource(meta loaderconfig.QwenNativeMTPMetadata, prefix strin
 	}
 }
 
+func TestAppendQwen35FullAttentionKV(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	nextK, nextV, err := appendQwen35FullAttentionKV([]float32{1, 2}, []float32{3, 4}, []float32{5, 6}, []float32{7, 8}, meta)
+	if err != nil {
+		t.Fatalf("appendQwen35FullAttentionKV: %v", err)
+	}
+	if len(nextK) != 4 || len(nextV) != 4 || nextK[2] != 5 || nextV[3] != 8 {
+		t.Fatalf("next K/V=%v/%v", nextK, nextV)
+	}
+	if _, _, err := appendQwen35FullAttentionKV([]float32{1}, []float32{1}, []float32{1, 2}, []float32{1, 2}, meta); err == nil {
+		t.Fatal("bad past KV multiple returned nil error")
+	}
+	if _, _, err := appendQwen35FullAttentionKV(nil, nil, []float32{1}, []float32{1}, meta); err == nil {
+		t.Fatal("bad current KV len returned nil error")
+	}
+}
+
 func TestQwen35BaseModelForwardOneFullAttention(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 1
