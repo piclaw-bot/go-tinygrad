@@ -70,7 +70,7 @@ Current opt-in hook:
 - The first proposer is `PromptLookupProposer`, an n-gram/prompt-lookup proposer for repeated text behind the `SpeculativeProposer` interface. `-speculative-proposer none` disables proposals for fallback-overhead measurements.
 - The current verifier scaffold runs greedy verification with the real model and accepts the longest matching prompt-lookup prefix. Debug stats report `backend=replay proposer=prompt` until the KV-reusing backend lands.
 - This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.
-- `CPUDecodeState` now defines the KV/output checkpoint, restore, `DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
+- `CPUDecodeState` now defines the KV/output checkpoint, restore, `GenerateGreedy`/`DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
 
 Candidate non-custom proposers:
 

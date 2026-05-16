@@ -176,7 +176,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		proposal := proposer.Propose(state.Output, block)
 		if len(proposal) < cfg.MinProposal {
 			stats.FallbackSteps++
-			if _, err := state.DecodeOneGreedy(); err != nil {
+			if err := state.GenerateGreedy(1); err != nil {
 				return state.Output
 			}
 			continue
@@ -193,7 +193,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		if err != nil {
 			stats.FallbackSteps++
 			_ = state.Restore(checkpoint)
-			if _, err := state.DecodeOneGreedy(); err != nil {
+			if err := state.GenerateGreedy(1); err != nil {
 				return state.Output
 			}
 			continue
@@ -202,7 +202,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		stats.BonusTokens++
 		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
 			_ = state.Restore(checkpoint)
-			if _, err := state.DecodeOneGreedy(); err != nil {
+			if err := state.GenerateGreedy(1); err != nil {
 				return state.Output
 			}
 		}

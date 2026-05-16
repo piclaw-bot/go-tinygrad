@@ -65,6 +65,18 @@ func (s *CPUDecodeState) VerifierBackend() string {
 	return "replay"
 }
 
+func (s *CPUDecodeState) GenerateGreedy(n int) error {
+	if n < 0 {
+		return fmt.Errorf("generate greedy n=%d must be >= 0", n)
+	}
+	for i := 0; i < n; i++ {
+		if _, err := s.DecodeOneGreedy(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *CPUDecodeState) DecodeOneGreedy() (int, error) {
 	if s == nil || s.Model == nil {
 		return 0, fmt.Errorf("nil decode state/model")
