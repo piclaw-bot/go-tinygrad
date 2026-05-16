@@ -30,6 +30,13 @@ func TestCPUDecodeStateCommitAcceptedFloatKV(t *testing.T) {
 	}
 }
 
+func TestCPUDecodeStateVerifyGreedyBlockNilState(t *testing.T) {
+	var st *CPUDecodeState
+	if _, err := st.VerifyGreedyBlock([]int{1}); err == nil {
+		t.Fatal("nil state VerifyGreedyBlock returned nil error")
+	}
+}
+
 func TestCPUDecodeStateCommitAcceptedOutputOnly(t *testing.T) {
 	m := &LlamaModel{
 		Config: LlamaConfig{NumKVHeads: 1, HeadDim: 2},

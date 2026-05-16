@@ -139,30 +139,17 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		}
 
 		// Greedy verifier: run the real model for the proposed block plus one
-		// bonus token, then accept the longest matching prefix. This is exact but
-		// intentionally conservative for the first implementation: it reuses the
-		// proven CPU generator rather than a stateful batched verifier, so it is a
-		// correctness scaffold before the fast verifier-block path lands.
+		// bonus token, then accept the longest matching prefix. This is exact; the
+		// verifier backend is hidden behind CPUDecodeState so it can be replaced
+		// with a KV-reusing implementation without changing this loop.
 		stats.ProposalSteps++
 		stats.ProposedTokens += len(proposal)
-		verifyN := len(proposal) + 1
-		if verifyN > remaining {
-			verifyN = remaining
-		}
 		checkpoint := state.Checkpoint()
-		verified := m.generatePrepared(state.Output, verifyN)
-		if len(verified) <= len(state.Output) {
-			return state.Output
-		}
-		verifierTokens := verified[len(state.Output):]
-		if len(verifierTokens) > len(proposal)+1 {
-			verifierTokens = verifierTokens[:len(proposal)+1]
-		}
-		acceptance, err := AcceptMTPDraft(proposal, verifierTokens)
+		acceptance, err := state.VerifyGreedyBlock(proposal)
 		if err != nil {
 			stats.FallbackSteps++
 			_ = state.Restore(checkpoint)
-			verified = m.generatePrepared(state.Output, 1)
+			verified := m.generatePrepared(state.Output, 1)
 			if len(verified) <= len(state.Output) {
 				return state.Output
 			}
@@ -173,7 +160,7 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 		stats.BonusTokens++
 		if err := state.CommitAcceptedOutputOnly(checkpoint, acceptance); err != nil {
 			_ = state.Restore(checkpoint)
-			verified = m.generatePrepared(state.Output, 1)
+			verified := m.generatePrepared(state.Output, 1)
 			if len(verified) <= len(state.Output) {
 				return state.Output
 			}

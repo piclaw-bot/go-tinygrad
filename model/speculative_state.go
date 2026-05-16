@@ -94,6 +94,24 @@ func (s *CPUDecodeState) CommitAcceptedOutputOnly(cp CPUDecodeCheckpoint, accept
 	return nil
 }
 
+// VerifyGreedyBlock verifies drafted tokens with the real model and returns the
+// greedy acceptance result. This first implementation intentionally uses the
+// existing prepared-prompt CPU generator as the verifier backend; replacing the
+// body with a KV-reusing DecodeOne loop should not require changes in
+// GenerateSpeculative.
+func (s *CPUDecodeState) VerifyGreedyBlock(drafted []int) (MTPAcceptance, error) {
+	if s == nil || s.Model == nil {
+		return MTPAcceptance{}, fmt.Errorf("nil decode state/model")
+	}
+	verifyN := len(drafted) + 1
+	verified := s.Model.generatePrepared(s.Output, verifyN)
+	if len(verified) < len(s.Output)+verifyN {
+		return MTPAcceptance{}, fmt.Errorf("verifier produced %d new tokens, want %d", len(verified)-len(s.Output), verifyN)
+	}
+	verifierTokens := verified[len(s.Output) : len(s.Output)+verifyN]
+	return AcceptMTPDraft(drafted, verifierTokens)
+}
+
 func (s *CPUDecodeState) CommitAccepted(cp CPUDecodeCheckpoint, acceptance MTPAcceptance) error {
 	if err := acceptance.Validate(); err != nil {
 		return err
