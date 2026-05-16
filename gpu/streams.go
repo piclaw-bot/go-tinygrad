@@ -107,10 +107,14 @@ func PrefetchWeights(weights ...*GPUQuantWeight) {
 		}
 		// Touch weight memory to warm L2: read 1 float per 128B cache line.
 		totalBytes := uint64(w.InDim/8) * uint64(w.OutDim) * 4
-		n := uint32(totalBytes / 128) // touch every 128 bytes
-		if n < 1 {
-			n = 1
+		lines := totalBytes / 128
+		if lines == 0 {
+			lines = 1
 		}
+		if lines > uint64(^uint32(0)) {
+			continue
+		}
+		n := uint32(lines) // touch every 128 bytes
 		_ = LaunchKernelOnStream(fnPrefetch, (n+255)/256, 1, 1, 256, 1, 1, 0, prefetchStream,
 			unsafe.Pointer(&w.QWeight.Ptr), unsafe.Pointer(&n))
 	}

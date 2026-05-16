@@ -251,7 +251,7 @@ func dequantNVFP4ToF32CUDA(w *GPUNVFP4Weight) ([]float32, bool) {
 		return nil, false
 	}
 	outLen, ok := checkedMulInt(w.OutDim, w.InDim)
-	if !ok || outLen > math.MaxUint32 {
+	if !ok || !fitsUint32(outLen) || !fitsUint32(w.InDim) || !fitsUint32(w.GroupSize) {
 		return nil, false
 	}
 	outBuf, err := Malloc(outLen)
