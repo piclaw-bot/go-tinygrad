@@ -213,7 +213,7 @@ Needed before MTP can matter:
 
 Once base forward works:
 
-- [x] define `QwenNativeMTPHead` / layer structs with `fc`, `pre_fc_norm_embedding`, `pre_fc_norm_hidden`, `layers`, and `norm`, plus synthetic shape validation and a tensor-source loader contract;
+- [x] define `QwenNativeMTPHead` / layer structs with `fc`, `pre_fc_norm_embedding`, `pre_fc_norm_hidden`, `layers`, and `norm`, plus synthetic shape validation, a tensor-source loader contract, and a safetensors-backed tensor source for BF16/F32 fixtures;
 - implement one MTP draft step:
   - normalize embedding and previous hidden separately;
   - concatenate `[embedding || hidden]` to 10240;
