@@ -37,7 +37,7 @@ Phase 6.5 has moved the repository toward explicit ownership boundaries. Remaini
 
 | Area | Current package | Notes |
 |---|---|---|
-| CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver`, `cmd/specbench` | Flags and user/server I/O only; `specbench` emits normal-vs-speculative CSV benchmark rows |
+| CLI front-ends | `cmd/llmgen`, `cmd/llmchat`, `cmd/llmserver`, `cmd/specbench`, `cmd/speccheck`, `cmd/qwenmtpmeta`, `cmd/qwenmtpsynth` | Flags and user/server I/O only; `specbench` emits normal-vs-speculative CSV benchmark rows, `speccheck` emits correctness JSON, Qwen MTP commands inspect metadata and run synthetic harnesses |
 | Loader helpers | `loader/config`, `loader/tokenizer`, `loader/safetensors`, `loader/weights` | Config JSON, tokenizer JSON, mmap safetensors, sharded/single-file weight sources; safetensors metadata, nil helpers, deterministic names, checked eager totals, partial sharded-open cleanup, and tokenizer merge helpers are guarded |
 | Placement policy | `backends/placement` | Backend-neutral budget manager and layer placement estimator; device memory availability is caller-supplied; accounting rejects invalid categories and estimator math is saturating |
 | SIMD backend | `backends/simd` | Package name remains `simd`; import path is backend-owned; `backends/simd` is the facade for future CPU-family subpackages; scalar fallbacks, BF16 GEMV, empty-slice dispatch, per-call GEBP scratch, and SGEMM/GEBP/gather byte offsets are bounds/overflow-guarded |

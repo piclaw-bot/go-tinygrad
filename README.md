@@ -136,6 +136,16 @@ go run ./cmd/llmgen -model models/smollm2-135m -tokens 32 \
 
 Current speculative backend is `replay`, a correctness scaffold that reuses the CPU generator and can be slower. It is useful for measuring proposer acceptance before the planned KV-reusing verifier backend lands. Available proposer choices are `prompt`, `repeat-last`, and `none`; `-speculative-min-proposal` gates tiny proposals.
 
+### qwenmtpmeta / qwenmtpsynth — Qwen3.6 native MTP triage
+
+```bash
+go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp
+
+go run ./cmd/qwenmtpsynth -steps 2
+```
+
+`qwenmtpmeta` inspects Qwen3.5/Qwen3.6 native-MTP config/tensor metadata without entering the full model loader. `qwenmtpsynth` runs a tiny deterministic native-MTP synthetic correctness path while real Qwen3.6 loading remains gated.
+
 ### specbench / speccheck — speculative benchmark and correctness harness
 
 ```bash
