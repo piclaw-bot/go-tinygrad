@@ -42,6 +42,27 @@ func fullQwen35LayerSource(meta loaderconfig.QwenNativeMTPMetadata, prefix strin
 	}
 }
 
+func TestLoadQwen35BaseModelLayers(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 2
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"linear_attention", "full_attention"}
+	src := fakeQwen35TensorSource{}
+	for k, v := range linearQwen35LayerSource(meta, "model.language_model.model.layers.0") {
+		src[k] = v
+	}
+	for k, v := range fullQwen35LayerSource(meta, "model.language_model.model.layers.1") {
+		src[k] = v
+	}
+	model, err := LoadQwen35BaseModelLayers(CandidateQwen35TensorSource{Source: src}, meta)
+	if err != nil {
+		t.Fatalf("LoadQwen35BaseModelLayers: %v", err)
+	}
+	if len(model.Layers) != 2 || model.Layers[0].Kind != Qwen35LinearAttentionLayerKind || model.Layers[1].Kind != Qwen35FullAttentionLayerKind {
+		t.Fatalf("layers=%+v", model.Layers)
+	}
+}
+
 func TestLoadQwen35FullAttentionLayer(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	src := CandidateQwen35TensorSource{Source: fullQwen35LayerSource(meta, "model.language_model.model.layers.0")}

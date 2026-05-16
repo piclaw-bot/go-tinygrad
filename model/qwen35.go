@@ -51,6 +51,38 @@ type Qwen35BaseLayer struct {
 	Linear *Qwen35LinearAttentionLayer
 }
 
+type Qwen35BaseModel struct {
+	Layers []Qwen35BaseLayer
+}
+
+func LoadQwen35BaseModelLayers(src Qwen35TensorSource, meta loaderconfig.QwenNativeMTPMetadata) (*Qwen35BaseModel, error) {
+	if src == nil {
+		return nil, fmt.Errorf("nil Qwen3.5 tensor source")
+	}
+	count := meta.MainLayerCount()
+	if count <= 0 {
+		return nil, fmt.Errorf("invalid Qwen3.5 main layer count %d", count)
+	}
+	out := &Qwen35BaseModel{Layers: make([]Qwen35BaseLayer, count)}
+	for i := 0; i < count; i++ {
+		prefix := fmt.Sprintf("model.layers.%d", i)
+		if meta.IsLinearAttentionLayer(i) {
+			layer, err := LoadQwen35LinearAttentionLayer(src, meta, prefix)
+			if err != nil {
+				return nil, fmt.Errorf("load Qwen3.5 linear layer %d: %w", i, err)
+			}
+			out.Layers[i] = Qwen35BaseLayer{Kind: Qwen35LinearAttentionLayerKind, Linear: layer}
+			continue
+		}
+		layer, err := LoadQwen35FullAttentionLayer(src, meta, prefix)
+		if err != nil {
+			return nil, fmt.Errorf("load Qwen3.5 full-attention layer %d: %w", i, err)
+		}
+		out.Layers[i] = Qwen35BaseLayer{Kind: Qwen35FullAttentionLayerKind, Full: layer}
+	}
+	return out, nil
+}
+
 func LoadQwen35FullAttentionLayer(src Qwen35TensorSource, meta loaderconfig.QwenNativeMTPMetadata, prefix string) (*Qwen35FullAttentionLayer, error) {
 	if src == nil {
 		return nil, fmt.Errorf("nil Qwen3.5 tensor source")
