@@ -49,16 +49,20 @@ func TestCheckReportSummaryFields(t *testing.T) {
 func TestGoldenReportMetadataChecks(t *testing.T) {
 	modelID := "actual"
 	prompts := []string{"p"}
-	golden := &GoldenReport{Model: "expected", Prompts: []GoldenPrompt{{PromptIndex: 0}}}
-	passed := true
+	golden := &GoldenReport{Model: "expected", Prompts: []GoldenPrompt{{PromptIndex: 0}, {PromptIndex: 1}}}
+	report := CheckReport{Passed: true, GoldenMatch: true}
 	if golden.Model != "" && golden.Model != modelID {
-		passed = false
+		report.Passed = false
+		report.GoldenMatch = false
+		report.FailedGoldenChecks++
 	}
 	if len(golden.Prompts) != len(prompts) {
-		passed = false
+		report.Passed = false
+		report.GoldenMatch = false
+		report.FailedGoldenChecks++
 	}
-	if passed {
-		t.Fatal("metadata mismatch was not detected")
+	if report.Passed || report.GoldenMatch || report.FailedGoldenChecks != 2 {
+		t.Fatalf("metadata mismatch report=%+v", report)
 	}
 }
 
