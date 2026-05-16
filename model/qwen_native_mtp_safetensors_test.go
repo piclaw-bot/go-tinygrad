@@ -35,6 +35,41 @@ func TestLoadQwenNativeMTPHeadFromTinySafetensors(t *testing.T) {
 	}
 }
 
+func TestShardedSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
+	dir := t.TempDir()
+	shard := "model-00001-of-00001.safetensors"
+	path := filepath.Join(dir, shard)
+	if err := writeTinySafetensors(path, map[string]*tensor.Tensor{
+		"mtp.fc.weight": tensor.FromFloat32([]float32{1, 2, 3, 4}, []int{2, 2}),
+	}); err != nil {
+		t.Fatalf("writeTinySafetensors: %v", err)
+	}
+	index := map[string]any{"weight_map": map[string]string{"mtp.fc.weight": shard}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "model.safetensors.index.json"), data, 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	f, err := safetensors.OpenSharded(filepath.Join(dir, "model.safetensors.index.json"))
+	if err != nil {
+		t.Fatalf("OpenSharded: %v", err)
+	}
+	defer f.Close()
+	src := ShardedSafetensorsQwenNativeMTPTensorSource{File: f}
+	got, err := src.Get("mtp.fc.weight", []int{2, 2})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Shape()[0] != 2 || got.Shape()[1] != 2 || got.Data()[3] != 4 {
+		t.Fatalf("got shape=%v data=%v", got.Shape(), got.Data())
+	}
+	if _, err := src.Get("mtp.fc.weight", []int{1, 4}); err == nil {
+		t.Fatal("shape mismatch returned nil error")
+	}
+}
+
 func TestSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "model.safetensors")
