@@ -121,6 +121,10 @@ func main() {
 		"backend", "proposer", "steps", "proposal_steps", "proposed", "accepted", "bonus", "fallback", "acceptance", "emitted", "tokens_per_step", "avg_proposal",
 	}}
 	modelID := baseName(*dir)
+	var totalPromptTokens, totalNormalGenerated, totalSpecGenerated int
+	var totalNormalElapsed, totalSpecElapsed time.Duration
+	aggregateMatch := true
+	var aggregateStats model.SpeculativeStats
 	for _, res := range results {
 		normalTokS := tokensPerSecond(res.normalGenerated, res.normalElapsed)
 		specTokS := tokensPerSecond(res.specGenerated, res.specElapsed)
@@ -130,6 +134,23 @@ func main() {
 		}
 		rows = append(rows, benchRow(modelID, res.promptIdx, res.promptTokens, *tokens, *repeat, "normal", res.normalElapsed, res.normalGenerated, 1.0, true, model.SpeculativeStats{}))
 		rows = append(rows, benchRow(modelID, res.promptIdx, res.promptTokens, *tokens, *repeat, "speculative", res.specElapsed, res.specGenerated, speedup, res.match, res.stats))
+		totalPromptTokens += res.promptTokens
+		totalNormalGenerated += res.normalGenerated
+		totalSpecGenerated += res.specGenerated
+		totalNormalElapsed += res.normalElapsed
+		totalSpecElapsed += res.specElapsed
+		aggregateMatch = aggregateMatch && res.match
+		aggregateStats = aggregateStats.Add(res.stats)
+	}
+	if len(results) > 1 {
+		normalTokS := tokensPerSecond(totalNormalGenerated, totalNormalElapsed)
+		specTokS := tokensPerSecond(totalSpecGenerated, totalSpecElapsed)
+		speedup := 0.0
+		if normalTokS > 0 {
+			speedup = specTokS / normalTokS
+		}
+		rows = append(rows, benchRow(modelID, -1, totalPromptTokens, *tokens, *repeat, "normal_total", totalNormalElapsed, totalNormalGenerated, 1.0, true, model.SpeculativeStats{}))
+		rows = append(rows, benchRow(modelID, -1, totalPromptTokens, *tokens, *repeat, "speculative_total", totalSpecElapsed, totalSpecGenerated, speedup, aggregateMatch, aggregateStats))
 	}
 
 	w := csv.NewWriter(os.Stdout)
