@@ -69,6 +69,23 @@ func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPDraftSteps(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	next, tokens, logitsRows, err := head.DraftSteps(m, 0, state, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftSteps: %v", err)
+	}
+	if len(tokens) != 2 || len(logitsRows) != 2 || next.Pos != 2 {
+		t.Fatalf("tokens=%v logitsRows=%d next=%+v", tokens, len(logitsRows), next)
+	}
+	if _, _, _, err := head.DraftSteps(m, 0, state, -1, 1e-6, meta); err == nil {
+		t.Fatal("negative DraftSteps returned nil error")
+	}
+}
+
 func TestQwenNativeMTPDraftStepState(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
