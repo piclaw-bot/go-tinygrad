@@ -83,6 +83,10 @@ func shouldFailStrict(strict bool, meta loaderconfig.QwenNativeMTPMetadata, repo
 }
 
 func safetensorNames(dir string) ([]string, error) {
+	if sf, err := safetensors.OpenSharded(filepath.Join(dir, "model.safetensors.index.json")); err == nil {
+		defer sf.Close()
+		return sf.Names(), nil
+	}
 	f, err := safetensors.Open(filepath.Join(dir, "model.safetensors"))
 	if err != nil {
 		return nil, err

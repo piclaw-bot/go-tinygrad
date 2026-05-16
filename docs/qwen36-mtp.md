@@ -188,7 +188,7 @@ go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp
 go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp -strict
 ```
 
-It emits JSON with parsed Qwen native-MTP config metadata (including `vocab_size`), whether optional MTP shared-head loading can be attempted, layer counts by type, derived Qwen3.5 full/linear attention shape contracts, any local `mtp.*` safetensors tensor names, optional shared-head tensors as a separate list, summary counts, and `mtp_tensor_complete` when `model.safetensors` is present. If safetensors are available, it also reports missing required native-MTP tensors for the configured MTP layer count.
+It emits JSON with parsed Qwen native-MTP config metadata (including `vocab_size`), whether optional MTP shared-head loading can be attempted, layer counts by type, derived Qwen3.5 full/linear attention shape contracts, any local `mtp.*` safetensors tensor names, optional shared-head tensors as a separate list, summary counts, and `mtp_tensor_complete` when `model.safetensors` or `model.safetensors.index.json` is present. If safetensors are available, it also reports missing required native-MTP tensors for the configured MTP layer count.
 
 ### Phase A — metadata and loader recognition
 
