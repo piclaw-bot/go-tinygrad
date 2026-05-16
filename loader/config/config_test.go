@@ -130,6 +130,24 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	}
 }
 
+func TestRequiredAndMissingQwenNativeMTPTensors(t *testing.T) {
+	req := RequiredQwenNativeMTPTensors(1)
+	if len(req) != 15 {
+		t.Fatalf("required len=%d want 15: %v", len(req), req)
+	}
+	missing := MissingQwenNativeMTPTensors(req, 1)
+	if len(missing) != 0 {
+		t.Fatalf("missing=%v want none", missing)
+	}
+	missing = MissingQwenNativeMTPTensors(req[:len(req)-1], 1)
+	if len(missing) != 1 || missing[0] != req[len(req)-1] {
+		t.Fatalf("missing=%v want %q", missing, req[len(req)-1])
+	}
+	if got := RequiredQwenNativeMTPTensors(0); got != nil {
+		t.Fatalf("zero layers required=%v want nil", got)
+	}
+}
+
 func TestIsQwenNativeMTPTensorName(t *testing.T) {
 	cases := []struct {
 		name string

@@ -186,7 +186,7 @@ Use `cmd/qwenmtpmeta` for local metadata inspection without entering the full mo
 go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp
 ```
 
-It emits JSON with parsed Qwen native-MTP config metadata and any local `mtp.*` safetensors tensor names when `model.safetensors` is present.
+It emits JSON with parsed Qwen native-MTP config metadata and any local `mtp.*` safetensors tensor names when `model.safetensors` is present. If safetensors are available, it also reports missing required native-MTP tensors for the configured MTP layer count.
 
 ### Phase A — metadata and loader recognition
 

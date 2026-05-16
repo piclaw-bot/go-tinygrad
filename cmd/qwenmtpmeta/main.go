@@ -12,8 +12,9 @@ import (
 )
 
 type Report struct {
-	Config     loaderconfig.QwenNativeMTPMetadata `json:"config"`
-	MTPTensors []string                           `json:"mtp_tensors,omitempty"`
+	Config            loaderconfig.QwenNativeMTPMetadata `json:"config"`
+	MTPTensors        []string                           `json:"mtp_tensors,omitempty"`
+	MissingMTPTensors []string                           `json:"missing_mtp_tensors,omitempty"`
 }
 
 func main() {
@@ -40,6 +41,7 @@ func main() {
 				report.MTPTensors = append(report.MTPTensors, name)
 			}
 		}
+		report.MissingMTPTensors = loaderconfig.MissingQwenNativeMTPTensors(report.MTPTensors, meta.MTPNumHiddenLayers)
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")

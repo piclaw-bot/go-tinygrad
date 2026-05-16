@@ -1,6 +1,9 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // QwenNativeMTPMetadata captures the small subset of Qwen3.5/Qwen3.6 config
 // needed to route native MTP checkpoints before touching weight files.
@@ -65,6 +68,56 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		}
 	}
 	return meta, nil
+}
+
+func RequiredQwenNativeMTPTensors(numLayers int) []string {
+	if numLayers <= 0 {
+		return nil
+	}
+	base := []string{
+		"mtp.fc.weight",
+		"mtp.pre_fc_norm_embedding.weight",
+		"mtp.pre_fc_norm_hidden.weight",
+		"mtp.norm.weight",
+	}
+	perLayer := []string{
+		"input_layernorm.weight",
+		"self_attn.q_proj.weight",
+		"self_attn.k_proj.weight",
+		"self_attn.v_proj.weight",
+		"self_attn.o_proj.weight",
+		"self_attn.q_norm.weight",
+		"self_attn.k_norm.weight",
+		"post_attention_layernorm.weight",
+		"mlp.gate_proj.weight",
+		"mlp.up_proj.weight",
+		"mlp.down_proj.weight",
+	}
+	out := append([]string(nil), base...)
+	for i := 0; i < numLayers; i++ {
+		for _, suffix := range perLayer {
+			out = append(out, "mtp.layers."+strconv.Itoa(i)+"."+suffix)
+		}
+	}
+	return out
+}
+
+func MissingQwenNativeMTPTensors(names []string, numLayers int) []string {
+	required := RequiredQwenNativeMTPTensors(numLayers)
+	if len(required) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		seen[name] = true
+	}
+	var missing []string
+	for _, name := range required {
+		if !seen[name] {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 func IsQwenNativeMTPTensorName(name string) bool {
