@@ -981,13 +981,13 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					forceLayerCPUAttn = true
 				}
 				var kvKPtr, kvVPtr *gpu.Buffer
-				if cpuLayer.HasKV && g.kvGPU_K[l] != nil {
+				if !forceLayerCPUAttn && cpuLayer.HasKV && g.kvGPU_K[l] != nil {
 					kvKPtr = g.kvGPU_K[l].GPUPtr()
 				}
-				if cpuLayer.HasKV && g.kvGPU_V[l] != nil {
+				if !forceLayerCPUAttn && cpuLayer.HasKV && g.kvGPU_V[l] != nil {
 					kvVPtr = g.kvGPU_V[l].GPUPtr()
 				}
-				if cpuLayer.HasKV && kvKPtr != nil && kvVPtr != nil && g.k.ToGPU() == nil && g.v.ToGPU() == nil {
+				if !forceLayerCPUAttn && cpuLayer.HasKV && kvKPtr != nil && kvVPtr != nil && g.k.ToGPU() == nil && g.v.ToGPU() == nil {
 					kPtr := g.k.GPUPtr()
 					vPtr := g.v.GPUPtr()
 					copyOK := kPtr != nil && vPtr != nil
@@ -1003,8 +1003,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 							}
 						}
 					}
-					if forceLayerCPUAttn || !copyOK {
-						if !copyOK && !forceLayerCPUAttn {
+					if !copyOK {
+						if !forceLayerCPUAttn {
 							// A failed GPU KV append leaves the GPU cache unusable for this layer's
 							// current and future attention. Rebuild the CPU shadow prefix from the
 							// GPU cache before switching this layer to CPU attention so sequence
