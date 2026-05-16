@@ -386,7 +386,8 @@ func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		GemvMLX(out, x, w)
 		return
 	}
-	if x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim || !tryGPU(x, out) {
+	if x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim || !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) || !fitsUint32(w.GroupSz) || !tryGPU(x, out) {
+		GemvMLX(out, x, w)
 		return
 	}
 	EnsureContext()
@@ -409,5 +410,7 @@ func GemvMLXDirect(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		unsafe.Pointer(&groups),
 		unsafe.Pointer(&groupSz)); err == nil {
 		out.dev = GPU_DEVICE
+		return
 	}
+	GemvMLX(out, x, w)
 }
