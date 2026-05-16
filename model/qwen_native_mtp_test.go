@@ -144,6 +144,29 @@ func TestValidateQwenNativeMTPVerifierLogits(t *testing.T) {
 	}
 }
 
+func TestRunQwenNativeMTPPlanSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	plan, err := NewQwenNativeMTPPlan(0, state, 2, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, drafted, _, err := head.DraftSteps(m, 0, state, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := append(append([]int(nil), drafted...), 1)
+	res, err := RunQwenNativeMTPPlan(head, m, plan, verifier, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("RunQwenNativeMTPPlan: %v", err)
+	}
+	if res.InitialState.Pos != 0 || res.State.Pos != len(drafted) {
+		t.Fatalf("states initial=%+v final=%+v", res.InitialState, res.State)
+	}
+}
+
 func TestRunQwenNativeMTPSpeculativeStepFromLogitsSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
