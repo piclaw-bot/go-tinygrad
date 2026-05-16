@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // SpeculativeConfig controls the opt-in stock-weight speculative decoding path.
@@ -156,9 +157,11 @@ func (cfg SpeculativeConfig) Normalize() SpeculativeConfig {
 	if cfg.MinProposal <= 0 {
 		cfg.MinProposal = 2
 	}
+	cfg.Proposer = strings.ToLower(strings.TrimSpace(cfg.Proposer))
 	if cfg.Proposer == "" {
 		cfg.Proposer = "prompt"
 	}
+	cfg.Backend = strings.ToLower(strings.TrimSpace(cfg.Backend))
 	if cfg.Backend == "" {
 		cfg.Backend = "replay"
 	}

@@ -62,6 +62,10 @@ func TestSpeculativeConfigNormalize(t *testing.T) {
 	if cfg.BlockSize != 1 || cfg.NGram != 2 || cfg.MinProposal != 3 || cfg.Proposer != "none" || cfg.Backend != "replay" {
 		t.Fatalf("Normalize changed explicit values: %+v", cfg)
 	}
+	cfg = (SpeculativeConfig{Proposer: " Repeat-Last ", Backend: " KV "}).Normalize()
+	if cfg.Proposer != "repeat-last" || cfg.Backend != "kv" {
+		t.Fatalf("Normalize did not trim/lower strings: %+v", cfg)
+	}
 }
 
 func TestSpeculativeConfigMinProposalDefault(t *testing.T) {
