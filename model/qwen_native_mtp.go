@@ -89,6 +89,11 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	if head.Norm, err = src.Get("mtp.norm.weight", []int{h}); err != nil {
 		return nil, err
 	}
+	if meta.VocabSize > 0 {
+		if head.SharedHead, err = LoadOptionalQwenNativeMTPSharedHead(src, meta.VocabSize, h); err != nil {
+			return nil, err
+		}
+	}
 	attnShapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
 	if err != nil {
 		return nil, err

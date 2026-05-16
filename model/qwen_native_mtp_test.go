@@ -412,14 +412,20 @@ func TestLoadOptionalQwenNativeMTPSharedHead(t *testing.T) {
 
 func TestLoadQwenNativeMTPHeadSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
+	meta.VocabSize = 2
 	head := syntheticQwenNativeMTPHead(meta)
+	head.SharedHead = tensor.Zeros([]int{2, meta.HiddenSize})
 	src := fakeQwenMTPTensorSourceFromHead(head)
+	src["mtp.shared_head_head.weight"] = head.SharedHead
 	loaded, err := LoadQwenNativeMTPHead(src, meta)
 	if err != nil {
 		t.Fatalf("LoadQwenNativeMTPHead: %v", err)
 	}
 	if err := ValidateQwenNativeMTPHead(loaded, meta); err != nil {
 		t.Fatalf("Validate loaded head: %v", err)
+	}
+	if loaded.SharedHead == nil {
+		t.Fatal("expected optional shared head to load")
 	}
 	delete(src, "mtp.norm.weight")
 	if _, err := LoadQwenNativeMTPHead(src, meta); err == nil || !strings.Contains(err.Error(), "mtp.norm.weight") {
