@@ -36,6 +36,22 @@ func TestLoadQwen35NativeMTPBundleWithMTPFromDir(t *testing.T) {
 	}
 }
 
+func TestQwen35NativeMTPBundleValidateBaseReady(t *testing.T) {
+	if err := (*Qwen35NativeMTPBundle)(nil).ValidateBaseReady(); err == nil {
+		t.Fatal("nil bundle accepted")
+	}
+	meta := testQwenNativeMTPMeta()
+	meta.NumHiddenLayers = 2
+	bundle := &Qwen35NativeMTPBundle{Meta: meta}
+	if err := bundle.ValidateBaseReady(); err == nil {
+		t.Fatal("missing base accepted")
+	}
+	bundle.Base = &Qwen35BaseModel{}
+	if err := bundle.ValidateBaseReady(); err == nil {
+		t.Fatal("bad layer count accepted")
+	}
+}
+
 func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 1
@@ -55,6 +71,9 @@ func TestLoadQwen35NativeMTPBundleFromDir(t *testing.T) {
 	}
 	if bundle.Meta.HiddenSize != 4 || bundle.Base == nil || len(bundle.Base.Layers) != 1 || bundle.MTP != nil {
 		t.Fatalf("bundle=%+v", bundle)
+	}
+	if err := bundle.ValidateBaseReady(); err != nil {
+		t.Fatalf("ValidateBaseReady: %v", err)
 	}
 	if err := bundle.ValidateNativeMTPReady(); err == nil {
 		t.Fatal("ValidateNativeMTPReady accepted bundle without MTP")

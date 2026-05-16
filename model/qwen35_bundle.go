@@ -14,6 +14,22 @@ type Qwen35NativeMTPBundle struct {
 	MTP  *QwenNativeMTPHead
 }
 
+func (b *Qwen35NativeMTPBundle) ValidateBaseReady() error {
+	if b == nil {
+		return fmt.Errorf("nil Qwen3.5 native MTP bundle")
+	}
+	if b.Base == nil {
+		return fmt.Errorf("Qwen3.5 base model is not loaded")
+	}
+	if b.Meta.HiddenSize <= 0 {
+		return fmt.Errorf("invalid Qwen3.5 hidden size %d", b.Meta.HiddenSize)
+	}
+	if len(b.Base.Layers) != b.Meta.MainLayerCount() {
+		return fmt.Errorf("Qwen3.5 base layer count=%d want %d", len(b.Base.Layers), b.Meta.MainLayerCount())
+	}
+	return nil
+}
+
 func (b *Qwen35NativeMTPBundle) ValidateNativeMTPReady() error {
 	if b == nil {
 		return fmt.Errorf("nil Qwen3.5 native MTP bundle")
