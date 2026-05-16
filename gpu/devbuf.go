@@ -218,11 +218,12 @@ func DevAdd(out, a, b *DevBuf) {
 		b.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
-		LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnVecAdd, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
-			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	a.ToCPU()
@@ -245,11 +246,12 @@ func DevMul(out, a, b *DevBuf) {
 		b.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
-		LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnVecMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
-			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	a.ToCPU()
 	b.ToCPU()
@@ -270,11 +272,12 @@ func DevScale(out, a *DevBuf, s float32) {
 		a.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
-		LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnVecScale, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
-			unsafe.Pointer(&s), unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&s), unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	a.ToCPU()
 	out.ToCPU()
@@ -292,10 +295,11 @@ func DevAddScaled(out, a, b *DevBuf, s float32) {
 	}
 	if kernelsLoaded && fnVecAddScaled != 0 && fitsUint32(n) && tryGPU(a, b, out) {
 		nn := uint32(n)
-		LaunchKernel(fnVecAddScaled, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
-			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&s), unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+		if err := LaunchKernel(fnVecAddScaled, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&s), unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	a.ToCPU()
 	b.ToCPU()
@@ -320,10 +324,11 @@ func DevToBF16(x *DevBuf, n int) {
 	if kernelsLoaded && fnToBF16F32 != 0 && fitsUint32(n) && tryGPU(x) {
 		x.ToGPU()
 		nn := uint32(n)
-		LaunchKernel(fnToBF16F32, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
-			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&nn))
-		x.dev = GPU_DEVICE
-		return
+		if err := LaunchKernel(fnToBF16F32, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&nn)); err == nil {
+			x.dev = GPU_DEVICE
+			return
+		}
 	}
 	x.ToCPU()
 	for i := 0; i < n; i++ {
@@ -344,11 +349,12 @@ func DevSiLU(out, a *DevBuf) {
 		a.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
-		LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnVecSilu, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
-			unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	a.ToCPU()
 	out.ToCPU()
@@ -367,11 +373,12 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	}
 	if kernelsLoaded && fitsUint32(n) && n <= 256*8192 && tryGPU(x, weight, out) {
 		nn := uint32(n)
-		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
+		if err := LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
-			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn), unsafe.Pointer(&eps))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn), unsafe.Pointer(&eps)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	x.ToCPU()
@@ -396,11 +403,12 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 	}
 	if kernelsLoaded && fnRmsNormNoScale != 0 && fitsUint32(n) && n <= 256*8192 && tryGPU(x, out) {
 		nn := uint32(n)
-		LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
+		if err := LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
-			unsafe.Pointer(&nn), unsafe.Pointer(&eps))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&nn), unsafe.Pointer(&eps)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	x.ToCPU()
@@ -576,11 +584,12 @@ func DevSiLUMul(out, a, b *DevBuf) {
 	}
 	if fusedSiLUMulOK && fitsUint32(n) && tryGPU(a, b, out) {
 		nn := uint32(n)
-		LaunchKernel(fnFusedSiLUMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnFusedSiLUMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
-			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn))
-		out.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&nn)); err == nil {
+			out.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	a.ToCPU()
@@ -604,11 +613,12 @@ func DevGELUTanhMul(gate, up *DevBuf, n int) {
 	}
 	if kernelsLoaded && fnGELUTanhMul != 0 && fitsUint32(n) && tryGPU(gate, up) {
 		nn := uint32(n)
-		LaunchKernel(fnGELUTanhMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(fnGELUTanhMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&gate.gpu.Ptr), unsafe.Pointer(&up.gpu.Ptr),
-			unsafe.Pointer(&nn))
-		gate.dev = GPU_DEVICE
-		return
+			unsafe.Pointer(&nn)); err == nil {
+			gate.dev = GPU_DEVICE
+			return
+		}
 	}
 	// CPU fallback
 	gate.ToCPU()
