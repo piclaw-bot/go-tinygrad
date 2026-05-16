@@ -28,9 +28,22 @@ type CheckResult struct {
 }
 
 type CheckReport struct {
-	Model   string        `json:"model"`
-	Passed  bool          `json:"passed"`
-	Results []CheckResult `json:"results"`
+	Model       string        `json:"model"`
+	Passed      bool          `json:"passed"`
+	GoldenMatch bool          `json:"golden_match,omitempty"`
+	Results     []CheckResult `json:"results"`
+}
+
+type GoldenReport struct {
+	Model   string         `json:"model"`
+	Prompts []GoldenPrompt `json:"prompts"`
+}
+
+type GoldenPrompt struct {
+	PromptIndex  int   `json:"prompt_index"`
+	PromptTokens int   `json:"prompt_tokens"`
+	MaxTokens    int   `json:"max_tokens"`
+	Output       []int `json:"output"`
 }
 
 func main() {
@@ -43,6 +56,8 @@ func main() {
 	minProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
 	proposerList := flag.String("proposers", "prompt,repeat-last,none", "comma-separated proposer list")
 	backend := flag.String("speculative-backend", "replay", "speculative verifier backend")
+	goldenPath := flag.String("golden", "", "optional golden JSON to compare normal outputs against")
+	writeGoldenPath := flag.String("write-golden", "", "optional path to write normal-output golden JSON")
 	flag.Parse()
 
 	if *dir == "" {
@@ -75,11 +90,26 @@ func main() {
 		os.Exit(2)
 	}
 
-	report := CheckReport{Model: baseName(*dir), Passed: true}
+	modelID := baseName(*dir)
+	golden, err := loadGolden(*goldenPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "golden: %v\n", err)
+		os.Exit(2)
+	}
+	report := CheckReport{Model: modelID, Passed: true, GoldenMatch: true}
+	writeGolden := GoldenReport{Model: modelID}
 	for pi, promptText := range prompts {
 		ids := tok.Encode(promptText)
 		normal := m.Generate(ids, *tokens)
 		preparedLen := len(m.PreparedGenerateTokens(ids))
+		writeGolden.Prompts = append(writeGolden.Prompts, GoldenPrompt{PromptIndex: pi, PromptTokens: preparedLen, MaxTokens: *tokens, Output: append([]int(nil), normal...)})
+		if golden != nil {
+			if err := compareGoldenPrompt(golden, pi, preparedLen, *tokens, normal); err != nil {
+				report.Passed = false
+				report.GoldenMatch = false
+				fmt.Fprintf(os.Stderr, "golden mismatch prompt %d: %v\n", pi, err)
+			}
+		}
 		for _, proposer := range proposers {
 			cfg := model.SpeculativeConfig{
 				Enabled:     true,
@@ -116,6 +146,13 @@ func main() {
 		}
 	}
 
+	if *writeGoldenPath != "" {
+		if err := writeGoldenFile(*writeGoldenPath, writeGolden); err != nil {
+			fmt.Fprintf(os.Stderr, "write golden: %v\n", err)
+			os.Exit(2)
+		}
+	}
+
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(report); err != nil {
@@ -125,6 +162,50 @@ func main() {
 	if !report.Passed {
 		os.Exit(1)
 	}
+}
+
+func loadGolden(path string) (*GoldenReport, error) {
+	if path == "" {
+		return nil, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var g GoldenReport
+	if err := json.NewDecoder(f).Decode(&g); err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+func writeGoldenFile(path string, golden GoldenReport) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	return enc.Encode(golden)
+}
+
+func compareGoldenPrompt(g *GoldenReport, promptIdx, promptTokens, maxTokens int, normal []int) error {
+	if g == nil {
+		return nil
+	}
+	if promptIdx < 0 || promptIdx >= len(g.Prompts) {
+		return fmt.Errorf("golden has %d prompts", len(g.Prompts))
+	}
+	gp := g.Prompts[promptIdx]
+	if gp.PromptIndex != promptIdx || gp.PromptTokens != promptTokens || gp.MaxTokens != maxTokens {
+		return fmt.Errorf("metadata got idx/tokens/max=%d/%d/%d want %d/%d/%d", promptIdx, promptTokens, maxTokens, gp.PromptIndex, gp.PromptTokens, gp.MaxTokens)
+	}
+	if idx := firstMismatch(gp.Output, normal); idx >= 0 {
+		return fmt.Errorf("output mismatch at %d", idx)
+	}
+	return nil
 }
 
 func firstMismatch(a, b []int) int {
