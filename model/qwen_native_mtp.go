@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/rcarmo/go-pherence/backends/simd"
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/tensor"
 )
@@ -364,57 +363,23 @@ func (l *QwenNativeMTPLayer) ForwardWithKV(input []float32, pos int, ropeFreqs, 
 	if l == nil {
 		return nil, nil, nil, fmt.Errorf("nil Qwen native MTP layer")
 	}
-	h := meta.HiddenSize
-	if len(input) != h {
-		return nil, nil, nil, fmt.Errorf("MTP layer input len=%d want %d", len(input), h)
+	full := Qwen35FullAttentionLayer{
+		InputNorm: l.InputNorm,
+		PostNorm:  l.PostNorm,
+		QW:        l.QW,
+		KW:        l.KW,
+		VW:        l.VW,
+		OW:        l.OW,
+		QNorm:     l.QNorm,
+		KNorm:     l.KNorm,
+		GateW:     l.GateW,
+		UpW:       l.UpW,
+		DownW:     l.DownW,
 	}
-	attnShapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
+	out, curK, curV, err = full.ForwardWithKV(input, pos, ropeFreqs, pastK, pastV, eps, meta)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, fmt.Errorf("Qwen native MTP full-attention layer: %w", err)
 	}
-	cur := append([]float32(nil), input...)
-	rmsNormInPlace(cur, l.InputNorm.Data(), eps)
-	qFull := make([]float32, attnShapes.QProj[0])
-	gemvNT(qFull, cur, l.QW.Data(), h, attnShapes.QProj[0])
-	qDim := attnShapes.GateSize
-	q := append([]float32(nil), qFull[:qDim]...)
-	gate := qFull[qDim:]
-	k := make([]float32, attnShapes.KProj[0])
-	v := make([]float32, attnShapes.VProj[0])
-	gemvNT(k, cur, l.KW.Data(), h, len(k))
-	gemvNT(v, cur, l.VW.Data(), h, len(v))
-	normHeads(q, l.QNorm.Data(), meta.NumAttentionHeads, meta.HeadDim, eps)
-	normHeads(k, l.KNorm.Data(), meta.NumKeyValueHeads, meta.HeadDim, eps)
-	if len(ropeFreqs) > 0 {
-		applyRoPE(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim)
-		applyRoPE(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim)
-	}
-	curK = append([]float32(nil), k...)
-	curV = append([]float32(nil), v...)
-	kAll, vAll, err := appendQwenMTPKV(pastK, pastV, curK, curV)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	attn := qwenMTPGroupedAttention(q, kAll, vAll, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
-	for i := range attn {
-		attn[i] *= sigmoid(gate[i])
-	}
-	o := make([]float32, h)
-	gemvNT(o, attn, l.OW.Data(), len(attn), h)
-	resid := make([]float32, h)
-	simd.VecAdd(resid, input, o)
-	mlpIn := append([]float32(nil), resid...)
-	rmsNormInPlace(mlpIn, l.PostNorm.Data(), eps)
-	inter := meta.IntermediateSize
-	gateMLP := make([]float32, inter)
-	up := make([]float32, inter)
-	gemvNT(gateMLP, mlpIn, l.GateW.Data(), h, inter)
-	gemvNT(up, mlpIn, l.UpW.Data(), h, inter)
-	simd.VecSiLUMul(gateMLP, gateMLP, up)
-	down := make([]float32, h)
-	gemvNT(down, gateMLP, l.DownW.Data(), inter, h)
-	out = make([]float32, h)
-	simd.VecAdd(out, resid, down)
 	return out, curK, curV, nil
 }
 
