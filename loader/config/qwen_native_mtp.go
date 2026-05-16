@@ -5,15 +5,15 @@ import "encoding/json"
 // QwenNativeMTPMetadata captures the small subset of Qwen3.5/Qwen3.6 config
 // needed to route native MTP checkpoints before touching weight files.
 type QwenNativeMTPMetadata struct {
-	ModelType                 string
-	Architecture              string
-	HiddenSize                int
-	NumHiddenLayers           int
-	MTPNumHiddenLayers        int
-	MTPUseDedicatedEmbeddings bool
-	LayerTypes                []string
-	HasNativeMTP              bool
-	HasLinearAttention        bool
+	ModelType                 string   `json:"model_type"`
+	Architecture              string   `json:"architecture,omitempty"`
+	HiddenSize                int      `json:"hidden_size"`
+	NumHiddenLayers           int      `json:"num_hidden_layers"`
+	MTPNumHiddenLayers        int      `json:"mtp_num_hidden_layers"`
+	MTPUseDedicatedEmbeddings bool     `json:"mtp_use_dedicated_embeddings"`
+	LayerTypes                []string `json:"layer_types,omitempty"`
+	HasNativeMTP              bool     `json:"has_native_mtp"`
+	HasLinearAttention        bool     `json:"has_linear_attention"`
 }
 
 func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
