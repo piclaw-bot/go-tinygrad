@@ -96,7 +96,7 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
-func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {
+func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, pos int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {
 	if m == nil {
 		return nil, nil, 0, fmt.Errorf("nil main model")
 	}
@@ -104,7 +104,7 @@ func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []
 	if err := m.ScaledTokenEmbeddingInto(embedding, tokenID); err != nil {
 		return nil, nil, 0, err
 	}
-	nextHidden, err = head.ForwardOne(embedding, hidden, eps, meta)
+	nextHidden, err = head.ForwardOne(embedding, hidden, pos, m.RopeFreqs, eps, meta)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -124,7 +124,7 @@ func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []
 	return nextHidden, logits, token, nil
 }
 
-func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
+func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
 	cur, err := head.PreProject(embedding, hidden, eps)
 	if err != nil {
 		return nil, err
@@ -132,10 +132,10 @@ func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, eps float
 	if len(head.Layers) == 0 {
 		return nil, fmt.Errorf("Qwen native MTP head has no layers")
 	}
-	return head.Layers[0].Forward(cur, eps, meta)
+	return head.Layers[0].Forward(cur, pos, ropeFreqs, eps, meta)
 }
 
-func (l *QwenNativeMTPLayer) Forward(input []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
+func (l *QwenNativeMTPLayer) Forward(input []float32, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
 	if l == nil {
 		return nil, fmt.Errorf("nil Qwen native MTP layer")
 	}
@@ -160,6 +160,10 @@ func (l *QwenNativeMTPLayer) Forward(input []float32, eps float32, meta loaderco
 	gemvNT(v, cur, l.VW.Data(), h, len(v))
 	normHeads(q, l.QNorm.Data(), meta.NumAttentionHeads, meta.HeadDim, eps)
 	normHeads(k, l.KNorm.Data(), meta.NumKeyValueHeads, meta.HeadDim, eps)
+	if len(ropeFreqs) > 0 {
+		applyRoPE(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim)
+		applyRoPE(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim)
+	}
 	attn := singleTokenGroupedAttention(q, k, v, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
 	for i := range attn {
 		attn[i] *= sigmoid(gate[i])

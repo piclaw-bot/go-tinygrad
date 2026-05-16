@@ -26,6 +26,23 @@ type errFakeMissing string
 
 func (e errFakeMissing) Error() string { return "missing " + string(e) }
 
+func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	rope := make([]float32, meta.HeadDim*2)
+	for i := 0; i < meta.HeadDim; i++ {
+		rope[i*2] = 1
+		rope[i*2+1] = 0
+	}
+	out, err := head.ForwardOne([]float32{1, 0, 0, 0}, []float32{0, 1, 0, 0}, 0, rope, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardOne with RoPE: %v", err)
+	}
+	if len(out) != meta.HiddenSize {
+		t.Fatalf("out len=%d", len(out))
+	}
+}
+
 func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
@@ -40,14 +57,14 @@ func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
 			0, 1, 0, 0,
 		}, []int{2, 4}),
 	}
-	_, logits, tok, err := head.DraftLogits(m, 0, []float32{0, 1, 0, 0}, 1e-6, meta)
+	_, logits, tok, err := head.DraftLogits(m, 0, []float32{0, 1, 0, 0}, 0, 1e-6, meta)
 	if err != nil {
 		t.Fatalf("DraftLogits: %v", err)
 	}
 	if len(logits) != 2 || tok < 0 || tok >= 2 {
 		t.Fatalf("logits=%v tok=%d", logits, tok)
 	}
-	if _, _, _, err := head.DraftLogits(nil, 0, nil, 1e-6, meta); err == nil {
+	if _, _, _, err := head.DraftLogits(nil, 0, nil, 0, 1e-6, meta); err == nil {
 		t.Fatal("nil model DraftLogits returned nil error")
 	}
 }
@@ -55,14 +72,14 @@ func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
 func TestQwenNativeMTPForwardOneSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
-	out, err := head.ForwardOne([]float32{1, 0, 0, 0}, []float32{0, 1, 0, 0}, 1e-6, meta)
+	out, err := head.ForwardOne([]float32{1, 0, 0, 0}, []float32{0, 1, 0, 0}, 0, nil, 1e-6, meta)
 	if err != nil {
 		t.Fatalf("ForwardOne: %v", err)
 	}
 	if len(out) != meta.HiddenSize {
 		t.Fatalf("out len=%d want %d", len(out), meta.HiddenSize)
 	}
-	if _, err := (&QwenNativeMTPHead{}).ForwardOne([]float32{1}, []float32{1}, 1e-6, meta); err == nil {
+	if _, err := (&QwenNativeMTPHead{}).ForwardOne([]float32{1}, []float32{1}, 0, nil, 1e-6, meta); err == nil {
 		t.Fatal("incomplete ForwardOne returned nil error")
 	}
 }
