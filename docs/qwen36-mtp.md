@@ -83,6 +83,99 @@ Current go-pherence intentionally rejects public NVFP4 loading/generation until 
 2. finish enough real-checkpoint NVFP4 loading to run this model, or
 3. use GGUF only as a metadata/reference source, not as a direct loader path.
 
+
+## llama.cpp `mtp-clean` reference mapping
+
+Reference branch: <https://github.com/am17an/llama.cpp/tree/mtp-clean> at inspected commit `2dff7ff`.
+
+Important implementation points to port/adapt:
+
+### Conversion / tensor naming
+
+`conversion/qwen.py` defines `_Qwen35MtpMixin`:
+
+- extends `block_count` by `mtp_num_hidden_layers`;
+- writes `nextn_predict_layers`;
+- can split trunk and MTP with `--no-mtp` / `--mtp`;
+- remaps HF native MTP tensors:
+
+```text
+mtp.layers.0.*                  -> model.layers.{num_hidden_layers}.
+mtp.fc.weight                   -> model.layers.{bid}.eh_proj.weight
+mtp.pre_fc_norm_embedding.weight -> model.layers.{bid}.enorm.weight
+mtp.pre_fc_norm_hidden.weight    -> model.layers.{bid}.hnorm.weight
+mtp.norm.weight                  -> model.layers.{bid}.shared_head.norm.weight
+```
+
+For go-pherence we can either keep the HF `mtp.*` names directly or mirror this logical mapping internally. Keeping direct HF names is less invasive for safetensors.
+
+### Base Qwen3.5/Qwen3.6 text model
+
+`src/models/qwen35.cpp` is the closest architecture reference. Key points:
+
+- `nextn_predict_layers` are treated as extra decoder blocks appended after the main stack.
+- Main forward executes only `n_layer - nextn_predict_layers`.
+- Recurrent/linear-attention layers are all non-full-attention layers before the MTP tail:
+
+```cpp
+n_main = n_layer - nextn_predict_layers
+recurrent[i] = i < n_main && ((i + 1) % full_attention_interval != 0)
+```
+
+- Full-attention Q projection emits query plus gate: `q_proj` output is `2 * n_heads * head_dim`.
+- Attention output is multiplied by `sigmoid(gate)` before `o_proj`.
+- Linear attention is a gated delta net with conv/recurrent state. This is the largest base-model blocker for Qwen3.6.
+
+### Native MTP graph
+
+`graph_mtp` in `src/models/qwen35.cpp` is the core draft-head algorithm for one native MTP block:
+
+1. Inputs are the next-token id and a pre-norm hidden row `h_p`.
+2. Token embedding comes from dedicated MTP embeddings if present, otherwise main `tok_embd`.
+3. Normalize both streams separately:
+
+```text
+h_norm = RMSNorm(h_input, hnorm)
+e_norm = RMSNorm(tok_embd, enorm)
+concat = [e_norm ; h_norm]
+cur = eh_proj(concat)
+```
+
+4. Run one full-attention Qwen3.5 decoder block:
+
+```text
+attn_norm
+q_proj -> split Q and gate
+q_norm, k_proj, k_norm, v_proj
+MRoPE on Q/K
+GQA attention
+attn *= sigmoid(gate)
+o_proj
+residual
+post_attention_layernorm
+SwiGLU MLP
+residual
+```
+
+5. Save pre-output-norm hidden for the next MTP draft step.
+6. Apply shared head norm (`mtp.norm` or output norm), then main LM head (or dedicated shared head) for logits.
+
+### Runtime MTP loop
+
+`common/speculative.cpp` has `common_speculative_state_draft_mtp`:
+
+- target and draft contexts both expose `embeddings_pre_norm`;
+- `process()` mirrors target verification batches into the MTP context and stores pre-norm hidden rows;
+- `pending_h[seq]` carries `(h_p, x_{p+1})` across calls;
+- `draft()` feeds `(last token, pending_h)` into the MTP context, samples greedy/top-k, then feeds each drafted token back with the previous MTP pre-norm hidden row to draft multiple tokens;
+- `accept(seq, n_accepted)` advances `pending_h` to the hidden row corresponding to the accepted verifier position.
+
+For go-pherence, this maps onto:
+
+- exposing the main CPU/GPU decode pre-output-norm hidden (`h_pre_norm`) as part of `DecodeOne`;
+- adding a native MTP draft state with `pending_h`;
+- using existing `AcceptMTPDraft` semantics to update `pending_h` and KV cache after verification.
+
 ## Shortest implementation path
 
 ### Phase A — metadata and loader recognition

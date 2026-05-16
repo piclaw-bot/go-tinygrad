@@ -1973,3 +1973,17 @@ Set Qwen3.6 27B native MTP as the active project goal. The immediate target is n
 Key checkpoint finding remains `sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP`, which exposes `text_config.model_type=qwen3_5_text`, 64 mixed linear/full-attention layers, and one native MTP layer (`mtp_num_hidden_layers=1`). The safetensors header shows the native MTP layout (`mtp.fc`, pre-FC norms, one MTP decoder layer, and `mtp.norm`). The public artifact is NVFP4, so implementation needs either a non-NVFP4 artifact or enough real-checkpoint NVFP4 loading to reach parity.
 
 Updated `docs/qwen36-mtp.md` from notes into the active roadmap. First milestone is clear loader/config diagnostics and base Qwen3.6 text-model support before native MTP generation is enabled.
+
+### Step 130 — Map llama.cpp mtp-clean reference
+
+Inspected `am17an/llama.cpp` branch `mtp-clean` at commit `2dff7ff`. The key reference files are `conversion/qwen.py`, `src/models/qwen35.cpp`, and `common/speculative.cpp`.
+
+Important findings for go-pherence:
+
+- `_Qwen35MtpMixin` remaps HF `mtp.*` tensors to logical `blk.{n}.nextn.*` tensors and treats MTP layers as extra blocks appended after the main stack.
+- Qwen3.6 full-attention Q projection emits both query and attention gate (`2 * n_heads * head_dim`), then applies `sigmoid(gate)` to the attention output before `o_proj`.
+- Qwen3.6 linear-attention layers are gated delta-net recurrent layers; this remains the largest base-model blocker.
+- The native MTP graph takes `(next token id, pre-norm hidden row)`, normalizes token embedding and hidden separately, concatenates them, projects via `mtp.fc`, runs one full-attention decoder block, returns logits, and saves pre-output-norm hidden for the next draft step.
+- The runtime MTP loop keeps `pending_h` per sequence, mirrors target pre-norm hidden rows, drafts multiple tokens by feeding back MTP pre-norm hidden, and updates `pending_h` on accept.
+
+Added the detailed mapping to `docs/qwen36-mtp.md`.
