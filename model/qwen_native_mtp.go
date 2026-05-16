@@ -2,7 +2,9 @@ package model
 
 import (
 	"fmt"
+	"math"
 
+	"github.com/rcarmo/go-pherence/backends/simd"
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/tensor"
 )
@@ -92,6 +94,65 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 		return nil, err
 	}
 	return head, nil
+}
+
+func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
+	cur, err := head.PreProject(embedding, hidden, eps)
+	if err != nil {
+		return nil, err
+	}
+	if len(head.Layers) == 0 {
+		return nil, fmt.Errorf("Qwen native MTP head has no layers")
+	}
+	return head.Layers[0].Forward(cur, eps, meta)
+}
+
+func (l *QwenNativeMTPLayer) Forward(input []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
+	if l == nil {
+		return nil, fmt.Errorf("nil Qwen native MTP layer")
+	}
+	h := meta.HiddenSize
+	if len(input) != h {
+		return nil, fmt.Errorf("MTP layer input len=%d want %d", len(input), h)
+	}
+	attnShapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
+	if err != nil {
+		return nil, err
+	}
+	cur := append([]float32(nil), input...)
+	rmsNormInPlace(cur, l.InputNorm.Data(), eps)
+	qFull := make([]float32, attnShapes.QProj[0])
+	gemvNT(qFull, cur, l.QW.Data(), h, attnShapes.QProj[0])
+	qDim := attnShapes.GateSize
+	q := append([]float32(nil), qFull[:qDim]...)
+	gate := qFull[qDim:]
+	k := make([]float32, attnShapes.KProj[0])
+	v := make([]float32, attnShapes.VProj[0])
+	gemvNT(k, cur, l.KW.Data(), h, len(k))
+	gemvNT(v, cur, l.VW.Data(), h, len(v))
+	normHeads(q, l.QNorm.Data(), meta.NumAttentionHeads, meta.HeadDim, eps)
+	normHeads(k, l.KNorm.Data(), meta.NumKeyValueHeads, meta.HeadDim, eps)
+	attn := singleTokenGroupedAttention(q, k, v, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim)
+	for i := range attn {
+		attn[i] *= sigmoid(gate[i])
+	}
+	o := make([]float32, h)
+	gemvNT(o, attn, l.OW.Data(), len(attn), h)
+	resid := make([]float32, h)
+	simd.VecAdd(resid, input, o)
+	mlpIn := append([]float32(nil), resid...)
+	rmsNormInPlace(mlpIn, l.PostNorm.Data(), eps)
+	inter := meta.IntermediateSize
+	gateMLP := make([]float32, inter)
+	up := make([]float32, inter)
+	gemvNT(gateMLP, mlpIn, l.GateW.Data(), h, inter)
+	gemvNT(up, mlpIn, l.UpW.Data(), h, inter)
+	simd.VecSiLUMul(gateMLP, gateMLP, up)
+	down := make([]float32, h)
+	gemvNT(down, gateMLP, l.DownW.Data(), inter, h)
+	out := make([]float32, h)
+	simd.VecAdd(out, resid, down)
+	return out, nil
 }
 
 func (head *QwenNativeMTPHead) PreProject(embedding, hidden []float32, eps float32) ([]float32, error) {
@@ -184,6 +245,42 @@ func ValidateQwenNativeMTPHead(head *QwenNativeMTPHead, meta loaderconfig.QwenNa
 		}
 	}
 	return nil
+}
+
+func normHeads(x, weight []float32, nHeads, headDim int, eps float32) {
+	for h := 0; h < nHeads; h++ {
+		start := h * headDim
+		rmsNormInPlace(x[start:start+headDim], weight, eps)
+	}
+}
+
+func singleTokenGroupedAttention(q, k, v []float32, nHeads, nKVHeads, headDim int) []float32 {
+	out := make([]float32, nHeads*headDim)
+	groups := nHeads / nKVHeads
+	if groups <= 0 {
+		groups = 1
+	}
+	scale := float32(1.0 / math.Sqrt(float64(headDim)))
+	for h := 0; h < nHeads; h++ {
+		kvh := h / groups
+		if kvh >= nKVHeads {
+			kvh = nKVHeads - 1
+		}
+		qBase := h * headDim
+		kvBase := kvh * headDim
+		var score float32
+		for i := 0; i < headDim; i++ {
+			score += q[qBase+i] * k[kvBase+i]
+		}
+		// Sequence length is one in the first skeleton, so softmax(score)=1.
+		_ = score * scale
+		copy(out[qBase:qBase+headDim], v[kvBase:kvBase+headDim])
+	}
+	return out
+}
+
+func sigmoid(x float32) float32 {
+	return 1 / (1 + float32(math.Exp(float64(-x))))
 }
 
 func expectShape(t *tensor.Tensor, want []int, name string) error {
