@@ -272,6 +272,28 @@ func TestQwenNativeMTPSharedHeadLogitsFallback(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPSharedHeadLogitsDedicated(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	head.SharedHead = tensor.FromFloat32([]float32{
+		0, 1, 0, 0,
+		1, 0, 0, 0,
+	}, []int{2, 4})
+	m := syntheticQwenMTPMainModel(meta)
+	m.LMHead = nil
+	logits := make([]float32, m.Config.VocabSize)
+	if err := head.SharedHeadLogitsInto(m, logits, []float32{1, 0, 0, 0}); err != nil {
+		t.Fatalf("SharedHeadLogitsInto dedicated: %v", err)
+	}
+	if logits[1] <= logits[0] {
+		t.Fatalf("logits=%v", logits)
+	}
+	head.SharedHead = tensor.Zeros([]int{1, 4})
+	if err := head.SharedHeadLogitsInto(m, logits, []float32{1, 0, 0, 0}); err == nil {
+		t.Fatal("bad dedicated shared head shape returned nil error")
+	}
+}
+
 func TestQwenNativeMTPSharedHeadNormFallback(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)

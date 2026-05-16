@@ -16,6 +16,7 @@ type QwenNativeMTPHead struct {
 	PreFCNormEmbedding *tensor.Tensor
 	PreFCNormHidden    *tensor.Tensor
 	Norm               *tensor.Tensor
+	SharedHead         *tensor.Tensor
 	Layers             []QwenNativeMTPLayer
 }
 
@@ -339,11 +340,31 @@ func (head *QwenNativeMTPHead) SharedHeadLogitsInto(m *LlamaModel, logits, hidde
 	if m == nil {
 		return fmt.Errorf("Qwen native MTP: nil main model for shared head")
 	}
-	// llama.cpp uses nextn.shared_head_head when present and falls back to the
-	// model output head. go-pherence does not yet expose a dedicated MTP head
-	// tensor, so the explicit supported path is the model LM head fallback.
+	if head != nil && head.SharedHead != nil {
+		return qwenNativeMTPHeadLogitsInto(head.SharedHead, logits, hidden, m.Config.VocabSize, m.Config.HiddenSize)
+	}
 	if err := m.LMHeadLogitsInto(logits, hidden); err != nil {
 		return fmt.Errorf("Qwen native MTP shared head logits: %w", err)
+	}
+	return nil
+}
+
+func qwenNativeMTPHeadLogitsInto(head *tensor.Tensor, logits, hidden []float32, vocab, hiddenSize int) error {
+	if head == nil {
+		return fmt.Errorf("nil Qwen native MTP shared head")
+	}
+	if vocab <= 0 || hiddenSize <= 0 {
+		return fmt.Errorf("invalid Qwen native MTP shared head config vocab=%d hidden=%d", vocab, hiddenSize)
+	}
+	if len(logits) != vocab || len(hidden) != hiddenSize {
+		return fmt.Errorf("Qwen native MTP shared head logits/hidden len=%d/%d want %d/%d", len(logits), len(hidden), vocab, hiddenSize)
+	}
+	if err := expectShape(head, []int{vocab, hiddenSize}, "mtp.shared_head_head.weight"); err != nil {
+		return err
+	}
+	data := head.Data()
+	for v := 0; v < vocab; v++ {
+		logits[v] = simdDot(hidden, data[v*hiddenSize:(v+1)*hiddenSize])
 	}
 	return nil
 }
