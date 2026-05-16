@@ -110,6 +110,20 @@ func TestCommitQwenNativeMTPDraftState(t *testing.T) {
 	}
 }
 
+func TestValidateQwenNativeMTPVerifierLogits(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	m := syntheticQwenMTPMainModel(meta)
+	if err := ValidateQwenNativeMTPVerifierLogits(m, []int{1}, logitsForVerifierTokens([]int{1, 0}, m.Config.VocabSize)); err != nil {
+		t.Fatalf("ValidateQwenNativeMTPVerifierLogits: %v", err)
+	}
+	if err := ValidateQwenNativeMTPVerifierLogits(m, []int{1}, logitsForVerifierTokens([]int{1}, m.Config.VocabSize)); err == nil {
+		t.Fatal("bad row count returned nil error")
+	}
+	if err := ValidateQwenNativeMTPVerifierLogits(m, []int{1}, [][]float32{{1}, {1}}); err == nil {
+		t.Fatal("bad vocab row width returned nil error")
+	}
+}
+
 func TestRunQwenNativeMTPSpeculativeStepFromLogitsSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)

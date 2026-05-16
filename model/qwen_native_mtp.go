@@ -167,6 +167,9 @@ func RunQwenNativeMTPSpeculativeStepFromLogits(head *QwenNativeMTPHead, m *Llama
 	if err != nil {
 		return QwenNativeMTPStepResult{}, err
 	}
+	if err := ValidateQwenNativeMTPVerifierLogits(m, drafted, verifierLogits); err != nil {
+		return QwenNativeMTPStepResult{}, err
+	}
 	acceptance, err := AcceptMTPDraftFromLogits(drafted, verifierLogits)
 	if err != nil {
 		return QwenNativeMTPStepResult{}, err
@@ -174,6 +177,24 @@ func RunQwenNativeMTPSpeculativeStepFromLogits(head *QwenNativeMTPHead, m *Llama
 	committed := CommitQwenNativeMTPDraftState(state, stepStates, acceptance)
 	stats := QwenNativeMTPStatsFromAcceptance(acceptance)
 	return QwenNativeMTPStepResult{InitialState: state, State: committed, StepStates: stepStates, Drafted: drafted, Logits: logitsRows, Acceptance: acceptance, Stats: stats}, nil
+}
+
+func ValidateQwenNativeMTPVerifierLogits(m *LlamaModel, drafted []int, logits [][]float32) error {
+	if m == nil {
+		return fmt.Errorf("nil main model")
+	}
+	if m.Config.VocabSize <= 0 {
+		return fmt.Errorf("invalid vocab size %d", m.Config.VocabSize)
+	}
+	if len(logits) != len(drafted)+1 {
+		return fmt.Errorf("Qwen native MTP verifier logits rows=%d want drafted+1=%d", len(logits), len(drafted)+1)
+	}
+	for i, row := range logits {
+		if len(row) != m.Config.VocabSize {
+			return fmt.Errorf("Qwen native MTP verifier logits row %d len=%d want vocab=%d", i, len(row), m.Config.VocabSize)
+		}
+	}
+	return nil
 }
 
 func RunQwenNativeMTPSpeculativeStep(head *QwenNativeMTPHead, m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, verifierTokens []int, maxSteps int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPStepResult, error) {
