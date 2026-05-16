@@ -26,6 +26,32 @@ type errFakeMissing string
 
 func (e errFakeMissing) Error() string { return "missing " + string(e) }
 
+func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := &LlamaModel{
+		Config: LlamaConfig{VocabSize: 2, HiddenSize: meta.HiddenSize, RMSNormEps: 1e-6},
+		EmbedTokens: tensor.FromFloat32([]float32{
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+		}, []int{2, 4}),
+		LMHead: tensor.FromFloat32([]float32{
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+		}, []int{2, 4}),
+	}
+	_, logits, tok, err := head.DraftLogits(m, 0, []float32{0, 1, 0, 0}, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftLogits: %v", err)
+	}
+	if len(logits) != 2 || tok < 0 || tok >= 2 {
+		t.Fatalf("logits=%v tok=%d", logits, tok)
+	}
+	if _, _, _, err := head.DraftLogits(nil, 0, nil, 1e-6, meta); err == nil {
+		t.Fatal("nil model DraftLogits returned nil error")
+	}
+}
+
 func TestQwenNativeMTPForwardOneSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)

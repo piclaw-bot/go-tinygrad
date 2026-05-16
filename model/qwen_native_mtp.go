@@ -96,6 +96,34 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
+func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {
+	if m == nil {
+		return nil, nil, 0, fmt.Errorf("nil main model")
+	}
+	embedding := make([]float32, meta.HiddenSize)
+	if err := m.ScaledTokenEmbeddingInto(embedding, tokenID); err != nil {
+		return nil, nil, 0, err
+	}
+	nextHidden, err = head.ForwardOne(embedding, hidden, eps, meta)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	if head.Norm == nil {
+		return nil, nil, 0, fmt.Errorf("missing mtp.norm.weight")
+	}
+	logitHidden := append([]float32(nil), nextHidden...)
+	rmsNormInPlace(logitHidden, head.Norm.Data(), eps)
+	logits = make([]float32, m.Config.VocabSize)
+	if err := m.LMHeadLogitsInto(logits, logitHidden); err != nil {
+		return nil, nil, 0, err
+	}
+	token, _, err = ArgmaxLogits(logits)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return nextHidden, logits, token, nil
+}
+
 func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
 	cur, err := head.PreProject(embedding, hidden, eps)
 	if err != nil {
