@@ -142,9 +142,11 @@ Current speculative backend is `replay`, a correctness scaffold that reuses the 
 go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp
 
 go run ./cmd/qwenmtpsynth -steps 2
+
+go run ./cmd/qwenmtpsmoke -model /path/to/qwen3.6-27b-mtp
 ```
 
-`qwenmtpmeta` inspects Qwen3.5/Qwen3.6 native-MTP config/tensor metadata without entering the full model loader. `qwenmtpsynth` runs a tiny deterministic native-MTP synthetic correctness path while real Qwen3.6 loading remains gated.
+`qwenmtpmeta` inspects Qwen3.5/Qwen3.6 native-MTP config/tensor metadata without entering the full model loader. `qwenmtpsynth` runs a tiny deterministic native-MTP synthetic correctness path while real Qwen3.6 loading remains gated. `qwenmtpsmoke` loads a real native-MTP head from safetensors and runs a synthetic hidden-state forward pass.
 
 ### specbench / speccheck — speculative benchmark and correctness harness
 
