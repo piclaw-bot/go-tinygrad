@@ -207,6 +207,31 @@ func TestLoadQwen35LinearAttentionLayer(t *testing.T) {
 	}
 }
 
+func TestSplitQwen35LinearQKVZ(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := make([]float32, shapes.ValueDim+shapes.KeyDim+shapes.ValueDim+shapes.ValueDim)
+	for i := range projected {
+		projected[i] = float32(i + 1)
+	}
+	parts, err := splitQwen35LinearQKVZ(projected, shapes)
+	if err != nil {
+		t.Fatalf("splitQwen35LinearQKVZ: %v", err)
+	}
+	if len(parts.Q) != shapes.ValueDim || len(parts.K) != shapes.KeyDim || len(parts.V) != shapes.ValueDim || len(parts.Z) != shapes.ValueDim {
+		t.Fatalf("parts lens Q/K/V/Z=%d/%d/%d/%d", len(parts.Q), len(parts.K), len(parts.V), len(parts.Z))
+	}
+	if parts.Q[0] != 1 || parts.K[0] != float32(shapes.ValueDim+1) {
+		t.Fatalf("unexpected split parts=%+v", parts)
+	}
+	if _, err := splitQwen35LinearQKVZ(projected[:len(projected)-1], shapes); err == nil {
+		t.Fatal("bad projected length returned nil error")
+	}
+}
+
 func TestNewQwen35LinearAttentionState(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	state, err := NewQwen35LinearAttentionState(meta)

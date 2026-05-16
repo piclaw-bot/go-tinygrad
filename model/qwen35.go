@@ -338,6 +338,34 @@ func (l *Qwen35FullAttentionLayer) Forward(input []float32, pos int, ropeFreqs [
 	return out, err
 }
 
+type Qwen35LinearQKVZ struct {
+	Q []float32
+	K []float32
+	V []float32
+	Z []float32
+}
+
+func splitQwen35LinearQKVZ(projected []float32, shapes loaderconfig.Qwen35LinearAttentionShapes) (Qwen35LinearQKVZ, error) {
+	qLen := shapes.ValueDim
+	kLen := shapes.KeyDim
+	vLen := shapes.ValueDim
+	zLen := shapes.ValueDim
+	want := qLen + kLen + vLen + zLen
+	if len(projected) != want {
+		return Qwen35LinearQKVZ{}, fmt.Errorf("Qwen3.5 linear-attention QKVZ len=%d want %d", len(projected), want)
+	}
+	off := 0
+	out := Qwen35LinearQKVZ{}
+	out.Q = append([]float32(nil), projected[off:off+qLen]...)
+	off += qLen
+	out.K = append([]float32(nil), projected[off:off+kLen]...)
+	off += kLen
+	out.V = append([]float32(nil), projected[off:off+vLen]...)
+	off += vLen
+	out.Z = append([]float32(nil), projected[off:off+zLen]...)
+	return out, nil
+}
+
 func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwen35LinearAttentionState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35LinearAttentionState, error) {
 	if l == nil {
 		return nil, state, fmt.Errorf("nil Qwen3.5 linear-attention layer")
