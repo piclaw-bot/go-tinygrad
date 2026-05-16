@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
@@ -15,6 +17,7 @@ import (
 func main() {
 	dir := flag.String("model", "", "model directory")
 	prompt := flag.String("prompt", "The quick brown fox", "input prompt")
+	promptFile := flag.String("prompt-file", "", "optional newline-delimited prompt file")
 	tokens := flag.Int("tokens", 32, "tokens to generate")
 	block := flag.Int("speculative-block", 8, "speculative proposal block size")
 	ngram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
@@ -49,7 +52,11 @@ func main() {
 		os.Exit(1)
 	}
 	m.Tok = tok
-	ids := tok.Encode(*prompt)
+	prompts, err := loadPrompts(*prompt, *promptFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "prompts: %v\n", err)
+		os.Exit(1)
+	}
 
 	cfg := model.SpeculativeConfig{
 		Enabled:     true,
@@ -60,45 +67,70 @@ func main() {
 		Backend:     *backend,
 	}.Normalize()
 
-	var normal, spec []int
-	var normalElapsed, specElapsed time.Duration
-	var stats model.SpeculativeStats
-	match := true
-	for i := 0; i < *repeat; i++ {
-		normalStart := time.Now()
-		runNormal := m.Generate(ids, *tokens)
-		normalElapsed += time.Since(normalStart)
-
-		specStart := time.Now()
-		runSpec, runStats := m.GenerateSpeculativeWithStats(ids, *tokens, cfg)
-		specElapsed += time.Since(specStart)
-
-		if i == 0 {
-			normal = runNormal
-			spec = runSpec
-		} else {
-			match = match && sameInts(normal, runNormal) && sameInts(spec, runSpec)
-		}
-		match = match && sameInts(runNormal, runSpec)
-		stats = stats.Add(runStats)
+	type result struct {
+		promptIdx       int
+		promptTokens    int
+		normalGenerated int
+		specGenerated   int
+		normalElapsed   time.Duration
+		specElapsed     time.Duration
+		match           bool
+		stats           model.SpeculativeStats
 	}
-	normalElapsed /= time.Duration(*repeat)
-	specElapsed /= time.Duration(*repeat)
-	stats = stats.Average(*repeat)
+	results := make([]result, 0, len(prompts))
+	for pi, promptText := range prompts {
+		ids := tok.Encode(promptText)
+		var normal, spec []int
+		var normalElapsed, specElapsed time.Duration
+		var stats model.SpeculativeStats
+		match := true
+		for i := 0; i < *repeat; i++ {
+			normalStart := time.Now()
+			runNormal := m.Generate(ids, *tokens)
+			normalElapsed += time.Since(normalStart)
 
-	normalTokS := tokensPerSecond(len(normal)-len(ids), normalElapsed)
-	specTokS := tokensPerSecond(len(spec)-len(ids), specElapsed)
-	speedup := 0.0
-	if normalTokS > 0 {
-		speedup = specTokS / normalTokS
+			specStart := time.Now()
+			runSpec, runStats := m.GenerateSpeculativeWithStats(ids, *tokens, cfg)
+			specElapsed += time.Since(specStart)
+
+			if i == 0 {
+				normal = runNormal
+				spec = runSpec
+			} else {
+				match = match && sameInts(normal, runNormal) && sameInts(spec, runSpec)
+			}
+			match = match && sameInts(runNormal, runSpec)
+			stats = stats.Add(runStats)
+		}
+		normalElapsed /= time.Duration(*repeat)
+		specElapsed /= time.Duration(*repeat)
+		stats = stats.Average(*repeat)
+		results = append(results, result{
+			promptIdx:       pi,
+			promptTokens:    len(ids),
+			normalGenerated: len(normal) - len(ids),
+			specGenerated:   len(spec) - len(ids),
+			normalElapsed:   normalElapsed,
+			specElapsed:     specElapsed,
+			match:           match,
+			stats:           stats,
+		})
 	}
 	rows := [][]string{{
-		"model", "prompt_tokens", "max_tokens", "repeat", "mode", "elapsed_ms", "tokens_per_sec", "speedup_vs_normal", "match_normal",
+		"model", "prompt_index", "prompt_tokens", "max_tokens", "repeat", "mode", "elapsed_ms", "tokens_per_sec", "speedup_vs_normal", "match_normal",
 		"backend", "proposer", "steps", "proposal_steps", "proposed", "accepted", "bonus", "fallback", "acceptance", "emitted", "tokens_per_step", "avg_proposal",
 	}}
 	modelID := baseName(*dir)
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, *repeat, "normal", normalElapsed, len(normal)-len(ids), 1.0, true, model.SpeculativeStats{}))
-	rows = append(rows, benchRow(modelID, len(ids), *tokens, *repeat, "speculative", specElapsed, len(spec)-len(ids), speedup, match, stats))
+	for _, res := range results {
+		normalTokS := tokensPerSecond(res.normalGenerated, res.normalElapsed)
+		specTokS := tokensPerSecond(res.specGenerated, res.specElapsed)
+		speedup := 0.0
+		if normalTokS > 0 {
+			speedup = specTokS / normalTokS
+		}
+		rows = append(rows, benchRow(modelID, res.promptIdx, res.promptTokens, *tokens, *repeat, "normal", res.normalElapsed, res.normalGenerated, 1.0, true, model.SpeculativeStats{}))
+		rows = append(rows, benchRow(modelID, res.promptIdx, res.promptTokens, *tokens, *repeat, "speculative", res.specElapsed, res.specGenerated, speedup, res.match, res.stats))
+	}
 
 	w := csv.NewWriter(os.Stdout)
 	if *outPath != "" {
@@ -116,10 +148,11 @@ func main() {
 	}
 }
 
-func benchRow(modelID string, promptTokens, maxTokens, repeat int, mode string, elapsed time.Duration, generated int, speedup float64, match bool, stats model.SpeculativeStats) []string {
+func benchRow(modelID string, promptIdx, promptTokens, maxTokens, repeat int, mode string, elapsed time.Duration, generated int, speedup float64, match bool, stats model.SpeculativeStats) []string {
 	tokS := tokensPerSecond(generated, elapsed)
 	return []string{
 		modelID,
+		strconv.Itoa(promptIdx),
 		strconv.Itoa(promptTokens),
 		strconv.Itoa(maxTokens),
 		strconv.Itoa(repeat),
@@ -141,6 +174,33 @@ func benchRow(modelID string, promptTokens, maxTokens, repeat int, mode string, 
 		strconv.FormatFloat(stats.TokensPerStep(), 'f', 3, 64),
 		strconv.FormatFloat(stats.AverageProposalLen(), 'f', 3, 64),
 	}
+}
+
+func loadPrompts(prompt, promptFile string) ([]string, error) {
+	if promptFile == "" {
+		return []string{prompt}, nil
+	}
+	f, err := os.Open(promptFile)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var prompts []string
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		prompts = append(prompts, line)
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	if len(prompts) == 0 {
+		return nil, fmt.Errorf("no prompts in %s", promptFile)
+	}
+	return prompts, nil
 }
 
 func tokensPerSecond(generated int, elapsed time.Duration) float64 {
