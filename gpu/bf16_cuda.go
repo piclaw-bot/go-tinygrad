@@ -52,8 +52,12 @@ func DevBF16VecAdd(dst, a, b *Buffer, n int) bool {
 		return false
 	}
 	EnsureContext()
+	grid, okGrid := grid1DFor(n, 256)
+	if !okGrid {
+		return false
+	}
 	nn := uint32(n)
-	return LaunchKernel(fnBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16VecAdd, grid, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&a.Ptr),
 		unsafe.Pointer(&b.Ptr),
 		unsafe.Pointer(&dst.Ptr),
@@ -66,8 +70,12 @@ func DevBF16SiLUMul(dst, gate, up *Buffer, n int) bool {
 		return false
 	}
 	EnsureContext()
+	grid, okGrid := grid1DFor(n, 256)
+	if !okGrid {
+		return false
+	}
 	nn := uint32(n)
-	return LaunchKernel(fnBF16SiLUMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16SiLUMul, grid, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&dst.Ptr),
@@ -80,8 +88,12 @@ func DevBF16GELUTanhMul(gate, up *Buffer, n int) bool {
 		return false
 	}
 	EnsureContext()
+	grid, okGrid := grid1DFor(n, 256)
+	if !okGrid {
+		return false
+	}
 	nn := uint32(n)
-	return LaunchKernel(fnBF16GELUTanhMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16GELUTanhMul, grid, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&nn)) == nil

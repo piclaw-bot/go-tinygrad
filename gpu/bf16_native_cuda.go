@@ -103,8 +103,12 @@ func DevNativeBF16VecAdd(dst, a, b *Buffer, n int) bool {
 		return DevBF16VecAdd(dst, a, b, n)
 	}
 	EnsureContext()
+	grid, okGrid := grid1DFor(n, 256)
+	if !okGrid {
+		return false
+	}
 	nn := uint32(n)
-	if err := LaunchKernel(fnNativeBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	if err := LaunchKernel(fnNativeBF16VecAdd, grid, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&a.Ptr), unsafe.Pointer(&b.Ptr),
 		unsafe.Pointer(&dst.Ptr), unsafe.Pointer(&nn)); err != nil {
 		return DevBF16VecAdd(dst, a, b, n)

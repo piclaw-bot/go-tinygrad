@@ -115,7 +115,11 @@ func PrefetchWeights(weights ...*GPUQuantWeight) {
 			continue
 		}
 		n := uint32(lines) // touch every 128 bytes
-		_ = LaunchKernelOnStream(fnPrefetch, (n+255)/256, 1, 1, 256, 1, 1, 0, prefetchStream,
+		grid, okGrid := grid1DFor(int(lines), 256)
+		if !okGrid {
+			continue
+		}
+		_ = LaunchKernelOnStream(fnPrefetch, grid, 1, 1, 256, 1, 1, 0, prefetchStream,
 			unsafe.Pointer(&w.QWeight.Ptr), unsafe.Pointer(&n))
 	}
 }

@@ -31,10 +31,14 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 	halfDim, okHalf := checkedMulInt(nHeads, headDim/2)
 	cosNeed, okCosNeed := checkedMulInt(pos+1, headDim)
 	if ropeReady && fitsUint32(pos) && nHeads > 0 && headDim > 0 && headDim%2 == 0 && okTotal && okHalf && okCosNeed && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosNeed && tryGPU(x, cosSin) {
+		grid, okGrid := grid1DFor(halfDim, 256)
+		if !okGrid {
+			return
+		}
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
-		if err := LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(ropeFn, grid, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
 			unsafe.Pointer(&p),
@@ -56,11 +60,15 @@ func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int
 	posPairs, okPosPairs := checkedMulInt(pos+1, rotHalf)
 	cosNeed, okCosNeed := checkedMulInt(posPairs, 2)
 	if ropePartialReady && fitsUint32(pos) && nHeads > 0 && headDim > 0 && rotHalf > 0 && rotHalf <= headDim/2 && okTotal && okPairs && okPosPairs && okCosNeed && x != nil && cosSin != nil && x.n >= total && cosSin.n >= cosNeed && tryGPU(x, cosSin) {
+		grid, okGrid := grid1DFor(totalPairs, 256)
+		if !okGrid {
+			return false
+		}
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
 		rh := uint32(rotHalf)
-		if err := LaunchKernel(ropePartialFn, (uint32(totalPairs)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(ropePartialFn, grid, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
 			unsafe.Pointer(&p),
