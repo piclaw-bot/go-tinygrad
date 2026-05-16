@@ -82,7 +82,7 @@ func TestQwen35BaseModelForwardOneFullAttention(t *testing.T) {
 	}
 }
 
-func TestQwen35BaseModelForwardOneLinearUnsupported(t *testing.T) {
+func TestQwen35BaseModelForwardOneLinearAttention(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 1
 	meta.MTPNumHiddenLayers = 0
@@ -96,9 +96,12 @@ func TestQwen35BaseModelForwardOneLinearUnsupported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = base.ForwardOne([]float32{1, 0, 0, 0}, state, 0, nil, 1e-6, meta)
-	if err == nil || !strings.Contains(err.Error(), "linear-attention layer 0") || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("expected linear unsupported, got %v", err)
+	out, next, err := base.ForwardOne([]float32{1, 0, 0, 0}, state, 0, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardOne: %v", err)
+	}
+	if len(out) != meta.HiddenSize || next.Pos != 1 || next.Linear[0].Pos != 1 {
+		t.Fatalf("out=%v next=%+v", out, next)
 	}
 }
 
@@ -375,7 +378,7 @@ func TestNewQwen35LinearAttentionState(t *testing.T) {
 	}
 }
 
-func TestQwen35LinearAttentionForwardStub(t *testing.T) {
+func TestQwen35LinearAttentionForward(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	src := CandidateQwen35TensorSource{Source: linearQwen35LayerSource(meta, "model.layers.1")}
 	l, err := LoadQwen35LinearAttentionLayer(src, meta, "model.layers.1")
@@ -386,12 +389,12 @@ func TestQwen35LinearAttentionForwardStub(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, next, err := l.ForwardWithState([]float32{1, 0, 0, 0}, state, 1e-6, meta)
-	if err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("expected not implemented, got %v", err)
+	out, next, err := l.ForwardWithState([]float32{1, 0, 0, 0}, state, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardWithState: %v", err)
 	}
-	if len(next.Conv) != len(state.Conv) {
-		t.Fatalf("next conv len=%d want %d", len(next.Conv), len(state.Conv))
+	if len(out) != meta.HiddenSize || len(next.Conv) != len(state.Conv) || len(next.SSM) != len(state.SSM) || next.Pos != 1 {
+		t.Fatalf("out=%v next=%+v", out, next)
 	}
 }
 

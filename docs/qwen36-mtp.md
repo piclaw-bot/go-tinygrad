@@ -214,12 +214,12 @@ Needed before MTP can matter:
   - GQA attention;
   - multiply attention output by `sigmoid(gate)`;
   - o_proj + residual + post-attention RMSNorm + SwiGLU MLP.
-- [ ] implement linear-attention/gated-delta-net layer (typed recurrent state and clear unsupported forward stub exist):
+- [x] implement linear-attention/gated-delta-net CPU skeleton (correctness-first scalar recurrence staged; needs real-checkpoint parity):
   - in_proj_qkvz layout and conversion/reorder (projection shape and split primitive staged);
   - conv1d state (state update and depthwise conv primitives staged);
-  - beta/alpha/dt/a recurrent update (alpha/beta projection primitive staged; recurrent math still pending);
-  - gated RMSNorm with z;
-  - recurrent state cache layout and rollback semantics.
+  - beta/alpha/dt/a recurrent update (conservative scalar recurrence staged);
+  - z-gated output path;
+  - recurrent state cache layout and rollback semantics (forward state exists; rollback integration still pending).
 - [ ] support attention output gates if required (`attn_output_gate`, `output_gate_type`);
 - [ ] validate BF16/full-precision baseline first, if a non-NVFP4 checkpoint exists.
 

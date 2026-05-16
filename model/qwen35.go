@@ -531,18 +531,44 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	if err != nil {
 		return nil, state, err
 	}
-	if _, _, err := splitQwen35LinearConvOutput(convOut, shapes); err != nil {
+	k, v, err := splitQwen35LinearConvOutput(convOut, shapes)
+	if err != nil {
 		return nil, state, err
 	}
 	alpha, beta, err := projectQwen35LinearAlphaBeta(cur, l.AlphaW.Data(), l.BetaW.Data(), meta.HiddenSize, meta.LinearNumValueHeads)
 	if err != nil {
 		return nil, state, err
 	}
-	if _, _, err := prepareQwen35LinearDeltaParams(alpha, beta, l.DTBias.Data(), l.A.Data(), meta.LinearNumValueHeads); err != nil {
+	dt, decay, err := prepareQwen35LinearDeltaParams(alpha, beta, l.DTBias.Data(), l.A.Data(), meta.LinearNumValueHeads)
+	if err != nil {
 		return nil, state, err
 	}
+	nextSSM, deltaOut, err := applyQwen35LinearDeltaUpdate(state.SSM, k, v, beta, dt, decay, shapes, meta)
+	if err != nil {
+		return nil, state, err
+	}
+	for i := range deltaOut {
+		deltaOut[i] *= sigmoid(parts.Z[i])
+	}
+	projectedOut := make([]float32, meta.HiddenSize)
+	gemvNT(projectedOut, deltaOut, l.OutW.Data(), shapes.ValueDim, meta.HiddenSize)
+	resid := make([]float32, meta.HiddenSize)
+	simd.VecAdd(resid, input, projectedOut)
+	mlpIn := append([]float32(nil), resid...)
+	rmsNormInPlace(mlpIn, l.PostNorm.Data(), eps)
+	gateMLP := make([]float32, meta.IntermediateSize)
+	up := make([]float32, meta.IntermediateSize)
+	gemvNT(gateMLP, mlpIn, l.MLPGateW.Data(), meta.HiddenSize, meta.IntermediateSize)
+	gemvNT(up, mlpIn, l.MLPUpW.Data(), meta.HiddenSize, meta.IntermediateSize)
+	simd.VecSiLUMul(gateMLP, gateMLP, up)
+	down := make([]float32, meta.HiddenSize)
+	gemvNT(down, gateMLP, l.MLPDownW.Data(), meta.IntermediateSize, meta.HiddenSize)
+	out := make([]float32, meta.HiddenSize)
+	simd.VecAdd(out, resid, down)
 	state.Conv = nextConv
-	return nil, state, fmt.Errorf("Qwen3.5 linear-attention forward is not implemented: gated delta-net recurrent update pending")
+	state.SSM = nextSSM
+	state.Pos++
+	return out, state, nil
 }
 
 func ValidateQwen35FullAttentionLayer(l *Qwen35FullAttentionLayer, meta loaderconfig.QwenNativeMTPMetadata, prefix string) error {
