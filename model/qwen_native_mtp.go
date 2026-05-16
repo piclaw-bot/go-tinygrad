@@ -349,18 +349,22 @@ func (head *QwenNativeMTPHead) SharedHeadLogitsInto(m *LlamaModel, logits, hidde
 	return nil
 }
 
-func qwenNativeMTPHeadLogitsInto(head *tensor.Tensor, logits, hidden []float32, vocab, hiddenSize int) error {
+func ValidateQwenNativeMTPSharedHead(head *tensor.Tensor, vocab, hiddenSize int) error {
 	if head == nil {
 		return fmt.Errorf("nil Qwen native MTP shared head")
 	}
 	if vocab <= 0 || hiddenSize <= 0 {
 		return fmt.Errorf("invalid Qwen native MTP shared head config vocab=%d hidden=%d", vocab, hiddenSize)
 	}
+	return expectShape(head, []int{vocab, hiddenSize}, "mtp.shared_head_head.weight")
+}
+
+func qwenNativeMTPHeadLogitsInto(head *tensor.Tensor, logits, hidden []float32, vocab, hiddenSize int) error {
+	if err := ValidateQwenNativeMTPSharedHead(head, vocab, hiddenSize); err != nil {
+		return err
+	}
 	if len(logits) != vocab || len(hidden) != hiddenSize {
 		return fmt.Errorf("Qwen native MTP shared head logits/hidden len=%d/%d want %d/%d", len(logits), len(hidden), vocab, hiddenSize)
-	}
-	if err := expectShape(head, []int{vocab, hiddenSize}, "mtp.shared_head_head.weight"); err != nil {
-		return err
 	}
 	data := head.Data()
 	for v := 0; v < vocab; v++ {

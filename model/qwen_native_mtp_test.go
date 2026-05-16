@@ -272,6 +272,18 @@ func TestQwenNativeMTPSharedHeadLogitsFallback(t *testing.T) {
 	}
 }
 
+func TestValidateQwenNativeMTPSharedHead(t *testing.T) {
+	if err := ValidateQwenNativeMTPSharedHead(tensor.Zeros([]int{2, 4}), 2, 4); err != nil {
+		t.Fatalf("ValidateQwenNativeMTPSharedHead: %v", err)
+	}
+	if err := ValidateQwenNativeMTPSharedHead(tensor.Zeros([]int{1, 4}), 2, 4); err == nil {
+		t.Fatal("bad shared head shape returned nil error")
+	}
+	if err := ValidateQwenNativeMTPSharedHead(nil, 2, 4); err == nil {
+		t.Fatal("nil shared head returned nil error")
+	}
+}
+
 func TestQwenNativeMTPSharedHeadLogitsDedicated(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
