@@ -69,6 +69,26 @@ func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	}
 }
 
+func TestNewQwenNativeMTPPlan(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	plan, err := NewQwenNativeMTPPlan(1, state, 2, meta)
+	if err != nil {
+		t.Fatalf("NewQwenNativeMTPPlan: %v", err)
+	}
+	if plan.TokenID != 1 || plan.MaxSteps != 2 {
+		t.Fatalf("plan=%+v", plan)
+	}
+	if _, err := NewQwenNativeMTPPlan(-1, state, 2, meta); err == nil {
+		t.Fatal("negative token id returned nil error")
+	}
+	bad := meta
+	bad.MTPNumHiddenLayers = 2
+	if _, err := NewQwenNativeMTPPlan(1, state, 2, bad); err == nil {
+		t.Fatal("unsupported MTP layer count returned nil error")
+	}
+}
+
 func TestQwenNativeMTPStatsFromAcceptance(t *testing.T) {
 	acc, err := AcceptMTPDraft([]int{1, 2, 3}, []int{1, 2, 9, 8})
 	if err != nil {

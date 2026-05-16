@@ -103,6 +103,31 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
+type QwenNativeMTPPlan struct {
+	TokenID  int
+	State    QwenNativeMTPDraftState
+	MaxSteps int
+}
+
+func NewQwenNativeMTPPlan(tokenID int, state QwenNativeMTPDraftState, maxSteps int, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPPlan, error) {
+	if tokenID < 0 {
+		return QwenNativeMTPPlan{}, fmt.Errorf("token id %d out of range", tokenID)
+	}
+	if maxSteps < 0 {
+		return QwenNativeMTPPlan{}, fmt.Errorf("max MTP draft steps=%d must be >= 0", maxSteps)
+	}
+	if !meta.HasNativeMTP {
+		return QwenNativeMTPPlan{}, fmt.Errorf("metadata does not enable native MTP")
+	}
+	if meta.MTPNumHiddenLayers != 1 {
+		return QwenNativeMTPPlan{}, fmt.Errorf("native MTP layers=%d, only 1 supported", meta.MTPNumHiddenLayers)
+	}
+	if len(state.Hidden) != meta.HiddenSize {
+		return QwenNativeMTPPlan{}, fmt.Errorf("state hidden len=%d want %d", len(state.Hidden), meta.HiddenSize)
+	}
+	return QwenNativeMTPPlan{TokenID: tokenID, State: state, MaxSteps: maxSteps}, nil
+}
+
 type QwenNativeMTPStats struct {
 	DraftedTokens  int `json:"drafted_tokens"`
 	AcceptedTokens int `json:"accepted_tokens"`
