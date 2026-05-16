@@ -108,6 +108,19 @@ func TestNVFP4CompanionNames(t *testing.T) {
 	}
 }
 
+func TestQwen35FullAttentionShapesFor(t *testing.T) {
+	got, err := Qwen35FullAttentionShapesFor(5120, 24, 4, 256)
+	if err != nil {
+		t.Fatalf("Qwen35FullAttentionShapesFor: %v", err)
+	}
+	if got.QProj[0] != 12288 || got.QProj[1] != 5120 || got.KProj[0] != 1024 || got.VProj[0] != 1024 || got.OProj[0] != 5120 || got.OProj[1] != 6144 || got.GateSize != 6144 {
+		t.Fatalf("shapes=%+v", got)
+	}
+	if _, err := Qwen35FullAttentionShapesFor(0, 24, 4, 256); err == nil {
+		t.Fatal("invalid dims returned nil error")
+	}
+}
+
 func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	json := `{
 		"architectures":["Qwen3_5ForConditionalGeneration"],
