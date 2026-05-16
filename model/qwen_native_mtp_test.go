@@ -69,20 +69,31 @@ func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPDraftStepState(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	state, _, tok, err := head.DraftStep(m, 0, state, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftStep first: %v", err)
+	}
+	if state.Pos != 1 || len(state.K) != meta.NumKeyValueHeads*meta.HeadDim || len(state.V) != len(state.K) || tok < 0 {
+		t.Fatalf("state=%+v tok=%d", state, tok)
+	}
+	state, _, _, err = head.DraftStep(m, tok, state, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftStep second: %v", err)
+	}
+	if state.Pos != 2 || len(state.K) != 2*meta.NumKeyValueHeads*meta.HeadDim || len(state.V) != len(state.K) {
+		t.Fatalf("state after second=%+v", state)
+	}
+}
+
 func TestQwenNativeMTPDraftLogitsSynthetic(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
-	m := &LlamaModel{
-		Config: LlamaConfig{VocabSize: 2, HiddenSize: meta.HiddenSize, RMSNormEps: 1e-6},
-		EmbedTokens: tensor.FromFloat32([]float32{
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-		}, []int{2, 4}),
-		LMHead: tensor.FromFloat32([]float32{
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-		}, []int{2, 4}),
-	}
+	m := syntheticQwenMTPMainModel(meta)
 	_, logits, tok, err := head.DraftLogits(m, 0, []float32{0, 1, 0, 0}, 0, 1e-6, meta)
 	if err != nil {
 		t.Fatalf("DraftLogits: %v", err)
@@ -197,6 +208,20 @@ func fakeQwenMTPTensorSourceFromHead(head *QwenNativeMTPHead) fakeQwenMTPTensorS
 		src[prefix+".mlp.down_proj.weight"] = l.DownW
 	}
 	return src
+}
+
+func syntheticQwenMTPMainModel(meta loaderconfig.QwenNativeMTPMetadata) *LlamaModel {
+	return &LlamaModel{
+		Config: LlamaConfig{VocabSize: 2, HiddenSize: meta.HiddenSize, RMSNormEps: 1e-6},
+		EmbedTokens: tensor.FromFloat32([]float32{
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+		}, []int{2, 4}),
+		LMHead: tensor.FromFloat32([]float32{
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+		}, []int{2, 4}),
+	}
 }
 
 func syntheticQwenNativeMTPHead(meta loaderconfig.QwenNativeMTPMetadata) *QwenNativeMTPHead {

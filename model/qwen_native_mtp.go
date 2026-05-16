@@ -20,6 +20,13 @@ type QwenNativeMTPHead struct {
 	Layers             []QwenNativeMTPLayer
 }
 
+type QwenNativeMTPDraftState struct {
+	Hidden []float32
+	K      []float32
+	V      []float32
+	Pos    int
+}
+
 type QwenNativeMTPLayer struct {
 	InputNorm *tensor.Tensor
 	PostNorm  *tensor.Tensor
@@ -96,32 +103,53 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
-func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, pos int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {
+func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPDraftState, []float32, int, error) {
 	if m == nil {
-		return nil, nil, 0, fmt.Errorf("nil main model")
+		return state, nil, 0, fmt.Errorf("nil main model")
 	}
 	embedding := make([]float32, meta.HiddenSize)
 	if err := m.ScaledTokenEmbeddingInto(embedding, tokenID); err != nil {
-		return nil, nil, 0, err
+		return state, nil, 0, err
 	}
-	nextHidden, err = head.ForwardOne(embedding, hidden, pos, m.RopeFreqs, eps, meta)
+	cur, err := head.PreProject(embedding, state.Hidden, eps)
 	if err != nil {
-		return nil, nil, 0, err
+		return state, nil, 0, err
+	}
+	if len(head.Layers) == 0 {
+		return state, nil, 0, fmt.Errorf("Qwen native MTP head has no layers")
+	}
+	nextHidden, k, v, err := head.Layers[0].ForwardWithKV(cur, state.Pos, m.RopeFreqs, state.K, state.V, eps, meta)
+	if err != nil {
+		return state, nil, 0, err
 	}
 	if head.Norm == nil {
-		return nil, nil, 0, fmt.Errorf("missing mtp.norm.weight")
+		return state, nil, 0, fmt.Errorf("missing mtp.norm.weight")
 	}
 	logitHidden := append([]float32(nil), nextHidden...)
 	rmsNormInPlace(logitHidden, head.Norm.Data(), eps)
-	logits = make([]float32, m.Config.VocabSize)
+	logits := make([]float32, m.Config.VocabSize)
 	if err := m.LMHeadLogitsInto(logits, logitHidden); err != nil {
-		return nil, nil, 0, err
+		return state, nil, 0, err
 	}
-	token, _, err = ArgmaxLogits(logits)
+	token, _, err := ArgmaxLogits(logits)
+	if err != nil {
+		return state, nil, 0, err
+	}
+	nextState := QwenNativeMTPDraftState{
+		Hidden: nextHidden,
+		K:      append(append([]float32(nil), state.K...), k...),
+		V:      append(append([]float32(nil), state.V...), v...),
+		Pos:    state.Pos + 1,
+	}
+	return nextState, logits, token, nil
+}
+
+func (head *QwenNativeMTPHead) DraftLogits(m *LlamaModel, tokenID int, hidden []float32, pos int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (nextHidden []float32, logits []float32, token int, err error) {
+	nextState, logits, token, err := head.DraftStep(m, tokenID, QwenNativeMTPDraftState{Hidden: hidden, Pos: pos}, eps, meta)
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	return nextHidden, logits, token, nil
+	return nextState.Hidden, logits, token, nil
 }
 
 func (head *QwenNativeMTPHead) ForwardOne(embedding, hidden []float32, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, error) {
