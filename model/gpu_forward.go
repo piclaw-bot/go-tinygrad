@@ -18,6 +18,33 @@ import (
 	"github.com/rcarmo/go-pherence/tensor"
 )
 
+func kvCopyByteRange(pos, kvDim, capacityBytes int) (uint64, gpu.CUdeviceptr, bool) {
+	if pos < 0 || kvDim <= 0 || capacityBytes < 0 {
+		return 0, 0, false
+	}
+	elementsThroughPos, ok := checkedProduct(pos+1, kvDim)
+	if !ok {
+		return 0, 0, false
+	}
+	bytesThroughPos, ok := checkedProduct(elementsThroughPos, 4)
+	if !ok || bytesThroughPos > capacityBytes {
+		return 0, 0, false
+	}
+	kvBytesInt, ok := checkedProduct(kvDim, 4)
+	if !ok {
+		return 0, 0, false
+	}
+	offElements, ok := checkedProduct(pos, kvDim)
+	if !ok {
+		return 0, 0, false
+	}
+	offBytes, ok := checkedProduct(offElements, 4)
+	if !ok {
+		return 0, 0, false
+	}
+	return uint64(kvBytesInt), gpu.CUdeviceptr(uint64(offBytes)), true
+}
+
 // GPUModel wraps a LlamaModel with GPU-resident weights and buffers.
 type GPUModel struct {
 	CPU       *LlamaModel
@@ -992,9 +1019,11 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					vPtr := g.v.GPUPtr()
 					copyOK := kPtr != nil && vPtr != nil
 					if copyOK {
-						kvBytes := uint64(layerKVDim) * 4
-						kOff := gpu.CUdeviceptr(uint64(pos) * kvBytes)
-						if err := gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes); err != nil {
+						kvBytes, kOff, ok := kvCopyByteRange(pos, layerKVDim, kvKPtr.Size)
+						_, _, okV := kvCopyByteRange(pos, layerKVDim, kvVPtr.Size)
+						if !ok || !okV {
+							copyOK = false
+						} else if err := gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes); err != nil {
 							copyOK = false
 						}
 						if copyOK {

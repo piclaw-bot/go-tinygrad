@@ -179,8 +179,11 @@ func (g *GPUModel) prefillGPU(tokenIDs []int) []float32 {
 			kPtr = kSlice.GPUPtr()
 			vPtr = vSlice.GPUPtr()
 			if kvKPtr != nil && kvVPtr != nil && kPtr != nil && vPtr != nil {
-				kvBytes := uint64(kvDim) * 4
-				kOff := gpu.CUdeviceptr(uint64(pos) * kvBytes)
+				kvBytes, kOff, ok := kvCopyByteRange(pos, kvDim, kvKPtr.Size)
+				_, _, okV := kvCopyByteRange(pos, kvDim, kvVPtr.Size)
+				if !ok || !okV {
+					return nil
+				}
 				if err := gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes); err != nil {
 					return nil
 				}
