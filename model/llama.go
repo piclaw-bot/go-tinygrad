@@ -205,14 +205,14 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	if err != nil {
 		return nil, err
 	}
-	// Gemma4: text config is nested under text_config
+	// Gemma4 and Qwen3.5/Qwen3.6: text config may be nested under text_config.
 	if cfg.HiddenSize == 0 {
 		var nested struct {
 			TextConfig LlamaConfig `json:"text_config"`
 			ModelType  string      `json:"model_type"`
 		}
 		if err := json.Unmarshal(cfgData, &nested); err == nil && nested.TextConfig.HiddenSize > 0 {
-			// Preserve top-level model_type
+			// Preserve top-level model_type when the nested config omits it.
 			outerType := nested.ModelType
 			cfg = nested.TextConfig
 			if cfg.ModelType == "" {
@@ -256,6 +256,9 @@ func LoadLlama(dir string) (model *LlamaModel, err error) {
 	// checkpoints from failing later with misleading missing-tensor errors.
 	if quantMeta, err := loaderconfig.ParseQuantizationMetadata(cfgData); err == nil && quantMeta.UnsupportedFP4 {
 		return nil, fmt.Errorf("unsupported FP4/NVFP4 quantization: quant_algo=%q quant_method=%q", quantMeta.Algo, quantMeta.Method)
+	}
+	if cfg.HasNativeMTP() && (cfg.ModelType == "qwen3_5" || cfg.ModelType == "qwen3_5_text") {
+		return nil, fmt.Errorf("unsupported Qwen3.5/Qwen3.6 native MTP architecture: model_type=%q mtp_num_hidden_layers=%d requires qwen3_5 linear-attention base support", cfg.ModelType, cfg.MTPNumHiddenLayers)
 	}
 
 	// Try sharded first, then single file

@@ -75,6 +75,33 @@ func TestLlamaConfigDetectsOrthrus(t *testing.T) {
 	}
 }
 
+func TestLoadLlamaRejectsQwen35NativeMTPBeforeWeights(t *testing.T) {
+	dir := t.TempDir()
+	cfg := `{
+		"model_type":"qwen3_5",
+		"text_config":{
+			"model_type":"qwen3_5_text",
+			"vocab_size":248320,
+			"hidden_size":5120,
+			"intermediate_size":17408,
+			"num_hidden_layers":64,
+			"num_attention_heads":24,
+			"num_key_value_heads":4,
+			"head_dim":256,
+			"mtp_num_hidden_layers":1,
+			"mtp_use_dedicated_embeddings":false,
+			"layer_types":["linear_attention","linear_attention","linear_attention","full_attention"]
+		}
+	}`
+	if err := os.WriteFile(dir+"/config.json", []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadLlama(dir)
+	if err == nil || !strings.Contains(err.Error(), "unsupported Qwen3.5/Qwen3.6 native MTP architecture") {
+		t.Fatalf("LoadLlama err=%v, want unsupported Qwen3.5/Qwen3.6 native MTP", err)
+	}
+}
+
 func TestLoadLlamaRejectsNVFP4BeforeWeights(t *testing.T) {
 	base := `{
 		"model_type":"qwen3",
