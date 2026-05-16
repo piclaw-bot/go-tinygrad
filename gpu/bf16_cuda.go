@@ -88,7 +88,7 @@ func DevBF16GELUTanhMul(gate, up *Buffer, n int) {
 }
 
 func validBF16Buffer(b *Buffer, n int) bool {
-	if b == nil || b.Ptr == 0 || n <= 0 {
+	if b == nil || b.Ptr == 0 || n <= 0 || !fitsUint32(n) {
 		return false
 	}
 	maxInt := int(^uint(0) >> 1)

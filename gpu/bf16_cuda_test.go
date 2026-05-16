@@ -16,6 +16,9 @@ func TestBF16DispatchValidation(t *testing.T) {
 	if validBF16Buffer(&Buffer{Ptr: 1, Size: maxInt}, maxInt/2+1) {
 		t.Fatal("overflowing BF16 length accepted")
 	}
+	if validBF16Buffer(&Buffer{Ptr: 1, Size: maxInt}, int(^uint32(0))+1) {
+		t.Fatal("BF16 length exceeding CUDA u32 interface accepted")
+	}
 	DevBF16RMSNorm(nil, nil, 1, 1e-6)
 	DevBF16RMSNormNoScale(nil, 1, 1e-6)
 	DevBF16VecAdd(nil, nil, nil, 1)
