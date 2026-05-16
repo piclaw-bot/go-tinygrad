@@ -15,6 +15,7 @@ type SpeculativeConfig struct {
 	NGram       int
 	MinProposal int
 	Proposer    string
+	Backend     string
 	Debug       bool
 }
 
@@ -93,6 +94,7 @@ func SpeculativeConfigFromEnv() SpeculativeConfig {
 		NGram:       envPositiveInt("GO_PHERENCE_SPECULATIVE_NGRAM", 4),
 		MinProposal: envPositiveInt("GO_PHERENCE_SPECULATIVE_MIN_PROPOSAL", 2),
 		Proposer:    envString("GO_PHERENCE_SPECULATIVE_PROPOSER", "prompt"),
+		Backend:     envString("GO_PHERENCE_SPECULATIVE_BACKEND", "replay"),
 		Debug:       os.Getenv("GO_PHERENCE_SPECULATIVE_DEBUG") == "1",
 	}
 	return cfg.Normalize()
@@ -110,6 +112,9 @@ func (cfg SpeculativeConfig) Normalize() SpeculativeConfig {
 	}
 	if cfg.Proposer == "" {
 		cfg.Proposer = "prompt"
+	}
+	if cfg.Backend == "" {
+		cfg.Backend = "replay"
 	}
 	return cfg
 }
@@ -195,7 +200,7 @@ func (m *LlamaModel) GenerateSpeculativeWithStats(tokenIDs []int, maxTokens int,
 		return append([]int(nil), prepared...), SpeculativeStats{}
 	}
 	proposer := NewSpeculativeProposer(cfg)
-	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens)
+	state, err := NewCPUDecodeStateForSpeculative(m, prepared, maxTokens, cfg.Backend)
 	if err != nil {
 		return m.generatePrepared(prepared, maxTokens), SpeculativeStats{}
 	}

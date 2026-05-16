@@ -315,6 +315,7 @@ func main() {
 	specNGram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
 	specMinProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
 	specProposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
+	specBackend := flag.String("speculative-backend", "replay", "speculative verifier backend: replay")
 	specDebug := flag.Bool("speculative-debug", false, "print speculative proposal/acceptance stats")
 	eagerLoad := flag.Bool("eager-load", false, "pre-fault mmap'd model weights at startup")
 	flag.Parse()
@@ -342,6 +343,7 @@ func main() {
 		os.Setenv("GO_PHERENCE_SPECULATIVE_NGRAM", fmt.Sprint(*specNGram))
 		os.Setenv("GO_PHERENCE_SPECULATIVE_MIN_PROPOSAL", fmt.Sprint(*specMinProposal))
 		os.Setenv("GO_PHERENCE_SPECULATIVE_PROPOSER", *specProposer)
+		os.Setenv("GO_PHERENCE_SPECULATIVE_BACKEND", *specBackend)
 		if *specDebug {
 			os.Setenv("GO_PHERENCE_SPECULATIVE_DEBUG", "1")
 		}

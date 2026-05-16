@@ -2,6 +2,17 @@ package model
 
 import "testing"
 
+func TestCPUDecodeStateVerifierBackendFallback(t *testing.T) {
+	m := &LlamaModel{Config: LlamaConfig{}, Layers: []LlamaLayer{}}
+	st, err := NewCPUDecodeStateForSpeculative(m, []int{1}, 1, "kv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.VerifierBackend(); got != "replay" {
+		t.Fatalf("VerifierBackend=%q want replay fallback", got)
+	}
+}
+
 func TestCPUDecodeStateCommitAcceptedFloatKV(t *testing.T) {
 	m := &LlamaModel{
 		Config: LlamaConfig{NumKVHeads: 1, HeadDim: 2},

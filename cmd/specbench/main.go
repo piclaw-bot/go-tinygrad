@@ -20,6 +20,7 @@ func main() {
 	ngram := flag.Int("speculative-ngram", 4, "speculative prompt-lookup n-gram size")
 	minProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
 	proposer := flag.String("speculative-proposer", "prompt", "speculative proposer: prompt, none")
+	backend := flag.String("speculative-backend", "replay", "speculative verifier backend: replay")
 	outPath := flag.String("csv", "", "optional CSV output path")
 	flag.Parse()
 
@@ -55,6 +56,7 @@ func main() {
 		NGram:       *ngram,
 		MinProposal: *minProposal,
 		Proposer:    *proposer,
+		Backend:     *backend,
 	}.Normalize()
 	specStart := time.Now()
 	spec, stats := m.GenerateSpeculativeWithStats(ids, *tokens, cfg)

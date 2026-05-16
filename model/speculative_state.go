@@ -17,6 +17,7 @@ type CPUDecodeState struct {
 	KVCacheV     [][]float32
 	CompressedKV []*kv.CompressedKVCache
 	KVDims       []int
+	backend      string
 }
 
 // CPUDecodeCheckpoint records a restorable point before staging verifier tokens.
@@ -26,7 +27,7 @@ type CPUDecodeCheckpoint struct {
 	CompressedKV []kv.CompressedKVCheckpoint
 }
 
-func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens int) (*CPUDecodeState, error) {
+func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens int, backend ...string) (*CPUDecodeState, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil model")
 	}
@@ -37,12 +38,20 @@ func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens in
 	if err != nil {
 		return nil, err
 	}
+	selectedBackend := "replay"
+	if len(backend) > 0 && backend[0] != "" {
+		selectedBackend = backend[0]
+	}
+	if selectedBackend != "replay" {
+		selectedBackend = "replay"
+	}
 	st := &CPUDecodeState{
 		Model:    m,
 		Output:   append([]int(nil), prepared...),
 		KVCacheK: make([][]float32, len(m.Layers)),
 		KVCacheV: make([][]float32, len(m.Layers)),
 		KVDims:   dims,
+		backend:  selectedBackend,
 	}
 	maxSeq := len(prepared) + maxTokens
 	if maxSeq < 1 {
@@ -62,7 +71,10 @@ func NewCPUDecodeStateForSpeculative(m *LlamaModel, prepared []int, maxTokens in
 }
 
 func (s *CPUDecodeState) VerifierBackend() string {
-	return "replay"
+	if s == nil || s.backend == "" {
+		return "replay"
+	}
+	return s.backend
 }
 
 func (s *CPUDecodeState) GenerateGreedy(n int) error {
