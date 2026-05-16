@@ -860,7 +860,7 @@ func (m *LlamaModel) mv(out, x, w []float32, inDim, outDim int) {
 	}
 }
 
-func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
+func (m *LlamaModel) prepareGenerateTokens(tokenIDs []int) []int {
 	cfg := m.Config
 
 	// BOS token for Gemma
@@ -924,6 +924,15 @@ func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
 			tokenIDs = wrapped
 		}
 	}
+	return tokenIDs
+}
+
+func (m *LlamaModel) Generate(tokenIDs []int, maxTokens int) []int {
+	return m.generatePrepared(m.prepareGenerateTokens(tokenIDs), maxTokens)
+}
+
+func (m *LlamaModel) generatePrepared(tokenIDs []int, maxTokens int) []int {
+	cfg := m.Config
 
 	if maxTokens < 0 {
 		return append([]int(nil), tokenIDs...)

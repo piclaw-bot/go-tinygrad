@@ -67,7 +67,8 @@ Current opt-in hook:
 
 - `llmgen -speculative` / `GO_PHERENCE_SPECULATIVE=1` routes CPU generation through `GenerateSpeculative`.
 - The first proposer is `PromptLookupProposal`, an n-gram/prompt-lookup proposer for repeated text.
-- Until verifier-block execution is implemented, the path preserves exact behavior by falling back to normal generation.
+- The current verifier scaffold runs greedy verification with the real model and accepts the longest matching prompt-lookup prefix.
+- This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.
 
 Candidate non-custom proposers:
 

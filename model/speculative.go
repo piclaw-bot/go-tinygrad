@@ -72,5 +72,63 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if !cfg.Enabled || maxTokens <= 0 {
 		return m.Generate(tokenIDs, maxTokens)
 	}
-	return m.Generate(tokenIDs, maxTokens)
+	prepared := m.prepareGenerateTokens(tokenIDs)
+	if maxTokens < 0 {
+		return append([]int(nil), prepared...)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if maxTokens > maxInt-len(prepared) {
+		return append([]int(nil), prepared...)
+	}
+	out := append([]int(nil), prepared...)
+	for len(out) < len(prepared)+maxTokens {
+		remaining := len(prepared) + maxTokens - len(out)
+		block := cfg.BlockSize
+		if block <= 0 || block > remaining-1 {
+			block = remaining - 1
+		}
+		proposal := PromptLookupProposal(out, block, cfg.NGram)
+		if len(proposal) == 0 {
+			verified := m.generatePrepared(out, 1)
+			if len(verified) <= len(out) {
+				return out
+			}
+			out = append(out, verified[len(out)])
+			continue
+		}
+
+		// Greedy verifier: run the real model for the proposed block plus one
+		// bonus token, then accept the longest matching prefix. This is exact but
+		// intentionally conservative for the first implementation: it reuses the
+		// proven CPU generator rather than a stateful batched verifier, so it is a
+		// correctness scaffold before the fast verifier-block path lands.
+		verifyN := len(proposal) + 1
+		if verifyN > remaining {
+			verifyN = remaining
+		}
+		verified := m.generatePrepared(out, verifyN)
+		if len(verified) <= len(out) {
+			return out
+		}
+		verifierTokens := verified[len(out):]
+		if len(verifierTokens) > len(proposal)+1 {
+			verifierTokens = verifierTokens[:len(proposal)+1]
+		}
+		acceptance, err := AcceptMTPDraft(proposal, verifierTokens)
+		if err != nil {
+			verified = m.generatePrepared(out, 1)
+			if len(verified) <= len(out) {
+				return out
+			}
+			out = append(out, verified[len(out)])
+			continue
+		}
+		for _, tok := range acceptance.OutputTokens {
+			if len(out) >= len(prepared)+maxTokens {
+				break
+			}
+			out = append(out, tok)
+		}
+	}
+	return out
 }
