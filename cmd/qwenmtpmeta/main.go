@@ -1,0 +1,59 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
+	"github.com/rcarmo/go-pherence/loader/safetensors"
+)
+
+type Report struct {
+	Config     loaderconfig.QwenNativeMTPMetadata `json:"config"`
+	MTPTensors []string                           `json:"mtp_tensors,omitempty"`
+}
+
+func main() {
+	dir := flag.String("model", "", "model directory")
+	flag.Parse()
+	if *dir == "" {
+		fmt.Fprintln(os.Stderr, "usage: qwenmtpmeta -model <dir>")
+		os.Exit(2)
+	}
+	data, err := os.ReadFile(filepath.Join(*dir, "config.json"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(2)
+	}
+	meta, err := loaderconfig.ParseQwenNativeMTPMetadata(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "parse config: %v\n", err)
+		os.Exit(2)
+	}
+	report := Report{Config: meta}
+	if names, err := safetensorNames(*dir); err == nil {
+		for _, name := range names {
+			if loaderconfig.IsQwenNativeMTPTensorName(name) {
+				report.MTPTensors = append(report.MTPTensors, name)
+			}
+		}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		fmt.Fprintf(os.Stderr, "json: %v\n", err)
+		os.Exit(2)
+	}
+}
+
+func safetensorNames(dir string) ([]string, error) {
+	f, err := safetensors.Open(filepath.Join(dir, "model.safetensors"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Names(), nil
+}

@@ -178,6 +178,16 @@ For go-pherence, this maps onto:
 
 ## Shortest implementation path
 
+### Metadata inspection helper
+
+Use `cmd/qwenmtpmeta` for local metadata inspection without entering the full model loader:
+
+```bash
+go run ./cmd/qwenmtpmeta -model /path/to/qwen3.6-27b-mtp
+```
+
+It emits JSON with parsed Qwen native-MTP config metadata and any local `mtp.*` safetensors tensor names when `model.safetensors` is present.
+
 ### Phase A — metadata and loader recognition
 
 - [x] Add `LlamaConfig` fields for Qwen3.5/Qwen3.6 native MTP metadata:
