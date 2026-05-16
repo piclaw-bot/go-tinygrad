@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/rcarmo/go-pherence/loader/safetensors"
 	"github.com/rcarmo/go-pherence/tensor"
@@ -13,6 +14,44 @@ type SafetensorsQwenNativeMTPTensorSource struct {
 
 type ShardedSafetensorsQwenNativeMTPTensorSource struct {
 	File *safetensors.ShardedFile
+}
+
+type qwenNativeMTPClosableTensorSource interface {
+	QwenNativeMTPTensorSource
+	Close() error
+}
+
+type qwenNativeMTPSingleFileSource struct {
+	SafetensorsQwenNativeMTPTensorSource
+}
+
+type qwenNativeMTPShardedFileSource struct {
+	ShardedSafetensorsQwenNativeMTPTensorSource
+}
+
+func OpenQwenNativeMTPSafetensorsSource(dir string) (qwenNativeMTPClosableTensorSource, error) {
+	if sf, err := safetensors.OpenSharded(filepath.Join(dir, "model.safetensors.index.json")); err == nil {
+		return qwenNativeMTPShardedFileSource{ShardedSafetensorsQwenNativeMTPTensorSource{File: sf}}, nil
+	}
+	f, err := safetensors.Open(filepath.Join(dir, "model.safetensors"))
+	if err != nil {
+		return nil, err
+	}
+	return qwenNativeMTPSingleFileSource{SafetensorsQwenNativeMTPTensorSource{File: f}}, nil
+}
+
+func (s qwenNativeMTPSingleFileSource) Close() error {
+	if s.File == nil {
+		return nil
+	}
+	return s.File.Close()
+}
+
+func (s qwenNativeMTPShardedFileSource) Close() error {
+	if s.File == nil {
+		return nil
+	}
+	return s.File.Close()
 }
 
 func (s SafetensorsQwenNativeMTPTensorSource) Get(name string, shape []int) (*tensor.Tensor, error) {

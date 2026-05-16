@@ -35,6 +35,62 @@ func TestLoadQwenNativeMTPHeadFromTinySafetensors(t *testing.T) {
 	}
 }
 
+func TestOpenQwenNativeMTPSafetensorsSource(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeTinySafetensors(filepath.Join(dir, "model.safetensors"), map[string]*tensor.Tensor{
+		"mtp.fc.weight": tensor.FromFloat32([]float32{1, 2, 3, 4}, []int{2, 2}),
+	}); err != nil {
+		t.Fatalf("writeTinySafetensors: %v", err)
+	}
+	src, err := OpenQwenNativeMTPSafetensorsSource(dir)
+	if err != nil {
+		t.Fatalf("OpenQwenNativeMTPSafetensorsSource: %v", err)
+	}
+	defer src.Close()
+	got, err := src.Get("mtp.fc.weight", []int{2, 2})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Data()[0] != 1 {
+		t.Fatalf("got=%v", got.Data())
+	}
+}
+
+func TestOpenQwenNativeMTPSafetensorsSourcePrefersSharded(t *testing.T) {
+	dir := t.TempDir()
+	shard := "model-00001-of-00001.safetensors"
+	if err := writeTinySafetensors(filepath.Join(dir, shard), map[string]*tensor.Tensor{
+		"mtp.fc.weight": tensor.FromFloat32([]float32{5, 6, 7, 8}, []int{2, 2}),
+	}); err != nil {
+		t.Fatalf("write shard: %v", err)
+	}
+	if err := writeTinySafetensors(filepath.Join(dir, "model.safetensors"), map[string]*tensor.Tensor{
+		"mtp.fc.weight": tensor.FromFloat32([]float32{1, 2, 3, 4}, []int{2, 2}),
+	}); err != nil {
+		t.Fatalf("write single: %v", err)
+	}
+	index := map[string]any{"weight_map": map[string]string{"mtp.fc.weight": shard}}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "model.safetensors.index.json"), data, 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	src, err := OpenQwenNativeMTPSafetensorsSource(dir)
+	if err != nil {
+		t.Fatalf("OpenQwenNativeMTPSafetensorsSource: %v", err)
+	}
+	defer src.Close()
+	got, err := src.Get("mtp.fc.weight", []int{2, 2})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Data()[0] != 5 {
+		t.Fatalf("expected sharded source, got data=%v", got.Data())
+	}
+}
+
 func TestShardedSafetensorsQwenNativeMTPTensorSource(t *testing.T) {
 	dir := t.TempDir()
 	shard := "model-00001-of-00001.safetensors"
