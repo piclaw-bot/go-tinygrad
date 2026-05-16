@@ -204,7 +204,7 @@ Qwen3.6 27B is not plain Qwen3 dense. It uses mixed `linear_attention` / `full_a
 Needed before MTP can matter:
 
 - [x] load nested `text_config` as `qwen3_5_text` for metadata/early diagnostics;
-- [x] map tensor prefix (`model.language_model.` if present);
+- [x] map tensor prefix (`model.language_model.` if present) and provide a candidate tensor-source wrapper for loader integration;
 - [x] add Qwen3.5/Qwen3.6 base layer structs separate from existing Qwen3 layer assumptions;
 - [ ] implement full-attention Qwen3.5 layer:
   - q_proj outputs query + gate;
