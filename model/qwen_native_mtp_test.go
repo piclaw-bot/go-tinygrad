@@ -69,6 +69,29 @@ func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	}
 }
 
+func TestRunQwenNativeMTPSpeculativeStepSynthetic(t *testing.T) {
+	meta := testQwenNativeMTPMeta()
+	head := syntheticQwenNativeMTPHead(meta)
+	m := syntheticQwenMTPMainModel(meta)
+	state := QwenNativeMTPDraftState{Hidden: []float32{0, 1, 0, 0}}
+	_, drafted, _, err := head.DraftSteps(m, 0, state, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("DraftSteps seed: %v", err)
+	}
+	verifier := append([]int(nil), drafted...)
+	verifier = append(verifier, 1) // bonus token
+	res, err := RunQwenNativeMTPSpeculativeStep(head, m, 0, state, verifier, 2, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("RunQwenNativeMTPSpeculativeStep: %v", err)
+	}
+	if res.Acceptance.AcceptedPrefixLen != len(res.Drafted) || len(res.Acceptance.OutputTokens) != len(res.Drafted)+1 {
+		t.Fatalf("acceptance=%+v drafted=%v", res.Acceptance, res.Drafted)
+	}
+	if _, err := RunQwenNativeMTPSpeculativeStep(nil, m, 0, state, verifier, 2, 1e-6, meta); err == nil {
+		t.Fatal("nil head returned nil error")
+	}
+}
+
 func TestQwenNativeMTPDraftSteps(t *testing.T) {
 	meta := testQwenNativeMTPMeta()
 	head := syntheticQwenNativeMTPHead(meta)
