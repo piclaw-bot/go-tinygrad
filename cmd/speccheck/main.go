@@ -85,7 +85,7 @@ func main() {
 	}
 	m.Tok = tok
 	if *nativeQwenMTP {
-		fmt.Fprintln(os.Stderr, "qwen native MTP speccheck mode is not wired to LoadLlama yet; use qwenmtpmeta for metadata and synthetic model tests for now")
+		fmt.Fprintln(os.Stderr, "qwen native MTP speccheck mode is available only for synthetic unit fixtures until Qwen3.6 LoadLlama support lands")
 		os.Exit(2)
 	}
 	prompts, err := loadPrompts(*prompt, *promptFile)

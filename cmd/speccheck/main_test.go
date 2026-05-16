@@ -8,8 +8,8 @@ import (
 )
 
 func TestNativeQwenMTPModeMessage(t *testing.T) {
-	msg := "qwen native MTP speccheck mode is not wired to LoadLlama yet; use qwenmtpmeta for metadata and synthetic model tests for now"
-	if !strings.Contains(msg, "not wired") || !strings.Contains(msg, "qwenmtpmeta") {
+	msg := "qwen native MTP speccheck mode is available only for synthetic unit fixtures until Qwen3.6 LoadLlama support lands"
+	if !strings.Contains(msg, "synthetic") || !strings.Contains(msg, "LoadLlama") {
 		t.Fatalf("message=%q", msg)
 	}
 }
