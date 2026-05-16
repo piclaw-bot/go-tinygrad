@@ -313,14 +313,24 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 			gl.GateWq = layer.GateWq
 			gl.UpWq = layer.UpWq
 			gl.DownWq = layer.DownWq
-			gl.QWg, _ = gpu.UploadQuantWeight(layer.QWq.QWeight, layer.QWq.GIdx, layer.QWq.Scales, layer.QWq.InDim, layer.QWq.OutDim)
+			uq := func(name string, qw *QuantWeight) *gpu.GPUQuantWeight {
+				if uploadErr != nil || qw == nil {
+					return nil
+				}
+				w, err := gpu.UploadQuantWeight(qw.QWeight, qw.GIdx, qw.Scales, qw.InDim, qw.OutDim)
+				if err != nil {
+					uploadErr = fmt.Errorf("layer %d %s Q4 upload: %w", i, name, err)
+				}
+				return w
+			}
+			gl.QWg = uq("q_proj", layer.QWq)
 			if gpu.Q4Ready() {
-				gl.KWg, _ = gpu.UploadQuantWeight(layer.KWq.QWeight, layer.KWq.GIdx, layer.KWq.Scales, layer.KWq.InDim, layer.KWq.OutDim)
-				gl.VWg, _ = gpu.UploadQuantWeight(layer.VWq.QWeight, layer.VWq.GIdx, layer.VWq.Scales, layer.VWq.InDim, layer.VWq.OutDim)
-				gl.OWg, _ = gpu.UploadQuantWeight(layer.OWq.QWeight, layer.OWq.GIdx, layer.OWq.Scales, layer.OWq.InDim, layer.OWq.OutDim)
-				gl.GateWg, _ = gpu.UploadQuantWeight(layer.GateWq.QWeight, layer.GateWq.GIdx, layer.GateWq.Scales, layer.GateWq.InDim, layer.GateWq.OutDim)
-				gl.UpWg, _ = gpu.UploadQuantWeight(layer.UpWq.QWeight, layer.UpWq.GIdx, layer.UpWq.Scales, layer.UpWq.InDim, layer.UpWq.OutDim)
-				gl.DownWg, _ = gpu.UploadQuantWeight(layer.DownWq.QWeight, layer.DownWq.GIdx, layer.DownWq.Scales, layer.DownWq.InDim, layer.DownWq.OutDim)
+				gl.KWg = uq("k_proj", layer.KWq)
+				gl.VWg = uq("v_proj", layer.VWq)
+				gl.OWg = uq("o_proj", layer.OWq)
+				gl.GateWg = uq("gate_proj", layer.GateWq)
+				gl.UpWg = uq("up_proj", layer.UpWq)
+				gl.DownWg = uq("down_proj", layer.DownWq)
 			}
 		} else if layer.QWm != nil {
 			// MLX quantized: upload to GPU
@@ -360,8 +370,12 @@ func LoadGPUModelWithLayers(m *LlamaModel, gpuLayers int) (*GPUModel, error) {
 			gl.DownW = wrapTensor(layer.DownW)
 		}
 
-		if layer.RouterW != nil && gpu.SgemmReady() {
-			gl.RouterWmg, _ = gpu.UploadMLXWeightNative(layer.RouterW.Weight, layer.RouterW.Scales, layer.RouterW.Biases, layer.RouterW.InDim, layer.RouterW.OutDim, layer.RouterW.GroupSize)
+		if layer.RouterW != nil && gpu.SgemmReady() && uploadErr == nil {
+			var err error
+			gl.RouterWmg, err = gpu.UploadMLXWeightNative(layer.RouterW.Weight, layer.RouterW.Scales, layer.RouterW.Biases, layer.RouterW.InDim, layer.RouterW.OutDim, layer.RouterW.GroupSize)
+			if err != nil {
+				uploadErr = fmt.Errorf("layer %d router MLX upload: %w", i, err)
+			}
 		}
 
 		gl.PreFFNNorm = wrapTensor(layer.PreFFNNorm)
