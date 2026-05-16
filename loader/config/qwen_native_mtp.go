@@ -165,6 +165,48 @@ func MissingQwenNativeMTPTensors(names []string, numLayers int) []string {
 	return missing
 }
 
+func (m QwenNativeMTPMetadata) MainLayerCount() int {
+	if m.NumHiddenLayers <= 0 {
+		return 0
+	}
+	if m.MTPNumHiddenLayers <= 0 {
+		return m.NumHiddenLayers
+	}
+	if m.MTPNumHiddenLayers >= m.NumHiddenLayers {
+		return 0
+	}
+	return m.NumHiddenLayers - m.MTPNumHiddenLayers
+}
+
+func (m QwenNativeMTPMetadata) IsMTPLayer(layer int) bool {
+	main := m.MainLayerCount()
+	return layer >= main && layer < m.NumHiddenLayers && m.MTPNumHiddenLayers > 0
+}
+
+func (m QwenNativeMTPMetadata) IsLinearAttentionLayer(layer int) bool {
+	if layer < 0 || layer >= m.MainLayerCount() {
+		return false
+	}
+	if layer < len(m.LayerTypes) {
+		return m.LayerTypes[layer] == "linear_attention"
+	}
+	interval := m.FullAttentionInterval
+	if interval <= 0 {
+		interval = 4
+	}
+	return (layer+1)%interval != 0
+}
+
+func (m QwenNativeMTPMetadata) IsFullAttentionLayer(layer int) bool {
+	if layer < 0 || layer >= m.MainLayerCount() {
+		return false
+	}
+	if layer < len(m.LayerTypes) {
+		return m.LayerTypes[layer] == "full_attention"
+	}
+	return !m.IsLinearAttentionLayer(layer)
+}
+
 func IsQwenNativeMTPTensorName(name string) bool {
 	if len(name) < 4 || name[:4] != "mtp." {
 		return false

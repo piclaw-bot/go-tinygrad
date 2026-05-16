@@ -168,6 +168,31 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPLayerClassification(t *testing.T) {
+	meta := QwenNativeMTPMetadata{
+		NumHiddenLayers:       65,
+		MTPNumHiddenLayers:    1,
+		FullAttentionInterval: 4,
+	}
+	if got := meta.MainLayerCount(); got != 64 {
+		t.Fatalf("MainLayerCount=%d want 64", got)
+	}
+	if !meta.IsLinearAttentionLayer(0) || !meta.IsLinearAttentionLayer(2) || meta.IsLinearAttentionLayer(3) {
+		t.Fatalf("interval linear/full classification failed")
+	}
+	if !meta.IsFullAttentionLayer(3) || meta.IsFullAttentionLayer(0) {
+		t.Fatalf("interval full classification failed")
+	}
+	if !meta.IsMTPLayer(64) || meta.IsMTPLayer(63) {
+		t.Fatalf("MTP layer classification failed")
+	}
+
+	meta.LayerTypes = []string{"full_attention", "linear_attention"}
+	if !meta.IsFullAttentionLayer(0) || !meta.IsLinearAttentionLayer(1) {
+		t.Fatalf("layer_types classification failed")
+	}
+}
+
 func TestRequiredAndMissingQwenNativeMTPTensors(t *testing.T) {
 	req := RequiredQwenNativeMTPTensors(1)
 	if len(req) != 15 {

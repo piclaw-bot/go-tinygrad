@@ -114,7 +114,7 @@ For go-pherence we can either keep the HF `mtp.*` names directly or mirror this 
 `src/models/qwen35.cpp` is the closest architecture reference. Key points:
 
 - `nextn_predict_layers` are treated as extra decoder blocks appended after the main stack.
-- Main forward executes only `n_layer - nextn_predict_layers`.
+- Main forward executes only `n_layer - nextn_predict_layers`. Added metadata helpers to compute main-layer count and classify main full/linear-attention layers vs appended native-MTP layers.
 - Recurrent/linear-attention layers are all non-full-attention layers before the MTP tail:
 
 ```cpp
