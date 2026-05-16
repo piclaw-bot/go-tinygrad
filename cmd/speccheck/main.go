@@ -28,12 +28,14 @@ type CheckResult struct {
 }
 
 type CheckReport struct {
-	Model        string        `json:"model"`
-	Passed       bool          `json:"passed"`
-	GoldenMatch  bool          `json:"golden_match,omitempty"`
-	TotalChecks  int           `json:"total_checks"`
-	FailedChecks int           `json:"failed_checks"`
-	Results      []CheckResult `json:"results"`
+	Model              string        `json:"model"`
+	Passed             bool          `json:"passed"`
+	GoldenMatch        bool          `json:"golden_match,omitempty"`
+	TotalChecks        int           `json:"total_checks"`
+	FailedChecks       int           `json:"failed_checks"`
+	GoldenChecks       int           `json:"golden_checks,omitempty"`
+	FailedGoldenChecks int           `json:"failed_golden_checks,omitempty"`
+	Results            []CheckResult `json:"results"`
 }
 
 type GoldenReport struct {
@@ -106,9 +108,11 @@ func main() {
 		preparedLen := len(m.PreparedGenerateTokens(ids))
 		writeGolden.Prompts = append(writeGolden.Prompts, GoldenPrompt{PromptIndex: pi, PromptTokens: preparedLen, MaxTokens: *tokens, Output: append([]int(nil), normal...)})
 		if golden != nil {
+			report.GoldenChecks++
 			if err := compareGoldenPrompt(golden, pi, preparedLen, *tokens, normal); err != nil {
 				report.Passed = false
 				report.GoldenMatch = false
+				report.FailedGoldenChecks++
 				fmt.Fprintf(os.Stderr, "golden mismatch prompt %d: %v\n", pi, err)
 			}
 		}

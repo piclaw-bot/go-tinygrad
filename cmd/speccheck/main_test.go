@@ -40,8 +40,8 @@ func TestParseList(t *testing.T) {
 }
 
 func TestCheckReportSummaryFields(t *testing.T) {
-	r := CheckReport{Model: "m", Passed: true, TotalChecks: 3, FailedChecks: 0}
-	if r.TotalChecks != 3 || r.FailedChecks != 0 || !r.Passed {
+	r := CheckReport{Model: "m", Passed: true, TotalChecks: 3, FailedChecks: 0, GoldenChecks: 2, FailedGoldenChecks: 0}
+	if r.TotalChecks != 3 || r.FailedChecks != 0 || r.GoldenChecks != 2 || r.FailedGoldenChecks != 0 || !r.Passed {
 		t.Fatalf("report=%+v", r)
 	}
 }
