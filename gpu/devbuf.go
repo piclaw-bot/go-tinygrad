@@ -159,7 +159,7 @@ func (b *DevBuf) GPUPtr() *Buffer {
 	if b == nil {
 		return nil
 	}
-	if b.gpu == nil {
+	if b.gpu == nil || b.dev != GPU_DEVICE {
 		if err := b.ToGPU(); err != nil {
 			return nil
 		}
