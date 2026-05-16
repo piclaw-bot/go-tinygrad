@@ -250,7 +250,7 @@ This supersedes the prior Orthrus/stock-weight speculative exploration as the ma
    - validate full-attention-only synthetic fixtures before touching large weights.
 4. **Native MTP head**
    - load `mtp.fc`, pre-FC norms, one MTP decoder layer, and `mtp.norm`;
-   - implement K=1/multi-step greedy draft step (CPU skeleton now covers preprojection plus full-attention/MLP MTP block, RoPE when frequency tables are provided, current K/V return, history-aware attention over past+current MTP KV, final MTP norm + main LM-head logits/argmax, `QwenNativeMTPDraftState`, bounded `DraftSteps`, an adapter to existing `AcceptMTPDraft`, and accepted-prefix draft-state commit; generation-loop integration remains next);
+   - implement K=1/multi-step greedy draft step (CPU skeleton now covers preprojection plus full-attention/MLP MTP block, RoPE when frequency tables are provided, current K/V return, history-aware attention over past+current MTP KV, final MTP norm + main LM-head logits/argmax, `QwenNativeMTPDraftState`, bounded `DraftSteps`, an adapter to existing `AcceptMTPDraft`, accepted-prefix draft-state commit, and native-MTP stats; generation-loop integration remains next);
    - reuse `AcceptMTPDraft` and `speccheck` parity checks.
 5. **Correctness harness**
    - extend `speccheck` with a native-MTP mode once the draft step exists;

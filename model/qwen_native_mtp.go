@@ -103,6 +103,33 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 	return head, nil
 }
 
+type QwenNativeMTPStats struct {
+	DraftedTokens  int `json:"drafted_tokens"`
+	AcceptedTokens int `json:"accepted_tokens"`
+	BonusTokens    int `json:"bonus_tokens"`
+	OutputTokens   int `json:"output_tokens"`
+}
+
+func (s QwenNativeMTPStats) AcceptanceRate() float64 {
+	if s.DraftedTokens <= 0 {
+		return 0
+	}
+	return float64(s.AcceptedTokens) / float64(s.DraftedTokens)
+}
+
+func QwenNativeMTPStatsFromAcceptance(a MTPAcceptance) QwenNativeMTPStats {
+	bonus := 0
+	if len(a.OutputTokens) > a.AcceptedPrefixLen {
+		bonus = 1
+	}
+	return QwenNativeMTPStats{
+		DraftedTokens:  a.DraftedCount,
+		AcceptedTokens: a.AcceptedPrefixLen,
+		BonusTokens:    bonus,
+		OutputTokens:   len(a.OutputTokens),
+	}
+}
+
 type QwenNativeMTPStepResult struct {
 	InitialState QwenNativeMTPDraftState
 	State        QwenNativeMTPDraftState
@@ -110,6 +137,7 @@ type QwenNativeMTPStepResult struct {
 	Drafted      []int
 	Logits       [][]float32
 	Acceptance   MTPAcceptance
+	Stats        QwenNativeMTPStats
 }
 
 func RunQwenNativeMTPSpeculativeStep(head *QwenNativeMTPHead, m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, verifierTokens []int, maxSteps int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPStepResult, error) {
@@ -125,7 +153,8 @@ func RunQwenNativeMTPSpeculativeStep(head *QwenNativeMTPHead, m *LlamaModel, tok
 		return QwenNativeMTPStepResult{}, err
 	}
 	committed := CommitQwenNativeMTPDraftState(state, stepStates, acceptance)
-	return QwenNativeMTPStepResult{InitialState: state, State: committed, StepStates: stepStates, Drafted: drafted, Logits: logitsRows, Acceptance: acceptance}, nil
+	stats := QwenNativeMTPStatsFromAcceptance(acceptance)
+	return QwenNativeMTPStepResult{InitialState: state, State: committed, StepStates: stepStates, Drafted: drafted, Logits: logitsRows, Acceptance: acceptance, Stats: stats}, nil
 }
 
 func CommitQwenNativeMTPDraftState(initial QwenNativeMTPDraftState, stepStates []QwenNativeMTPDraftState, acceptance MTPAcceptance) QwenNativeMTPDraftState {

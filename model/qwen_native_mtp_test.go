@@ -69,6 +69,20 @@ func TestQwenNativeMTPForwardOneAcceptsRoPE(t *testing.T) {
 	}
 }
 
+func TestQwenNativeMTPStatsFromAcceptance(t *testing.T) {
+	acc, err := AcceptMTPDraft([]int{1, 2, 3}, []int{1, 2, 9, 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := QwenNativeMTPStatsFromAcceptance(acc)
+	if stats.DraftedTokens != 3 || stats.AcceptedTokens != 2 || stats.BonusTokens != 1 || stats.OutputTokens != 3 || stats.AcceptanceRate() != float64(2)/3 {
+		t.Fatalf("stats=%+v rate=%f", stats, stats.AcceptanceRate())
+	}
+	if (QwenNativeMTPStats{}).AcceptanceRate() != 0 {
+		t.Fatal("zero stats acceptance rate not zero")
+	}
+}
+
 func TestCommitQwenNativeMTPDraftState(t *testing.T) {
 	initial := QwenNativeMTPDraftState{Pos: 10}
 	states := []QwenNativeMTPDraftState{{Pos: 11}, {Pos: 12}, {Pos: 13}}
@@ -108,6 +122,9 @@ func TestRunQwenNativeMTPSpeculativeStepSynthetic(t *testing.T) {
 	}
 	if len(res.StepStates) != len(res.Drafted) || res.State.Pos != len(res.Drafted) {
 		t.Fatalf("state=%+v stepStates=%d drafted=%d", res.State, len(res.StepStates), len(res.Drafted))
+	}
+	if res.Stats.DraftedTokens != len(res.Drafted) || res.Stats.AcceptedTokens != len(res.Drafted) || res.Stats.OutputTokens != len(res.Drafted)+1 {
+		t.Fatalf("stats=%+v drafted=%v", res.Stats, res.Drafted)
 	}
 	if _, err := RunQwenNativeMTPSpeculativeStep(nil, m, 0, state, verifier, 2, 1e-6, meta); err == nil {
 		t.Fatal("nil head returned nil error")
