@@ -274,7 +274,7 @@ func TestLoadQwen35LinearAttentionLayer(t *testing.T) {
 	}
 }
 
-func TestSplitQwen35LinearQKVZ(t *testing.T) {
+func TestSplitQwen35LinearQKV(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
 	if err != nil {
@@ -284,17 +284,17 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	for i := range projected {
 		projected[i] = float32(i + 1)
 	}
-	parts, err := splitQwen35LinearQKVZ(projected, shapes)
+	parts, err := splitQwen35LinearQKV(projected, shapes)
 	if err != nil {
-		t.Fatalf("splitQwen35LinearQKVZ: %v", err)
+		t.Fatalf("splitQwen35LinearQKV: %v", err)
 	}
-	if len(parts.Q) != shapes.ValueDim || len(parts.K) != shapes.ConvDim-shapes.ValueDim || len(parts.V) != shapes.ValueDim || len(parts.Z) != shapes.ValueDim {
-		t.Fatalf("parts lens Q/K/V/Z=%d/%d/%d/%d", len(parts.Q), len(parts.K), len(parts.V), len(parts.Z))
+	if len(parts.Q) != shapes.KeyDim || len(parts.K) != shapes.KeyDim || len(parts.V) != shapes.ValueDim {
+		t.Fatalf("parts lens Q/K/V=%d/%d/%d", len(parts.Q), len(parts.K), len(parts.V))
 	}
-	if parts.Q[0] != 1 || parts.K[0] != float32(shapes.ValueDim+1) {
+	if parts.Q[0] != 1 || parts.K[0] != float32(shapes.KeyDim+1) {
 		t.Fatalf("unexpected split parts=%+v", parts)
 	}
-	if _, err := splitQwen35LinearQKVZ(projected[:len(projected)-1], shapes); err == nil {
+	if _, err := splitQwen35LinearQKV(projected[:len(projected)-1], shapes); err == nil {
 		t.Fatal("bad projected length returned nil error")
 	}
 }
@@ -309,28 +309,32 @@ func TestApplyQwen35LinearDeltaUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := make([]float32, shapes.ConvDim-shapes.ValueDim)
+	q := make([]float32, shapes.KeyDim)
+	k := make([]float32, shapes.KeyDim)
 	v := make([]float32, shapes.ValueDim)
+	for i := range q {
+		q[i] = 1
+	}
 	for i := range k {
 		k[i] = 1
 	}
 	for i := range v {
 		v[i] = 1
 	}
-	next, out, err := applyQwen35LinearDeltaUpdate(state.SSM, k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta)
+	next, out, err := applyQwen35LinearDeltaUpdate(state.SSM, q, k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta)
 	if err != nil {
 		t.Fatalf("applyQwen35LinearDeltaUpdate: %v", err)
 	}
 	if len(next) != len(state.SSM) || len(out) != shapes.ValueDim || out[0] == 0 {
 		t.Fatalf("next/out=%d/%v", len(next), out)
 	}
-	if _, _, err := applyQwen35LinearDeltaUpdate(state.SSM[:len(state.SSM)-1], k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta); err == nil {
+	if _, _, err := applyQwen35LinearDeltaUpdate(state.SSM[:len(state.SSM)-1], q, k, v, []float32{1, 1}, []float32{1, 1}, []float32{0.5, 0.5}, shapes, meta); err == nil {
 		t.Fatal("bad SSM state len returned nil error")
 	}
 }
 
 func TestPrepareQwen35LinearDeltaParams(t *testing.T) {
-	dt, decay, err := prepareQwen35LinearDeltaParams([]float32{0, 1}, []float32{2, 3}, []float32{0, -1}, []float32{1, 2}, 2)
+	dt, decay, err := prepareQwen35LinearDeltaParams([]float32{0, 1}, []float32{2, 3}, []float32{0, -1}, []float32{-1, -2}, 2)
 	if err != nil {
 		t.Fatalf("prepareQwen35LinearDeltaParams: %v", err)
 	}
@@ -358,31 +362,6 @@ func TestProjectQwen35LinearAlphaBeta(t *testing.T) {
 	}
 	if _, _, err := projectQwen35LinearAlphaBeta(input, alphaW[:5], betaW, 3, 2); err == nil {
 		t.Fatal("bad weight len returned nil error")
-	}
-}
-
-func TestSplitQwen35LinearConvOutput(t *testing.T) {
-	meta := testQwen35BaseMeta()
-	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
-	if err != nil {
-		t.Fatal(err)
-	}
-	conv := make([]float32, shapes.ConvDim)
-	for i := range conv {
-		conv[i] = float32(i + 1)
-	}
-	k, v, err := splitQwen35LinearConvOutput(conv, shapes)
-	if err != nil {
-		t.Fatalf("splitQwen35LinearConvOutput: %v", err)
-	}
-	if len(k) != shapes.ConvDim-shapes.ValueDim || len(v) != shapes.ValueDim {
-		t.Fatalf("lens K/V=%d/%d", len(k), len(v))
-	}
-	if k[0] != 1 || v[0] != float32(len(k)+1) {
-		t.Fatalf("K/V=%v/%v", k, v)
-	}
-	if _, _, err := splitQwen35LinearConvOutput(conv[:len(conv)-1], shapes); err == nil {
-		t.Fatal("bad conv length returned nil error")
 	}
 }
 

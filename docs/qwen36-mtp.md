@@ -223,7 +223,7 @@ Needed before MTP can matter:
 - [ ] support attention output gates if required (`attn_output_gate`, `output_gate_type`);
 - [ ] validate BF16/full-precision baseline first, if a non-NVFP4 checkpoint exists.
 
-Linear attention is the critical blocker. The helper `Qwen35LinearAttentionShapesFor` only fixes tensor layout; the actual recurrent delta-net math and state management still need implementation.
+Linear attention remains the critical parity risk. A focused audit against `am17an/llama.cpp` `qwen35.cpp`/`conversion/qwen.py` fixed several concrete divergences: QKV excludes Z, Z comes from the separate gate projection, conv input is Q/K/V, conv output uses SiLU, convolved Q/K are L2-normalized, beta uses sigmoid, converted A is negative and drives `exp(dt*A)`, and the final linear-attention output uses RMSNorm times SiLU(Z). The remaining unproven part is exact equivalence of the scalar recurrent update and state layout to llama.cpp `build_recurrent_attn`.
 
 ### Phase C — native MTP head
 

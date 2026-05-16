@@ -381,31 +381,27 @@ func (l *Qwen35FullAttentionLayer) Forward(input []float32, pos int, ropeFreqs [
 	return out, err
 }
 
-type Qwen35LinearQKVZ struct {
+type Qwen35LinearQKV struct {
 	Q []float32
 	K []float32
 	V []float32
-	Z []float32
 }
 
-func splitQwen35LinearQKVZ(projected []float32, shapes loaderconfig.Qwen35LinearAttentionShapes) (Qwen35LinearQKVZ, error) {
-	qLen := shapes.ValueDim
-	kLen := shapes.ConvDim - shapes.ValueDim
+func splitQwen35LinearQKV(projected []float32, shapes loaderconfig.Qwen35LinearAttentionShapes) (Qwen35LinearQKV, error) {
+	qLen := shapes.KeyDim
+	kLen := shapes.KeyDim
 	vLen := shapes.ValueDim
-	zLen := shapes.ValueDim
-	want := qLen + kLen + vLen + zLen
+	want := qLen + kLen + vLen
 	if len(projected) != want {
-		return Qwen35LinearQKVZ{}, fmt.Errorf("Qwen3.5 linear-attention QKVZ len=%d want %d", len(projected), want)
+		return Qwen35LinearQKV{}, fmt.Errorf("Qwen3.5 linear-attention QKV len=%d want %d", len(projected), want)
 	}
 	off := 0
-	out := Qwen35LinearQKVZ{}
+	out := Qwen35LinearQKV{}
 	out.Q = append([]float32(nil), projected[off:off+qLen]...)
 	off += qLen
 	out.K = append([]float32(nil), projected[off:off+kLen]...)
 	off += kLen
 	out.V = append([]float32(nil), projected[off:off+vLen]...)
-	off += vLen
-	out.Z = append([]float32(nil), projected[off:off+zLen]...)
 	return out, nil
 }
 
@@ -428,13 +424,30 @@ func updateQwen35LinearConvState(state []float32, x []float32, kernel int) ([]fl
 	return next, nil
 }
 
-func applyQwen35LinearDeltaUpdate(ssm, k, v, beta, dt, decay []float32, shapes loaderconfig.Qwen35LinearAttentionShapes, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, []float32, error) {
+func l2NormalizeInPlace(x []float32, eps float32) {
+	var sum float32
+	for _, v := range x {
+		sum += v * v
+	}
+	scale := float32(1 / math.Sqrt(float64(sum+eps)))
+	for i := range x {
+		x[i] *= scale
+	}
+}
+
+func siluInPlace(x []float32) {
+	for i := range x {
+		x[i] = x[i] * sigmoid(x[i])
+	}
+}
+
+func applyQwen35LinearDeltaUpdate(ssm, q, k, v, beta, dt, decay []float32, shapes loaderconfig.Qwen35LinearAttentionShapes, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, []float32, error) {
 	stateLen := meta.LinearNumValueHeads * meta.LinearValueHeadDim * meta.LinearNumKeyHeads * meta.LinearKeyHeadDim
 	if len(ssm) != stateLen {
 		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention SSM state len=%d want %d", len(ssm), stateLen)
 	}
-	if len(k) != shapes.ConvDim-shapes.ValueDim || len(v) != shapes.ValueDim {
-		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta K/V len=%d/%d want %d/%d", len(k), len(v), shapes.ConvDim-shapes.ValueDim, shapes.ValueDim)
+	if len(q) != shapes.KeyDim || len(k) != shapes.KeyDim || len(v) != shapes.ValueDim {
+		return nil, nil, fmt.Errorf("Qwen3.5 linear-attention delta Q/K/V len=%d/%d/%d want %d/%d/%d", len(q), len(k), len(v), shapes.KeyDim, shapes.KeyDim, shapes.ValueDim)
 	}
 	rank := meta.LinearNumValueHeads
 	if len(beta) != rank || len(dt) != rank || len(decay) != rank {
@@ -452,7 +465,7 @@ func applyQwen35LinearDeltaUpdate(ssm, k, v, beta, dt, decay []float32, shapes l
 					kIdx := kh*meta.LinearKeyHeadDim + kd
 					stateIdx := ((vh*meta.LinearValueHeadDim+vd)*meta.LinearNumKeyHeads+kh)*meta.LinearKeyHeadDim + kd
 					next[stateIdx] = next[stateIdx]*decay[vh] + beta[vh]*dt[vh]*v[vIdx]*k[kIdx]
-					acc += next[stateIdx] * k[kIdx]
+					acc += next[stateIdx] * q[kIdx]
 				}
 			}
 			if keyWidth > 0 {
@@ -481,7 +494,7 @@ func prepareQwen35LinearDeltaParams(alpha, beta, dtBias, a []float32, rank int) 
 	decay = make([]float32, rank)
 	for i := 0; i < rank; i++ {
 		dt[i] = softplus(alpha[i] + dtBias[i])
-		decay[i] = float32(math.Exp(float64(-dt[i] * a[i])))
+		decay[i] = float32(math.Exp(float64(dt[i] * a[i])))
 	}
 	return dt, decay, nil
 }
@@ -558,11 +571,14 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	rmsNormInPlace(cur, l.InputNorm.Data(), eps)
 	projected := make([]float32, shapes.QKV[1])
 	gemvNT(projected, cur, l.QKVW.Data(), meta.HiddenSize, shapes.QKV[1])
-	parts, err := splitQwen35LinearQKVZ(projected, shapes)
+	parts, err := splitQwen35LinearQKV(projected, shapes)
 	if err != nil {
 		return nil, state, err
 	}
+	z := make([]float32, shapes.ValueDim)
+	gemvNT(z, cur, l.GateW.Data(), meta.HiddenSize, shapes.ValueDim)
 	convInput := make([]float32, 0, shapes.ConvDim)
+	convInput = append(convInput, parts.Q...)
 	convInput = append(convInput, parts.K...)
 	convInput = append(convInput, parts.V...)
 	nextConv, err := updateQwen35LinearConvState(state.Conv, convInput, meta.LinearConvKernelDim)
@@ -573,10 +589,13 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	if err != nil {
 		return nil, state, err
 	}
-	k, v, err := splitQwen35LinearConvOutput(convOut, shapes)
+	siluInPlace(convOut)
+	convParts, err := splitQwen35LinearQKV(convOut, shapes)
 	if err != nil {
 		return nil, state, err
 	}
+	l2NormalizeInPlace(convParts.Q, eps)
+	l2NormalizeInPlace(convParts.K, eps)
 	alpha, beta, err := projectQwen35LinearAlphaBeta(cur, l.AlphaW.Data(), l.BetaW.Data(), meta.HiddenSize, meta.LinearNumValueHeads)
 	if err != nil {
 		return nil, state, err
@@ -585,12 +604,16 @@ func (l *Qwen35LinearAttentionLayer) ForwardWithState(input []float32, state Qwe
 	if err != nil {
 		return nil, state, err
 	}
-	nextSSM, deltaOut, err := applyQwen35LinearDeltaUpdate(state.SSM, k, v, beta, dt, decay, shapes, meta)
+	for i := range beta {
+		beta[i] = sigmoid(beta[i])
+	}
+	nextSSM, deltaOut, err := applyQwen35LinearDeltaUpdate(state.SSM, convParts.Q, convParts.K, convParts.V, beta, dt, decay, shapes, meta)
 	if err != nil {
 		return nil, state, err
 	}
+	rmsNormInPlace(deltaOut, l.Norm.Data(), eps)
 	for i := range deltaOut {
-		deltaOut[i] *= sigmoid(parts.Z[i])
+		deltaOut[i] *= z[i] * sigmoid(z[i])
 	}
 	projectedOut := make([]float32, meta.HiddenSize)
 	gemvNT(projectedOut, deltaOut, l.OutW.Data(), shapes.ValueDim, meta.HiddenSize)
