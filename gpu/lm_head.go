@@ -41,7 +41,9 @@ func DevLMHead(logits, x, W *DevBuf, vocab, h int) {
 		unsafe.Pointer(&v),
 		unsafe.Pointer(&dim)); err == nil {
 		logits.dev = GPU_DEVICE
+		return
 	}
+	DevGemv(logits, x, W, vocab, h)
 }
 
 var fnLMHead CUfunction
