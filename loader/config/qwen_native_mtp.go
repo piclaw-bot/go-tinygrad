@@ -242,7 +242,7 @@ func IsQwenNativeMTPTensorName(name string) bool {
 		return false
 	}
 	switch name {
-	case "mtp.fc.weight", "mtp.pre_fc_norm_embedding.weight", "mtp.pre_fc_norm_hidden.weight", "mtp.norm.weight":
+	case "mtp.fc.weight", "mtp.pre_fc_norm_embedding.weight", "mtp.pre_fc_norm_hidden.weight", "mtp.norm.weight", "mtp.shared_head_head.weight", "mtp.shared_head.head.weight", "mtp.lm_head.weight":
 		return true
 	}
 	return len(name) > len("mtp.layers.") && name[:len("mtp.layers.")] == "mtp.layers."
