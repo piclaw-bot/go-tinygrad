@@ -237,12 +237,19 @@ func (m QwenNativeMTPMetadata) IsFullAttentionLayer(layer int) bool {
 	return !m.IsLinearAttentionLayer(layer)
 }
 
+func IsOptionalQwenNativeMTPSharedHeadTensorName(name string) bool {
+	return name == "mtp.shared_head_head.weight" || name == "mtp.shared_head.head.weight" || name == "mtp.lm_head.weight"
+}
+
 func IsQwenNativeMTPTensorName(name string) bool {
 	if len(name) < 4 || name[:4] != "mtp." {
 		return false
 	}
 	switch name {
-	case "mtp.fc.weight", "mtp.pre_fc_norm_embedding.weight", "mtp.pre_fc_norm_hidden.weight", "mtp.norm.weight", "mtp.shared_head_head.weight", "mtp.shared_head.head.weight", "mtp.lm_head.weight":
+	case "mtp.fc.weight", "mtp.pre_fc_norm_embedding.weight", "mtp.pre_fc_norm_hidden.weight", "mtp.norm.weight":
+		return true
+	}
+	if IsOptionalQwenNativeMTPSharedHeadTensorName(name) {
 		return true
 	}
 	return len(name) > len("mtp.layers.") && name[:len("mtp.layers.")] == "mtp.layers."

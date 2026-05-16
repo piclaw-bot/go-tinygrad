@@ -232,6 +232,17 @@ func TestRequiredAndMissingQwenNativeMTPTensors(t *testing.T) {
 	}
 }
 
+func TestIsOptionalQwenNativeMTPSharedHeadTensorName(t *testing.T) {
+	for _, name := range []string{"mtp.shared_head_head.weight", "mtp.shared_head.head.weight", "mtp.lm_head.weight"} {
+		if !IsOptionalQwenNativeMTPSharedHeadTensorName(name) {
+			t.Fatalf("%q not optional shared head", name)
+		}
+	}
+	if IsOptionalQwenNativeMTPSharedHeadTensorName("mtp.norm.weight") {
+		t.Fatal("mtp.norm.weight recognized as optional shared head")
+	}
+}
+
 func TestIsQwenNativeMTPTensorName(t *testing.T) {
 	cases := []struct {
 		name string

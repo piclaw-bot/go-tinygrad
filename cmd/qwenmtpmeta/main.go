@@ -12,13 +12,14 @@ import (
 )
 
 type Report struct {
-	Config                loaderconfig.QwenNativeMTPMetadata        `json:"config"`
-	LayerSummary          loaderconfig.QwenNativeMTPLayerSummary    `json:"layer_summary"`
-	FullAttentionShapes   *loaderconfig.Qwen35FullAttentionShapes   `json:"full_attention_shapes,omitempty"`
-	LinearAttentionShapes *loaderconfig.Qwen35LinearAttentionShapes `json:"linear_attention_shapes,omitempty"`
-	MTPTensors            []string                                  `json:"mtp_tensors,omitempty"`
-	MissingMTPTensors     []string                                  `json:"missing_mtp_tensors,omitempty"`
-	CanLoadSharedHead     bool                                      `json:"can_load_shared_head"`
+	Config                    loaderconfig.QwenNativeMTPMetadata        `json:"config"`
+	LayerSummary              loaderconfig.QwenNativeMTPLayerSummary    `json:"layer_summary"`
+	FullAttentionShapes       *loaderconfig.Qwen35FullAttentionShapes   `json:"full_attention_shapes,omitempty"`
+	LinearAttentionShapes     *loaderconfig.Qwen35LinearAttentionShapes `json:"linear_attention_shapes,omitempty"`
+	MTPTensors                []string                                  `json:"mtp_tensors,omitempty"`
+	OptionalSharedHeadTensors []string                                  `json:"optional_shared_head_tensors,omitempty"`
+	MissingMTPTensors         []string                                  `json:"missing_mtp_tensors,omitempty"`
+	CanLoadSharedHead         bool                                      `json:"can_load_shared_head"`
 }
 
 func main() {
@@ -49,6 +50,9 @@ func main() {
 		for _, name := range names {
 			if loaderconfig.IsQwenNativeMTPTensorName(name) {
 				report.MTPTensors = append(report.MTPTensors, name)
+			}
+			if loaderconfig.IsOptionalQwenNativeMTPSharedHeadTensorName(name) {
+				report.OptionalSharedHeadTensors = append(report.OptionalSharedHeadTensors, name)
 			}
 		}
 		report.MissingMTPTensors = loaderconfig.MissingQwenNativeMTPTensors(report.MTPTensors, meta.MTPNumHiddenLayers)
