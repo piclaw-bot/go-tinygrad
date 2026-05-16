@@ -36,12 +36,14 @@ func DevRoPE(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim int) {
 		p := uint32(pos)
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
-		LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(ropeFn, (uint32(halfDim)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
 			unsafe.Pointer(&p),
 			unsafe.Pointer(&nh),
-			unsafe.Pointer(&hd))
+			unsafe.Pointer(&hd)); err == nil {
+			x.dev = GPU_DEVICE
+		}
 		return
 	}
 	// CPU fallback in model code
@@ -60,14 +62,16 @@ func DevRoPEPartial(x *DevBuf, cosSin *DevBuf, pos, nHeads, headDim, rotHalf int
 		nh := uint32(nHeads)
 		hd := uint32(headDim)
 		rh := uint32(rotHalf)
-		LaunchKernel(ropePartialFn, (uint32(totalPairs)+255)/256, 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(ropePartialFn, (uint32(totalPairs)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&x.gpu.Ptr),
 			unsafe.Pointer(&cosSin.gpu.Ptr),
 			unsafe.Pointer(&p),
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&hd),
-			unsafe.Pointer(&rh))
-		return true
+			unsafe.Pointer(&rh)); err == nil {
+			x.dev = GPU_DEVICE
+			return true
+		}
 	}
 	return false
 }
@@ -85,7 +89,7 @@ func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDi
 		nh := uint32(nHeads)
 		nkv := uint32(nKVHeads)
 		hd := uint32(headDim)
-		LaunchKernel(attnScoreFn, uint32(nHeads), 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(attnScoreFn, uint32(nHeads), 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&q.gpu.Ptr),
 			unsafe.Pointer(&kCache.gpu.Ptr),
 			unsafe.Pointer(&out.gpu.Ptr),
@@ -93,9 +97,10 @@ func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDi
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&nkv),
 			unsafe.Pointer(&hd),
-			unsafe.Pointer(&scale))
-		out.dev = GPU_DEVICE
-		return true
+			unsafe.Pointer(&scale)); err == nil {
+			out.dev = GPU_DEVICE
+			return true
+		}
 	}
 	return false
 }
@@ -107,12 +112,13 @@ func DevSoftmaxRows(out, in *DevBuf, nRows, seqLen int) bool {
 	total, okTotal := checkedMulInt(nRows, seqLen)
 	if softmaxRowsReady && fitsUint32(nRows) && fitsUint32(seqLen) && nRows > 0 && seqLen > 0 && seqLen <= 2048 && okTotal && out != nil && in != nil && out.n >= total && in.n >= total && tryGPU(out, in) {
 		sl := uint32(seqLen)
-		LaunchKernel(softmaxRowsFn, uint32(nRows), 1, 1, 256, 1, 1, 0,
+		if err := LaunchKernel(softmaxRowsFn, uint32(nRows), 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&in.gpu.Ptr),
 			unsafe.Pointer(&out.gpu.Ptr),
-			unsafe.Pointer(&sl))
-		out.dev = GPU_DEVICE
-		return true
+			unsafe.Pointer(&sl)); err == nil {
+			out.dev = GPU_DEVICE
+			return true
+		}
 	}
 	return false
 }
@@ -130,7 +136,7 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 		nkv := uint32(nKVHeads)
 		hd := uint32(headDim)
 		// One block per query head, 256 threads per block
-		LaunchKernel(attnFn, uint32(nHeads), 1, 1, 256, 1, 1, 2048*4,
+		if err := LaunchKernel(attnFn, uint32(nHeads), 1, 1, 256, 1, 1, 2048*4,
 			unsafe.Pointer(&q.gpu.Ptr),
 			unsafe.Pointer(&kCache.gpu.Ptr),
 			unsafe.Pointer(&vCache.gpu.Ptr),
@@ -139,8 +145,9 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 			unsafe.Pointer(&nh),
 			unsafe.Pointer(&nkv),
 			unsafe.Pointer(&hd),
-			unsafe.Pointer(&scale))
-		out.dev = GPU_DEVICE
+			unsafe.Pointer(&scale)); err == nil {
+			out.dev = GPU_DEVICE
+		}
 		return
 	}
 	// CPU fallback in model code
