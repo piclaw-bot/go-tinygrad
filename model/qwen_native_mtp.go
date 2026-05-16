@@ -104,17 +104,19 @@ func LoadQwenNativeMTPHead(src QwenNativeMTPTensorSource, meta loaderconfig.Qwen
 }
 
 type QwenNativeMTPStepResult struct {
-	State      QwenNativeMTPDraftState
-	Drafted    []int
-	Logits     [][]float32
-	Acceptance MTPAcceptance
+	InitialState QwenNativeMTPDraftState
+	State        QwenNativeMTPDraftState
+	StepStates   []QwenNativeMTPDraftState
+	Drafted      []int
+	Logits       [][]float32
+	Acceptance   MTPAcceptance
 }
 
 func RunQwenNativeMTPSpeculativeStep(head *QwenNativeMTPHead, m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, verifierTokens []int, maxSteps int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPStepResult, error) {
 	if head == nil {
 		return QwenNativeMTPStepResult{}, fmt.Errorf("nil Qwen native MTP head")
 	}
-	nextState, drafted, logitsRows, err := head.DraftSteps(m, tokenID, state, maxSteps, eps, meta)
+	_, drafted, logitsRows, stepStates, err := head.DraftStepsDetailed(m, tokenID, state, maxSteps, eps, meta)
 	if err != nil {
 		return QwenNativeMTPStepResult{}, err
 	}
@@ -122,28 +124,47 @@ func RunQwenNativeMTPSpeculativeStep(head *QwenNativeMTPHead, m *LlamaModel, tok
 	if err != nil {
 		return QwenNativeMTPStepResult{}, err
 	}
-	return QwenNativeMTPStepResult{State: nextState, Drafted: drafted, Logits: logitsRows, Acceptance: acceptance}, nil
+	committed := CommitQwenNativeMTPDraftState(state, stepStates, acceptance)
+	return QwenNativeMTPStepResult{InitialState: state, State: committed, StepStates: stepStates, Drafted: drafted, Logits: logitsRows, Acceptance: acceptance}, nil
+}
+
+func CommitQwenNativeMTPDraftState(initial QwenNativeMTPDraftState, stepStates []QwenNativeMTPDraftState, acceptance MTPAcceptance) QwenNativeMTPDraftState {
+	if acceptance.AcceptedPrefixLen <= 0 || len(stepStates) == 0 {
+		return initial
+	}
+	idx := acceptance.AcceptedPrefixLen - 1
+	if idx >= len(stepStates) {
+		idx = len(stepStates) - 1
+	}
+	return stepStates[idx]
 }
 
 func (head *QwenNativeMTPHead) DraftSteps(m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, maxSteps int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPDraftState, []int, [][]float32, error) {
+	next, tokens, logitsRows, _, err := head.DraftStepsDetailed(m, tokenID, state, maxSteps, eps, meta)
+	return next, tokens, logitsRows, err
+}
+
+func (head *QwenNativeMTPHead) DraftStepsDetailed(m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, maxSteps int, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPDraftState, []int, [][]float32, []QwenNativeMTPDraftState, error) {
 	if maxSteps < 0 {
-		return state, nil, nil, fmt.Errorf("max MTP draft steps=%d must be >= 0", maxSteps)
+		return state, nil, nil, nil, fmt.Errorf("max MTP draft steps=%d must be >= 0", maxSteps)
 	}
 	tokens := make([]int, 0, maxSteps)
 	logitsRows := make([][]float32, 0, maxSteps)
+	stepStates := make([]QwenNativeMTPDraftState, 0, maxSteps)
 	curToken := tokenID
 	curState := state
 	for i := 0; i < maxSteps; i++ {
 		nextState, logits, nextToken, err := head.DraftStep(m, curToken, curState, eps, meta)
 		if err != nil {
-			return state, nil, nil, fmt.Errorf("MTP draft step %d: %w", i, err)
+			return state, nil, nil, nil, fmt.Errorf("MTP draft step %d: %w", i, err)
 		}
 		tokens = append(tokens, nextToken)
 		logitsRows = append(logitsRows, logits)
+		stepStates = append(stepStates, nextState)
 		curToken = nextToken
 		curState = nextState
 	}
-	return curState, tokens, logitsRows, nil
+	return curState, tokens, logitsRows, stepStates, nil
 }
 
 func (head *QwenNativeMTPHead) DraftStep(m *LlamaModel, tokenID int, state QwenNativeMTPDraftState, eps float32, meta loaderconfig.QwenNativeMTPMetadata) (QwenNativeMTPDraftState, []float32, int, error) {
