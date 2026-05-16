@@ -13,6 +13,7 @@ import (
 
 type Report struct {
 	Config                loaderconfig.QwenNativeMTPMetadata        `json:"config"`
+	LayerSummary          loaderconfig.QwenNativeMTPLayerSummary    `json:"layer_summary"`
 	FullAttentionShapes   *loaderconfig.Qwen35FullAttentionShapes   `json:"full_attention_shapes,omitempty"`
 	LinearAttentionShapes *loaderconfig.Qwen35LinearAttentionShapes `json:"linear_attention_shapes,omitempty"`
 	MTPTensors            []string                                  `json:"mtp_tensors,omitempty"`
@@ -36,7 +37,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "parse config: %v\n", err)
 		os.Exit(2)
 	}
-	report := Report{Config: meta}
+	report := Report{Config: meta, LayerSummary: meta.LayerSummary()}
 	if shapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim); err == nil {
 		report.FullAttentionShapes = &shapes
 	}

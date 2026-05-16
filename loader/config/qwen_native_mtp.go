@@ -178,6 +178,26 @@ func (m QwenNativeMTPMetadata) MainLayerCount() int {
 	return m.NumHiddenLayers - m.MTPNumHiddenLayers
 }
 
+type QwenNativeMTPLayerSummary struct {
+	MainLayers      int `json:"main_layers"`
+	MTPLayers       int `json:"mtp_layers"`
+	LinearAttention int `json:"linear_attention"`
+	FullAttention   int `json:"full_attention"`
+}
+
+func (m QwenNativeMTPMetadata) LayerSummary() QwenNativeMTPLayerSummary {
+	main := m.MainLayerCount()
+	s := QwenNativeMTPLayerSummary{MainLayers: main, MTPLayers: m.MTPNumHiddenLayers}
+	for i := 0; i < main; i++ {
+		if m.IsLinearAttentionLayer(i) {
+			s.LinearAttention++
+		} else if m.IsFullAttentionLayer(i) {
+			s.FullAttention++
+		}
+	}
+	return s
+}
+
 func (m QwenNativeMTPMetadata) IsMTPLayer(layer int) bool {
 	main := m.MainLayerCount()
 	return layer >= main && layer < m.NumHiddenLayers && m.MTPNumHiddenLayers > 0

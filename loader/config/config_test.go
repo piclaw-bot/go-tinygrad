@@ -186,6 +186,9 @@ func TestQwenNativeMTPLayerClassification(t *testing.T) {
 	if !meta.IsMTPLayer(64) || meta.IsMTPLayer(63) {
 		t.Fatalf("MTP layer classification failed")
 	}
+	if summary := meta.LayerSummary(); summary.MainLayers != 64 || summary.MTPLayers != 1 || summary.LinearAttention != 48 || summary.FullAttention != 16 {
+		t.Fatalf("LayerSummary=%+v", summary)
+	}
 
 	meta.LayerTypes = []string{"full_attention", "linear_attention"}
 	if !meta.IsFullAttentionLayer(0) || !meta.IsLinearAttentionLayer(1) {
