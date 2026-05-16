@@ -253,7 +253,7 @@ This supersedes the prior Orthrus/stock-weight speculative exploration as the ma
    - implement K=1/multi-step greedy draft step (CPU skeleton now covers preprojection plus full-attention/MLP MTP block, RoPE when frequency tables are provided, current K/V return, history-aware attention over past+current MTP KV, final MTP norm + main LM-head logits/argmax, `QwenNativeMTPDraftState`, bounded `DraftSteps`, `QwenNativeMTPPlan`, plan-based adapters to existing `AcceptMTPDraft` from verifier tokens or validated logits, accepted-prefix draft-state commit, and native-MTP stats with aggregation helpers; generation-loop integration remains next);
    - reuse `AcceptMTPDraft` and `speccheck` parity checks.
 5. **Correctness harness**
-   - extend `speccheck` with a native-MTP mode once the draft step exists;
+   - extend `speccheck` with a native-MTP mode once the draft step exists (flag placeholder `-qwen-native-mtp` now fails clearly until real `LoadLlama` integration lands);
    - store golden token baselines for small prompts;
    - only optimize after CPU parity is stable.
 6. **Performance path**

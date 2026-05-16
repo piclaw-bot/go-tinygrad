@@ -60,6 +60,7 @@ func main() {
 	minProposal := flag.Int("speculative-min-proposal", 2, "minimum proposal length before verifier attempt")
 	proposerList := flag.String("proposers", "prompt,repeat-last,none", "comma-separated proposer list")
 	backend := flag.String("speculative-backend", "replay", "speculative verifier backend")
+	nativeQwenMTP := flag.Bool("qwen-native-mtp", false, "check Qwen3.5/Qwen3.6 native MTP path when available")
 	goldenPath := flag.String("golden", "", "optional golden JSON to compare normal outputs against")
 	writeGoldenPath := flag.String("write-golden", "", "optional path to write normal-output golden JSON")
 	flag.Parse()
@@ -83,6 +84,10 @@ func main() {
 		os.Exit(2)
 	}
 	m.Tok = tok
+	if *nativeQwenMTP {
+		fmt.Fprintln(os.Stderr, "qwen native MTP speccheck mode is not wired to LoadLlama yet; use qwenmtpmeta for metadata and synthetic model tests for now")
+		os.Exit(2)
+	}
 	prompts, err := loadPrompts(*prompt, *promptFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "prompts: %v\n", err)

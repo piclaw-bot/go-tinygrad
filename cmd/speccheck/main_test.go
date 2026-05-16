@@ -3,8 +3,16 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestNativeQwenMTPModeMessage(t *testing.T) {
+	msg := "qwen native MTP speccheck mode is not wired to LoadLlama yet; use qwenmtpmeta for metadata and synthetic model tests for now"
+	if !strings.Contains(msg, "not wired") || !strings.Contains(msg, "qwenmtpmeta") {
+		t.Fatalf("message=%q", msg)
+	}
+}
 
 func TestFirstMismatch(t *testing.T) {
 	cases := []struct {
