@@ -62,6 +62,35 @@ type SpeculativeStats struct {
 	FallbackSteps   int
 }
 
+func (s SpeculativeStats) Add(other SpeculativeStats) SpeculativeStats {
+	if s.VerifierBackend == "" {
+		s.VerifierBackend = other.VerifierBackend
+	}
+	if s.Proposer == "" {
+		s.Proposer = other.Proposer
+	}
+	s.Steps += other.Steps
+	s.ProposalSteps += other.ProposalSteps
+	s.ProposedTokens += other.ProposedTokens
+	s.AcceptedTokens += other.AcceptedTokens
+	s.BonusTokens += other.BonusTokens
+	s.FallbackSteps += other.FallbackSteps
+	return s
+}
+
+func (s SpeculativeStats) Average(n int) SpeculativeStats {
+	if n <= 1 {
+		return s
+	}
+	s.Steps /= n
+	s.ProposalSteps /= n
+	s.ProposedTokens /= n
+	s.AcceptedTokens /= n
+	s.BonusTokens /= n
+	s.FallbackSteps /= n
+	return s
+}
+
 func (s SpeculativeStats) AcceptanceRate() float64 {
 	if s.ProposedTokens <= 0 {
 		return 0

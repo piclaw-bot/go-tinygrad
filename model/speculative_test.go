@@ -14,7 +14,7 @@ func TestGenerateSpeculativeWithStatsDisabled(t *testing.T) {
 }
 
 func TestSpeculativeStatsDerivedMetrics(t *testing.T) {
-	stats := SpeculativeStats{VerifierBackend: "replay", Steps: 3, ProposalSteps: 2, ProposedTokens: 4, AcceptedTokens: 3, BonusTokens: 2, FallbackSteps: 1}
+	stats := SpeculativeStats{VerifierBackend: "replay", Proposer: "prompt", Steps: 3, ProposalSteps: 2, ProposedTokens: 4, AcceptedTokens: 3, BonusTokens: 2, FallbackSteps: 1}
 	if got := stats.AcceptanceRate(); got != 0.75 {
 		t.Fatalf("AcceptanceRate=%v want 0.75", got)
 	}
@@ -26,6 +26,14 @@ func TestSpeculativeStatsDerivedMetrics(t *testing.T) {
 	}
 	if got := stats.AverageProposalLen(); got != 2.0 {
 		t.Fatalf("AverageProposalLen=%v want 2", got)
+	}
+	stats = stats.Add(SpeculativeStats{Steps: 3, ProposalSteps: 2, ProposedTokens: 4, AcceptedTokens: 1, BonusTokens: 2, FallbackSteps: 0})
+	if stats.Steps != 6 || stats.ProposalSteps != 4 || stats.ProposedTokens != 8 || stats.AcceptedTokens != 4 || stats.BonusTokens != 4 || stats.FallbackSteps != 1 {
+		t.Fatalf("Add stats=%+v", stats)
+	}
+	avg := stats.Average(2)
+	if avg.Steps != 3 || avg.ProposalSteps != 2 || avg.ProposedTokens != 4 || avg.AcceptedTokens != 2 || avg.BonusTokens != 2 {
+		t.Fatalf("Average stats=%+v", avg)
 	}
 	stats = SpeculativeStats{}
 	if stats.AcceptanceRate() != 0 || stats.TokensPerStep() != 0 || stats.AverageProposalLen() != 0 {

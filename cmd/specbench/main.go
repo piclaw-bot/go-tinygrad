@@ -80,11 +80,11 @@ func main() {
 			match = match && sameInts(normal, runNormal) && sameInts(spec, runSpec)
 		}
 		match = match && sameInts(runNormal, runSpec)
-		stats = addStats(stats, runStats)
+		stats = stats.Add(runStats)
 	}
 	normalElapsed /= time.Duration(*repeat)
 	specElapsed /= time.Duration(*repeat)
-	stats = averageStats(stats, *repeat)
+	stats = stats.Average(*repeat)
 
 	normalTokS := tokensPerSecond(len(normal)-len(ids), normalElapsed)
 	specTokS := tokensPerSecond(len(spec)-len(ids), specElapsed)
@@ -141,35 +141,6 @@ func benchRow(modelID string, promptTokens, maxTokens, repeat int, mode string, 
 		strconv.FormatFloat(stats.TokensPerStep(), 'f', 3, 64),
 		strconv.FormatFloat(stats.AverageProposalLen(), 'f', 3, 64),
 	}
-}
-
-func addStats(a, b model.SpeculativeStats) model.SpeculativeStats {
-	if a.VerifierBackend == "" {
-		a.VerifierBackend = b.VerifierBackend
-	}
-	if a.Proposer == "" {
-		a.Proposer = b.Proposer
-	}
-	a.Steps += b.Steps
-	a.ProposalSteps += b.ProposalSteps
-	a.ProposedTokens += b.ProposedTokens
-	a.AcceptedTokens += b.AcceptedTokens
-	a.BonusTokens += b.BonusTokens
-	a.FallbackSteps += b.FallbackSteps
-	return a
-}
-
-func averageStats(s model.SpeculativeStats, n int) model.SpeculativeStats {
-	if n <= 1 {
-		return s
-	}
-	s.Steps /= n
-	s.ProposalSteps /= n
-	s.ProposedTokens /= n
-	s.AcceptedTokens /= n
-	s.BonusTokens /= n
-	s.FallbackSteps /= n
-	return s
 }
 
 func tokensPerSecond(generated int, elapsed time.Duration) float64 {

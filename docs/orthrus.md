@@ -71,7 +71,7 @@ Current opt-in hook:
 - The current verifier scaffold runs greedy verification with the real model and accepts the longest matching prompt-lookup prefix. Debug stats report `backend=replay proposer=prompt` until the KV-reusing backend lands.
 - This first verifier is correctness-oriented and reuses the existing CPU generator from a prepared prompt, so it can be slower; the speedup requires replacing it with a stateful/batched verifier block that reuses KV cache.
 - `CPUDecodeState` now defines the KV/output checkpoint, restore, `GenerateGreedy`/`DecodeOneGreedy`, accepted-prefix commit, and `VerifyGreedyBlock` contract for that stateful verifier.
-- `GenerateSpeculativeWithStats` returns structured acceptance/fallback metrics for benchmarks without scraping debug stderr, including emitted-token and tokens-per-step derived metrics.
+- `GenerateSpeculativeWithStats` returns structured acceptance/fallback metrics for benchmarks without scraping debug stderr, including reusable stats add/average helpers and emitted-token/tokens-per-step derived metrics.
 - `cmd/specbench` runs normal vs speculative generation and emits CSV rows with timing, speedup-vs-normal, parity, repeat count, and structured speculative stats.
 
 Candidate non-custom proposers:
