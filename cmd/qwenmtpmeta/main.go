@@ -23,6 +23,7 @@ type Report struct {
 	MTPTensorCount            int                                       `json:"mtp_tensor_count"`
 	OptionalSharedHeadCount   int                                       `json:"optional_shared_head_count"`
 	MissingMTPTensorCount     int                                       `json:"missing_mtp_tensor_count"`
+	MTPTensorComplete         bool                                      `json:"mtp_tensor_complete"`
 }
 
 func main() {
@@ -63,6 +64,7 @@ func main() {
 	report.MTPTensorCount = len(report.MTPTensors)
 	report.OptionalSharedHeadCount = len(report.OptionalSharedHeadTensors)
 	report.MissingMTPTensorCount = len(report.MissingMTPTensors)
+	report.MTPTensorComplete = meta.MTPNumHiddenLayers > 0 && len(report.MissingMTPTensors) == 0 && len(report.MTPTensors) > 0
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(report); err != nil {
