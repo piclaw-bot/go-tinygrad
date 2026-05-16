@@ -51,6 +51,7 @@ func TestGoldenReportMetadataChecks(t *testing.T) {
 	prompts := []string{"p"}
 	golden := &GoldenReport{Model: "expected", Prompts: []GoldenPrompt{{PromptIndex: 0}, {PromptIndex: 1}}}
 	report := CheckReport{Passed: true, GoldenMatch: true}
+	report.GoldenChecks += 2
 	if golden.Model != "" && golden.Model != modelID {
 		report.Passed = false
 		report.GoldenMatch = false
@@ -61,7 +62,7 @@ func TestGoldenReportMetadataChecks(t *testing.T) {
 		report.GoldenMatch = false
 		report.FailedGoldenChecks++
 	}
-	if report.Passed || report.GoldenMatch || report.FailedGoldenChecks != 2 {
+	if report.Passed || report.GoldenMatch || report.GoldenChecks != 2 || report.FailedGoldenChecks != 2 {
 		t.Fatalf("metadata mismatch report=%+v", report)
 	}
 }

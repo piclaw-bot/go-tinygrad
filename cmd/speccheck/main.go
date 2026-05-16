@@ -102,6 +102,7 @@ func main() {
 	}
 	report := CheckReport{Model: modelID, Passed: true, GoldenMatch: true}
 	if golden != nil {
+		report.GoldenChecks += 2 // model metadata + prompt-count metadata
 		if golden.Model != "" && golden.Model != modelID {
 			report.Passed = false
 			report.GoldenMatch = false
