@@ -131,6 +131,20 @@ func NewQwen35BaseForwardState(model *Qwen35BaseModel, meta loaderconfig.QwenNat
 	return state, nil
 }
 
+func (m *Qwen35BaseModel) ForwardSequence(inputs [][]float32, state Qwen35BaseForwardState, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([][]float32, Qwen35BaseForwardState, error) {
+	outs := make([][]float32, 0, len(inputs))
+	curState := CloneQwen35BaseForwardState(state)
+	for i, input := range inputs {
+		out, next, err := m.ForwardOne(input, curState, curState.Pos, ropeFreqs, eps, meta)
+		if err != nil {
+			return nil, state, fmt.Errorf("Qwen3.5 sequence step %d: %w", i, err)
+		}
+		outs = append(outs, out)
+		curState = next
+	}
+	return outs, curState, nil
+}
+
 func (m *Qwen35BaseModel) ForwardOne(input []float32, state Qwen35BaseForwardState, pos int, ropeFreqs []float32, eps float32, meta loaderconfig.QwenNativeMTPMetadata) ([]float32, Qwen35BaseForwardState, error) {
 	if m == nil {
 		return nil, state, fmt.Errorf("nil Qwen3.5 base model")

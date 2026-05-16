@@ -76,6 +76,30 @@ func TestCloneQwen35BaseForwardState(t *testing.T) {
 	}
 }
 
+func TestQwen35BaseModelForwardSequence(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	meta.NumHiddenLayers = 1
+	meta.MTPNumHiddenLayers = 0
+	meta.LayerTypes = []string{"full_attention"}
+	src := CandidateQwen35TensorSource{Source: fullQwen35LayerSource(meta, "model.layers.0")}
+	base, err := LoadQwen35BaseModelLayers(src, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := NewQwen35BaseForwardState(base, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outs, next, err := base.ForwardSequence([][]float32{{1, 0, 0, 0}, {0, 1, 0, 0}}, state, nil, 1e-6, meta)
+	if err != nil {
+		t.Fatalf("ForwardSequence: %v", err)
+	}
+	wantKV := 2 * meta.NumKeyValueHeads * meta.HeadDim
+	if len(outs) != 2 || next.Pos != 2 || len(next.FullK[0]) != wantKV || len(state.FullK[0]) != 0 {
+		t.Fatalf("outs=%v state=%+v next=%+v", outs, state, next)
+	}
+}
+
 func TestQwen35BaseModelForwardOneDoesNotMutateInputState(t *testing.T) {
 	meta := testQwen35BaseMeta()
 	meta.NumHiddenLayers = 1
