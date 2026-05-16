@@ -133,7 +133,7 @@ func GemvQ4(out *DevBuf, x *DevBuf, w *GPUQuantWeight) {
 	if !validGPUQuantWeight(w) || x == nil || out == nil || x.n < w.InDim || out.n < w.OutDim {
 		return
 	}
-	if !q4Ready || !tryGPU(x, out) {
+	if !q4Ready || !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) || !tryGPU(x, out) {
 		gemvQ4CPU(out, x, w)
 		return
 	}

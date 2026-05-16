@@ -27,6 +27,9 @@ func Sgemm(M, N, K int, alpha float32, A, B, C *Buffer) error {
 	if !okMK || !okKN || !okMN || errMK != nil || errKN != nil || errMN != nil || A.Size < int(mkBytes) || B.Size < int(knBytes) || C.Size < int(mnBytes) {
 		return fmt.Errorf("invalid SGEMM buffer sizes")
 	}
+	if !fitsUint32(M) || !fitsUint32(N) || !fitsUint32(K) {
+		return fmt.Errorf("SGEMM dimensions exceed CUDA u32 interface M=%d N=%d K=%d", M, N, K)
+	}
 	if !SgemmReady() {
 		return fmt.Errorf("GPU SGEMM not available")
 	}

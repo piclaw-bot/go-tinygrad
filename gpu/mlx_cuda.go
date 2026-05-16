@@ -289,6 +289,9 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 	// Note: this gives (val-8)*scale instead of val*scale+bias
 	// The 8*scale+bias correction is small and applied separately
 	if w.AsGPTQ != nil && q4Ready {
+		if !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) || !fitsUint32(w.GroupSz) {
+			return
+		}
 		if !tryGPU(x) {
 			return
 		}
@@ -312,7 +315,7 @@ func GemvMLX(out *DevBuf, x *DevBuf, w *GPUMLXWeight) {
 		}
 		return
 	}
-	if fnMLXGemv == 0 || !tryGPU(x, out) {
+	if fnMLXGemv == 0 || !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) || !fitsUint32(w.GroupSz) || !tryGPU(x, out) {
 		return
 	}
 	EnsureContext()
@@ -345,7 +348,7 @@ func GemmMLX(out, input *DevBuf, w *GPUMLXWeight, B int) {
 	}
 	inNeed, okIn := checkedMulInt(B, w.InDim)
 	outNeed, okOut := checkedMulInt(B, w.OutDim)
-	if !okIn || !okOut || input.n < inNeed || out.n < outNeed || !tryGPU(input, out) {
+	if !okIn || !okOut || input.n < inNeed || out.n < outNeed || !fitsUint32(w.InDim) || !fitsUint32(w.OutDim) || !fitsUint32(w.Groups) || !fitsUint32(w.GroupSz) || !fitsUint32(B) || !tryGPU(input, out) {
 		return
 	}
 	EnsureContext()
