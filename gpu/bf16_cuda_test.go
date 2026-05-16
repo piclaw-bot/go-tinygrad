@@ -19,11 +19,25 @@ func TestBF16DispatchValidation(t *testing.T) {
 	if validBF16Buffer(&Buffer{Ptr: 1, Size: maxInt}, int(^uint32(0))+1) {
 		t.Fatal("BF16 length exceeding CUDA u32 interface accepted")
 	}
-	DevBF16RMSNorm(nil, nil, 1, 1e-6)
-	DevBF16RMSNormNoScale(nil, 1, 1e-6)
-	DevBF16VecAdd(nil, nil, nil, 1)
-	DevBF16SiLUMul(nil, nil, nil, 1)
-	DevBF16GELUTanhMul(nil, nil, 1)
-	DevNativeBF16RMSNorm(nil, nil, 1, 1e-6)
-	DevNativeBF16VecAdd(nil, nil, nil, 1)
+	if DevBF16RMSNorm(nil, nil, 1, 1e-6) {
+		t.Fatal("nil BF16 RMSNorm reported success")
+	}
+	if DevBF16RMSNormNoScale(nil, 1, 1e-6) {
+		t.Fatal("nil BF16 RMSNormNoScale reported success")
+	}
+	if DevBF16VecAdd(nil, nil, nil, 1) {
+		t.Fatal("nil BF16 VecAdd reported success")
+	}
+	if DevBF16SiLUMul(nil, nil, nil, 1) {
+		t.Fatal("nil BF16 SiLUMul reported success")
+	}
+	if DevBF16GELUTanhMul(nil, nil, 1) {
+		t.Fatal("nil BF16 GELUTanhMul reported success")
+	}
+	if DevNativeBF16RMSNorm(nil, nil, 1, 1e-6) {
+		t.Fatal("nil native BF16 RMSNorm reported success")
+	}
+	if DevNativeBF16VecAdd(nil, nil, nil, 1) {
+		t.Fatal("nil native BF16 VecAdd reported success")
+	}
 }

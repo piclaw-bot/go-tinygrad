@@ -20,71 +20,71 @@ var fnBF16GELUTanhMul CUfunction
 var fnBF16Gemv CUfunction
 
 // DevBF16RMSNorm applies RMSNorm on BF16 data: x[i] = BF16(F32(x[i]) * invRMS * F32(w[i]))
-func DevBF16RMSNorm(x, w *Buffer, n int, eps float32) {
+func DevBF16RMSNorm(x, w *Buffer, n int, eps float32) bool {
 	if fnBF16RMSNorm == 0 || !validBF16Buffer(x, n) || !validBF16Buffer(w, n) {
-		return
+		return false
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnBF16RMSNorm, 1, 1, 1, 256, 1, 1, 256*4,
+	return LaunchKernel(fnBF16RMSNorm, 1, 1, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&x.Ptr),
 		unsafe.Pointer(&w.Ptr),
 		unsafe.Pointer(&nn),
-		unsafe.Pointer(&eps))
+		unsafe.Pointer(&eps)) == nil
 }
 
 // DevBF16RMSNormNoScale applies RMSNormNoScale on BF16 data: x[i] = BF16(F32(x[i]) * invRMS).
-func DevBF16RMSNormNoScale(x *Buffer, n int, eps float32) {
+func DevBF16RMSNormNoScale(x *Buffer, n int, eps float32) bool {
 	if fnBF16RMSNormNoScale == 0 || !validBF16Buffer(x, n) {
-		return
+		return false
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnBF16RMSNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
+	return LaunchKernel(fnBF16RMSNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
 		unsafe.Pointer(&x.Ptr),
 		unsafe.Pointer(&nn),
-		unsafe.Pointer(&eps))
+		unsafe.Pointer(&eps)) == nil
 }
 
 // DevBF16VecAdd computes dst[i] = BF16(F32(a[i]) + F32(b[i]))
-func DevBF16VecAdd(dst, a, b *Buffer, n int) {
+func DevBF16VecAdd(dst, a, b *Buffer, n int) bool {
 	if fnBF16VecAdd == 0 || !validBF16Buffer(dst, n) || !validBF16Buffer(a, n) || !validBF16Buffer(b, n) {
-		return
+		return false
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16VecAdd, (nn+255)/256, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&a.Ptr),
 		unsafe.Pointer(&b.Ptr),
 		unsafe.Pointer(&dst.Ptr),
-		unsafe.Pointer(&nn))
+		unsafe.Pointer(&nn)) == nil
 }
 
 // DevBF16SiLUMul computes dst[i] = BF16(SiLU(F32(gate[i])) * F32(up[i])).
-func DevBF16SiLUMul(dst, gate, up *Buffer, n int) {
+func DevBF16SiLUMul(dst, gate, up *Buffer, n int) bool {
 	if fnBF16SiLUMul == 0 || !validBF16Buffer(dst, n) || !validBF16Buffer(gate, n) || !validBF16Buffer(up, n) {
-		return
+		return false
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnBF16SiLUMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16SiLUMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
 		unsafe.Pointer(&dst.Ptr),
-		unsafe.Pointer(&nn))
+		unsafe.Pointer(&nn)) == nil
 }
 
 // DevBF16GELUTanhMul computes gate[i] = BF16(GELUTanh(F32(gate[i])) * F32(up[i])) in-place.
-func DevBF16GELUTanhMul(gate, up *Buffer, n int) {
+func DevBF16GELUTanhMul(gate, up *Buffer, n int) bool {
 	if fnBF16GELUTanhMul == 0 || !validBF16Buffer(gate, n) || !validBF16Buffer(up, n) {
-		return
+		return false
 	}
 	EnsureContext()
 	nn := uint32(n)
-	LaunchKernel(fnBF16GELUTanhMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
+	return LaunchKernel(fnBF16GELUTanhMul, (nn+255)/256, 1, 1, 256, 1, 1, 0,
 		unsafe.Pointer(&gate.Ptr),
 		unsafe.Pointer(&up.Ptr),
-		unsafe.Pointer(&nn))
+		unsafe.Pointer(&nn)) == nil
 }
 
 func validBF16Buffer(b *Buffer, n int) bool {
