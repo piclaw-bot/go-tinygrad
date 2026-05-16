@@ -18,12 +18,15 @@ type SpeculativeConfig struct {
 }
 
 type SpeculativeProposer interface {
+	Name() string
 	Propose(context []int, max int) []int
 }
 
 type PromptLookupProposer struct {
 	NGram int
 }
+
+func (p PromptLookupProposer) Name() string { return "prompt" }
 
 func (p PromptLookupProposer) Propose(context []int, max int) []int {
 	return PromptLookupProposal(context, max, p.NGram)
@@ -40,6 +43,7 @@ func NewSpeculativeProposer(cfg SpeculativeConfig) SpeculativeProposer {
 
 type SpeculativeStats struct {
 	VerifierBackend string
+	Proposer        string
 	Steps           int
 	ProposalSteps   int
 	ProposedTokens  int
@@ -145,11 +149,11 @@ func (m *LlamaModel) GenerateSpeculative(tokenIDs []int, maxTokens int, cfg Spec
 	if err != nil {
 		return m.generatePrepared(prepared, maxTokens)
 	}
-	stats := SpeculativeStats{VerifierBackend: state.VerifierBackend()}
+	stats := SpeculativeStats{VerifierBackend: state.VerifierBackend(), Proposer: proposer.Name()}
 	defer func() {
 		if cfg.Debug {
-			fmt.Fprintf(os.Stderr, "speculative backend=%s steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
-				stats.VerifierBackend, stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
+			fmt.Fprintf(os.Stderr, "speculative backend=%s proposer=%s steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
+				stats.VerifierBackend, stats.Proposer, stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
 		}
 	}()
 	for len(state.Output) < len(prepared)+maxTokens {

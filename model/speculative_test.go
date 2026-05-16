@@ -23,6 +23,9 @@ func TestNewSpeculativeProposerDefaultsToPromptLookup(t *testing.T) {
 
 func TestPromptLookupProposer(t *testing.T) {
 	p := PromptLookupProposer{NGram: 2}
+	if p.Name() != "prompt" {
+		t.Fatalf("Name=%q want prompt", p.Name())
+	}
 	got := p.Propose([]int{1, 2, 3, 4, 1, 2}, 2)
 	want := []int{3, 4}
 	if !sameInts(got, want) {
