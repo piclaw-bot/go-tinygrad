@@ -232,6 +232,31 @@ func TestSplitQwen35LinearQKVZ(t *testing.T) {
 	}
 }
 
+func TestSplitQwen35LinearConvOutput(t *testing.T) {
+	meta := testQwen35BaseMeta()
+	shapes, err := qwen35LinearAttentionShapesFromMeta(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conv := make([]float32, shapes.ConvDim)
+	for i := range conv {
+		conv[i] = float32(i + 1)
+	}
+	k, v, err := splitQwen35LinearConvOutput(conv, shapes)
+	if err != nil {
+		t.Fatalf("splitQwen35LinearConvOutput: %v", err)
+	}
+	if len(k) != shapes.ConvDim-shapes.ValueDim || len(v) != shapes.ValueDim {
+		t.Fatalf("lens K/V=%d/%d", len(k), len(v))
+	}
+	if k[0] != 1 || v[0] != float32(len(k)+1) {
+		t.Fatalf("K/V=%v/%v", k, v)
+	}
+	if _, _, err := splitQwen35LinearConvOutput(conv[:len(conv)-1], shapes); err == nil {
+		t.Fatal("bad conv length returned nil error")
+	}
+}
+
 func TestApplyQwen35LinearDepthwiseConv(t *testing.T) {
 	out, err := applyQwen35LinearDepthwiseConv(
 		[]float32{1, 2, 3, 4, 5, 6},
