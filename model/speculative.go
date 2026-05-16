@@ -68,6 +68,24 @@ func (s SpeculativeStats) AcceptanceRate() float64 {
 	return float64(s.AcceptedTokens) / float64(s.ProposedTokens)
 }
 
+func (s SpeculativeStats) EmittedTokens() int {
+	return s.AcceptedTokens + s.BonusTokens + s.FallbackSteps
+}
+
+func (s SpeculativeStats) TokensPerStep() float64 {
+	if s.Steps <= 0 {
+		return 0
+	}
+	return float64(s.EmittedTokens()) / float64(s.Steps)
+}
+
+func (s SpeculativeStats) AverageProposalLen() float64 {
+	if s.ProposalSteps <= 0 {
+		return 0
+	}
+	return float64(s.ProposedTokens) / float64(s.ProposalSteps)
+}
+
 func SpeculativeConfigFromEnv() SpeculativeConfig {
 	cfg := SpeculativeConfig{
 		Enabled:     os.Getenv("GO_PHERENCE_SPECULATIVE") == "1",
@@ -184,8 +202,8 @@ func (m *LlamaModel) GenerateSpeculativeWithStats(tokenIDs []int, maxTokens int,
 	stats := SpeculativeStats{VerifierBackend: state.VerifierBackend(), Proposer: proposer.Name()}
 	defer func() {
 		if cfg.Debug {
-			fmt.Fprintf(os.Stderr, "speculative backend=%s proposer=%s steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f\n",
-				stats.VerifierBackend, stats.Proposer, stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate())
+			fmt.Fprintf(os.Stderr, "speculative backend=%s proposer=%s steps=%d proposal_steps=%d proposed=%d accepted=%d bonus=%d fallback=%d acceptance=%.2f emitted=%d tok_per_step=%.2f avg_proposal=%.2f\n",
+				stats.VerifierBackend, stats.Proposer, stats.Steps, stats.ProposalSteps, stats.ProposedTokens, stats.AcceptedTokens, stats.BonusTokens, stats.FallbackSteps, stats.AcceptanceRate(), stats.EmittedTokens(), stats.TokensPerStep(), stats.AverageProposalLen())
 		}
 	}()
 	for len(state.Output) < len(prepared)+maxTokens {

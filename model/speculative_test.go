@@ -13,14 +13,23 @@ func TestGenerateSpeculativeWithStatsDisabled(t *testing.T) {
 	}
 }
 
-func TestSpeculativeStatsAcceptanceRate(t *testing.T) {
-	stats := SpeculativeStats{VerifierBackend: "replay", ProposedTokens: 4, AcceptedTokens: 3}
+func TestSpeculativeStatsDerivedMetrics(t *testing.T) {
+	stats := SpeculativeStats{VerifierBackend: "replay", Steps: 3, ProposalSteps: 2, ProposedTokens: 4, AcceptedTokens: 3, BonusTokens: 2, FallbackSteps: 1}
 	if got := stats.AcceptanceRate(); got != 0.75 {
 		t.Fatalf("AcceptanceRate=%v want 0.75", got)
 	}
-	stats.ProposedTokens = 0
-	if got := stats.AcceptanceRate(); got != 0 {
-		t.Fatalf("zero-proposal AcceptanceRate=%v want 0", got)
+	if got := stats.EmittedTokens(); got != 6 {
+		t.Fatalf("EmittedTokens=%d want 6", got)
+	}
+	if got := stats.TokensPerStep(); got != 2.0 {
+		t.Fatalf("TokensPerStep=%v want 2", got)
+	}
+	if got := stats.AverageProposalLen(); got != 2.0 {
+		t.Fatalf("AverageProposalLen=%v want 2", got)
+	}
+	stats = SpeculativeStats{}
+	if stats.AcceptanceRate() != 0 || stats.TokensPerStep() != 0 || stats.AverageProposalLen() != 0 {
+		t.Fatalf("zero stats produced non-zero derived metrics: %+v", stats)
 	}
 }
 
