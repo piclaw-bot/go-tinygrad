@@ -1021,7 +1021,7 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 					if copyOK {
 						kvBytes, kOff, ok := kvCopyByteRange(pos, layerKVDim, kvKPtr.Size)
 						_, _, okV := kvCopyByteRange(pos, layerKVDim, kvVPtr.Size)
-						if !ok || !okV {
+						if !ok || !okV || kPtr.Size < int(kvBytes) || vPtr.Size < int(kvBytes) {
 							copyOK = false
 						} else if err := gpu.CopyDtoD(kvKPtr.Ptr+kOff, kPtr.Ptr, kvBytes); err != nil {
 							copyOK = false
@@ -1039,8 +1039,8 @@ func (g *GPUModel) Generate(tokenIDs []int, maxTokens int) []int {
 							// GPU cache before switching this layer to CPU attention so sequence
 							// length remains correct instead of globally forcing unrelated layers to
 							// use incomplete CPU shadows.
-							prefix := pos * layerKVDim
-							if prefix > 0 {
+							prefix, okPrefix := checkedProduct(pos, layerKVDim)
+							if okPrefix && prefix > 0 {
 								kg := g.kvGPU_K[l].Data()
 								vg := g.kvGPU_V[l].Data()
 								if len(kg) >= prefix && len(vg) >= prefix {
