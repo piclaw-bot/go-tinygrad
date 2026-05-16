@@ -108,6 +108,48 @@ func TestNVFP4CompanionNames(t *testing.T) {
 	}
 }
 
+func TestParseQwenNativeMTPMetadata(t *testing.T) {
+	json := `{
+		"architectures":["Qwen3_5ForConditionalGeneration"],
+		"model_type":"qwen3_5",
+		"text_config":{
+			"model_type":"qwen3_5_text",
+			"hidden_size":5120,
+			"num_hidden_layers":64,
+			"mtp_num_hidden_layers":1,
+			"mtp_use_dedicated_embeddings":false,
+			"layer_types":["linear_attention","linear_attention","linear_attention","full_attention"]
+		}
+	}`
+	got, err := ParseQwenNativeMTPMetadata([]byte(json))
+	if err != nil {
+		t.Fatalf("ParseQwenNativeMTPMetadata: %v", err)
+	}
+	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.NumHiddenLayers != 64 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
+		t.Fatalf("metadata=%+v", got)
+	}
+}
+
+func TestIsQwenNativeMTPTensorName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"mtp.fc.weight", true},
+		{"mtp.pre_fc_norm_embedding.weight", true},
+		{"mtp.pre_fc_norm_hidden.weight", true},
+		{"mtp.norm.weight", true},
+		{"mtp.layers.0.self_attn.q_proj.weight", true},
+		{"model.layers.0.self_attn.q_proj.weight", false},
+		{"lm_head.weight", false},
+	}
+	for _, tc := range cases {
+		if got := IsQwenNativeMTPTensorName(tc.name); got != tc.want {
+			t.Fatalf("IsQwenNativeMTPTensorName(%q)=%v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestParseQuantizationMetadata(t *testing.T) {
 	cases := []struct {
 		name            string

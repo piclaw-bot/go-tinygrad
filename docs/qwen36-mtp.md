@@ -184,7 +184,7 @@ For go-pherence, this maps onto:
   - `mtp_num_hidden_layers`
   - `mtp_use_dedicated_embeddings`
   - linear/full attention config fields used by Qwen3.5 text models.
-- [ ] Add safetensors/header metadata tests for native `mtp.*` tensor detection without downloading weights.
+- [x] Add config/tensor-name metadata tests for native `mtp.*` tensor detection without downloading weights.
 - [x] Add early clear diagnostic: `qwen3_5_text native MTP detected, base architecture unsupported` instead of failing later on tensor names.
 
 ### Phase B — base Qwen3.5/Qwen3.6 model support
