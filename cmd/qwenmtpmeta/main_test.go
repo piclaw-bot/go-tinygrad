@@ -1,0 +1,23 @@
+package main
+
+import (
+	"encoding/json"
+	"testing"
+
+	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
+)
+
+func TestReportCanLoadSharedHeadJSON(t *testing.T) {
+	report := Report{Config: loaderconfig.QwenNativeMTPMetadata{HiddenSize: 4, VocabSize: 2}, CanLoadSharedHead: true}
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var decoded Report
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !decoded.CanLoadSharedHead || decoded.Config.VocabSize != 2 {
+		t.Fatalf("decoded=%+v", decoded)
+	}
+}

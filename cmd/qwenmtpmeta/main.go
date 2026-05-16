@@ -18,6 +18,7 @@ type Report struct {
 	LinearAttentionShapes *loaderconfig.Qwen35LinearAttentionShapes `json:"linear_attention_shapes,omitempty"`
 	MTPTensors            []string                                  `json:"mtp_tensors,omitempty"`
 	MissingMTPTensors     []string                                  `json:"missing_mtp_tensors,omitempty"`
+	CanLoadSharedHead     bool                                      `json:"can_load_shared_head"`
 }
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "parse config: %v\n", err)
 		os.Exit(2)
 	}
-	report := Report{Config: meta, LayerSummary: meta.LayerSummary()}
+	report := Report{Config: meta, LayerSummary: meta.LayerSummary(), CanLoadSharedHead: meta.VocabSize > 0 && meta.HiddenSize > 0}
 	if shapes, err := loaderconfig.Qwen35FullAttentionShapesFor(meta.HiddenSize, meta.NumAttentionHeads, meta.NumKeyValueHeads, meta.HeadDim); err == nil {
 		report.FullAttentionShapes = &shapes
 	}
