@@ -80,7 +80,7 @@ func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDi
 	kvDim, okKVDim := checkedMulInt(nKVHeads, headDim)
 	cacheLen, okCache := checkedMulInt(seqLen, kvDim)
 	scoreLen, okScore := checkedMulInt(nHeads, seqLen)
-	if attnScoreReady && seqLen > 0 && seqLen <= 2048 && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && okScore && out != nil && q != nil && kCache != nil && out.n >= scoreLen && q.n >= qLen && kCache.n >= cacheLen && tryGPU(out, q, kCache) {
+	if attnScoreReady && fitsUint32(seqLen) && seqLen > 0 && seqLen <= 2048 && fitsUint32(nHeads) && fitsUint32(nKVHeads) && fitsUint32(headDim) && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && okScore && out != nil && q != nil && kCache != nil && out.n >= scoreLen && q.n >= qLen && kCache.n >= cacheLen && tryGPU(out, q, kCache) {
 		sl := uint32(seqLen)
 		nh := uint32(nHeads)
 		nkv := uint32(nKVHeads)
@@ -105,7 +105,7 @@ func DevAttentionScores(out, q, kCache *DevBuf, seqLen, nHeads, nKVHeads, headDi
 func DevSoftmaxRows(out, in *DevBuf, nRows, seqLen int) bool {
 	initRoPEAttn()
 	total, okTotal := checkedMulInt(nRows, seqLen)
-	if softmaxRowsReady && nRows > 0 && seqLen > 0 && seqLen <= 2048 && okTotal && out != nil && in != nil && out.n >= total && in.n >= total && tryGPU(out, in) {
+	if softmaxRowsReady && fitsUint32(nRows) && fitsUint32(seqLen) && nRows > 0 && seqLen > 0 && seqLen <= 2048 && okTotal && out != nil && in != nil && out.n >= total && in.n >= total && tryGPU(out, in) {
 		sl := uint32(seqLen)
 		LaunchKernel(softmaxRowsFn, uint32(nRows), 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&in.gpu.Ptr),
@@ -124,7 +124,7 @@ func DevAttention(out, q, kCache, vCache *DevBuf, seqLen, nHeads, nKVHeads, head
 	qLen, okQ := checkedMulInt(nHeads, headDim)
 	kvDim, okKVDim := checkedMulInt(nKVHeads, headDim)
 	cacheLen, okCache := checkedMulInt(seqLen, kvDim)
-	if attnReady && seqLen > 0 && seqLen <= 2048 && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && out != nil && q != nil && kCache != nil && vCache != nil && out.n >= qLen && q.n >= qLen && kCache.n >= cacheLen && vCache.n >= cacheLen && tryGPU(out, q, kCache, vCache) {
+	if attnReady && fitsUint32(seqLen) && seqLen > 0 && seqLen <= 2048 && fitsUint32(nHeads) && fitsUint32(nKVHeads) && fitsUint32(headDim) && nHeads > 0 && nKVHeads > 0 && headDim > 0 && okQ && okKVDim && okCache && out != nil && q != nil && kCache != nil && vCache != nil && out.n >= qLen && q.n >= qLen && kCache.n >= cacheLen && vCache.n >= cacheLen && tryGPU(out, q, kCache, vCache) {
 		sl := uint32(seqLen)
 		nh := uint32(nHeads)
 		nkv := uint32(nKVHeads)

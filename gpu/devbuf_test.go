@@ -306,4 +306,7 @@ func TestDevRoPEAttentionMalformedDoesNotPanic(t *testing.T) {
 	maxInt := int(^uint(0) >> 1)
 	DevRoPE(short, short, 0, maxInt/2+1, 4)
 	_ = DevAttentionScores(short, short, short, 3, maxInt/2+1, 1, 4, 1)
+	if DevSoftmaxRows(short, short, int(^uint32(0))+1, 1) {
+		t.Fatal("softmax rows accepted nRows exceeding CUDA u32 interface")
+	}
 }
