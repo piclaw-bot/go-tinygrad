@@ -28,10 +28,12 @@ type CheckResult struct {
 }
 
 type CheckReport struct {
-	Model       string        `json:"model"`
-	Passed      bool          `json:"passed"`
-	GoldenMatch bool          `json:"golden_match,omitempty"`
-	Results     []CheckResult `json:"results"`
+	Model        string        `json:"model"`
+	Passed       bool          `json:"passed"`
+	GoldenMatch  bool          `json:"golden_match,omitempty"`
+	TotalChecks  int           `json:"total_checks"`
+	FailedChecks int           `json:"failed_checks"`
+	Results      []CheckResult `json:"results"`
 }
 
 type GoldenReport struct {
@@ -111,6 +113,7 @@ func main() {
 			}
 		}
 		for _, proposer := range proposers {
+			report.TotalChecks++
 			cfg := model.SpeculativeConfig{
 				Enabled:     true,
 				BlockSize:   *block,
@@ -135,6 +138,7 @@ func main() {
 			}
 			if idx >= 0 {
 				report.Passed = false
+				report.FailedChecks++
 				if idx < len(normal) {
 					res.NormalToken = normal[idx]
 				}

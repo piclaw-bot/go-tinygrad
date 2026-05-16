@@ -146,7 +146,7 @@ go run ./cmd/speccheck -model models/smollm2-135m \
   -proposers prompt,repeat-last,none
 ```
 
-`specbench` emits normal/speculative rows with output parity, speedup vs normal, verifier backend, proposer, acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, and aggregate total rows for multi-prompt workloads. `speccheck` emits JSON and exits non-zero on any normal-vs-speculative mismatch; use `-write-golden` / `-golden` to save and compare normal-output token baselines.
+`specbench` emits normal/speculative rows with output parity, speedup vs normal, verifier backend, proposer, acceptance/fallback counters, emitted tokens, tokens/step, average proposal length, and aggregate total rows for multi-prompt workloads. `speccheck` emits JSON with total/failed check counts and exits non-zero on any normal-vs-speculative mismatch; use `-write-golden` / `-golden` to save and compare normal-output token baselines.
 
 ### llmchat — interactive chat
 

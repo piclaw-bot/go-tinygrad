@@ -39,6 +39,13 @@ func TestParseList(t *testing.T) {
 	}
 }
 
+func TestCheckReportSummaryFields(t *testing.T) {
+	r := CheckReport{Model: "m", Passed: true, TotalChecks: 3, FailedChecks: 0}
+	if r.TotalChecks != 3 || r.FailedChecks != 0 || !r.Passed {
+		t.Fatalf("report=%+v", r)
+	}
+}
+
 func TestGoldenRoundTripAndCompare(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "golden.json")
