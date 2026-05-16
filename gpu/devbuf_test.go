@@ -275,6 +275,14 @@ func TestDevLMHeadRejectsOverflowProducts(t *testing.T) {
 	if got := out.Data(); got[0] != 0 {
 		t.Fatalf("overflowing DevLMHead mutated output: %v", got)
 	}
+	DevGemv(out, x, w, maxInt/2+1, 3)
+	if got := out.Data(); got[0] != 0 {
+		t.Fatalf("overflowing DevGemv mutated output: %v", got)
+	}
+	DevGemvNN(out, x, w, 3, maxInt/2+1)
+	if got := out.Data(); got[0] != 0 {
+		t.Fatalf("overflowing DevGemvNN mutated output: %v", got)
+	}
 }
 
 func TestDevRoPEAttentionMalformedDoesNotPanic(t *testing.T) {

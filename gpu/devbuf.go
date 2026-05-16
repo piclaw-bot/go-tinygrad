@@ -213,7 +213,7 @@ func DevAdd(out, a, b *DevBuf) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && tryGPU(a, b, out) {
+	if kernelsLoaded && fitsUint32(n) && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
 		out.ToGPU()
@@ -240,7 +240,7 @@ func DevMul(out, a, b *DevBuf) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && tryGPU(a, b, out) {
+	if kernelsLoaded && fitsUint32(n) && tryGPU(a, b, out) {
 		a.ToGPU()
 		b.ToGPU()
 		out.ToGPU()
@@ -266,7 +266,7 @@ func DevScale(out, a *DevBuf, s float32) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && tryGPU(a, out) {
+	if kernelsLoaded && fitsUint32(n) && tryGPU(a, out) {
 		a.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
@@ -290,7 +290,7 @@ func DevAddScaled(out, a, b *DevBuf, s float32) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && fnVecAddScaled != 0 && tryGPU(a, b, out) {
+	if kernelsLoaded && fnVecAddScaled != 0 && fitsUint32(n) && tryGPU(a, b, out) {
 		nn := uint32(n)
 		LaunchKernel(fnVecAddScaled, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr), unsafe.Pointer(&s), unsafe.Pointer(&nn))
@@ -317,7 +317,7 @@ func DevToBF16(x *DevBuf, n int) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && fnToBF16F32 != 0 && tryGPU(x) {
+	if kernelsLoaded && fnToBF16F32 != 0 && fitsUint32(n) && tryGPU(x) {
 		x.ToGPU()
 		nn := uint32(n)
 		LaunchKernel(fnToBF16F32, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
@@ -340,7 +340,7 @@ func DevSiLU(out, a *DevBuf) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && tryGPU(a, out) {
+	if kernelsLoaded && fitsUint32(n) && tryGPU(a, out) {
 		a.ToGPU()
 		out.ToGPU()
 		nn := uint32(n)
@@ -365,7 +365,7 @@ func DevRMSNorm(out, x, weight *DevBuf, eps float32) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && n <= 256*8192 && tryGPU(x, weight, out) {
+	if kernelsLoaded && fitsUint32(n) && n <= 256*8192 && tryGPU(x, weight, out) {
 		nn := uint32(n)
 		LaunchKernel(fnRmsNorm, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&weight.gpu.Ptr),
@@ -394,7 +394,7 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && fnRmsNormNoScale != 0 && n <= 256*8192 && tryGPU(x, out) {
+	if kernelsLoaded && fnRmsNormNoScale != 0 && fitsUint32(n) && n <= 256*8192 && tryGPU(x, out) {
 		nn := uint32(n)
 		LaunchKernel(fnRmsNormNoScale, 1, 1, 1, 256, 1, 1, 256*4,
 			unsafe.Pointer(&x.gpu.Ptr), unsafe.Pointer(&out.gpu.Ptr),
@@ -417,7 +417,8 @@ func DevRMSNormNoScale(out, x *DevBuf, eps float32) {
 
 // Gemv: out[M] = W[M,K] * x[K] (matrix-vector multiply)
 func DevGemv(out, x *DevBuf, W *DevBuf, M, K int) {
-	if out == nil || x == nil || W == nil || M <= 0 || K <= 0 || out.n < M || x.n < K || W.n < M*K {
+	weightLen, ok := checkedMulInt(M, K)
+	if out == nil || x == nil || W == nil || M <= 0 || K <= 0 || !ok || out.n < M || x.n < K || W.n < weightLen {
 		return
 	}
 	if SgemmReady() && tryGPU(x, W, out) {
@@ -522,7 +523,8 @@ func (b *DevBuf) Free() {
 // GemvNN: out[N] = x[K] @ W[K,N] (W is pre-transposed, column-major for output)
 // This is for the non-Large path where weights are pre-transposed.
 func DevGemvNN(out, x *DevBuf, W *DevBuf, K, N int) {
-	if out == nil || x == nil || W == nil || K <= 0 || N <= 0 || out.n < N || x.n < K || W.n < K*N {
+	weightLen, ok := checkedMulInt(K, N)
+	if out == nil || x == nil || W == nil || K <= 0 || N <= 0 || !ok || out.n < N || x.n < K || W.n < weightLen {
 		return
 	}
 	if SgemmReady() && tryGPU(x, W, out) {
@@ -572,7 +574,7 @@ func DevSiLUMul(out, a, b *DevBuf) {
 	if n <= 0 {
 		return
 	}
-	if fusedSiLUMulOK && tryGPU(a, b, out) {
+	if fusedSiLUMulOK && fitsUint32(n) && tryGPU(a, b, out) {
 		nn := uint32(n)
 		LaunchKernel(fnFusedSiLUMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&a.gpu.Ptr), unsafe.Pointer(&b.gpu.Ptr),
@@ -600,7 +602,7 @@ func DevGELUTanhMul(gate, up *DevBuf, n int) {
 	if n <= 0 {
 		return
 	}
-	if kernelsLoaded && fnGELUTanhMul != 0 && tryGPU(gate, up) {
+	if kernelsLoaded && fnGELUTanhMul != 0 && fitsUint32(n) && tryGPU(gate, up) {
 		nn := uint32(n)
 		LaunchKernel(fnGELUTanhMul, (uint32(n)+255)/256, 1, 1, 256, 1, 1, 0,
 			unsafe.Pointer(&gate.gpu.Ptr), unsafe.Pointer(&up.gpu.Ptr),
