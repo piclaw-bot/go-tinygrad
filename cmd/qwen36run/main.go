@@ -135,12 +135,11 @@ func main() {
 		mtpLogitHidden := append([]float32(nil), mtpOut...)
 		rmsNorm(mtpLogitHidden, mtpHead.Norm.Data(), 1e-6)
 		rep.MTPNextID, rep.MTPLogit = argmaxBF16MatVec(r.lm, mtpLogitHidden)
-		verifierState := cloneRunnerState(r.state)
-		verifier := runner{bundle: r.bundle, state: verifierState, emb: r.emb, normW: r.normW, lm: r.lm}
-		verifierNext, _, _, _, err := verifier.step(rep.MTPNextID)
-		check("MTP verifier step", err)
-		rep.MTPVerifierNextID = verifierNext
-		rep.MTPAcceptedByGreedy = verifierNext == rep.MTPNextID
+		// The MTP head predicts the same next position as the base verifier logits
+		// already computed after the latest base step. Do not feed the draft back
+		// into the verifier here; that would compare against the following token.
+		rep.MTPVerifierNextID = rep.NextID
+		rep.MTPAcceptedByGreedy = rep.MTPVerifierNextID == rep.MTPNextID
 		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
 	}
 	enc := json.NewEncoder(os.Stdout)
@@ -149,10 +148,6 @@ func main() {
 	if !rep.Passed {
 		os.Exit(1)
 	}
-}
-
-func cloneRunnerState(state model.Qwen35BaseForwardState) model.Qwen35BaseForwardState {
-	return model.CloneQwen35BaseForwardState(state)
 }
 
 func (r *runner) step(tokenID int) (int, float32, []float32, []float32, error) {
