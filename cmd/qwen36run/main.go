@@ -30,6 +30,9 @@ type Report struct {
 	MTPLogit             float32 `json:"mtp_logit,omitempty"`
 	MTPVerifierNextID    int     `json:"mtp_verifier_next_id,omitempty"`
 	MTPAcceptedByGreedy  bool    `json:"mtp_accepted_by_greedy"`
+	PrefillMTPNextID     int     `json:"prefill_mtp_next_id,omitempty"`
+	PrefillMTPLogit      float32 `json:"prefill_mtp_logit,omitempty"`
+	PrefillMTPAccepted   bool    `json:"prefill_mtp_accepted"`
 	VerifierLogitForMTP  float32 `json:"verifier_logit_for_mtp,omitempty"`
 	VerifierBestMinusMTP float32 `json:"verifier_best_minus_mtp,omitempty"`
 	MTPLogitForVerifier  float32 `json:"mtp_logit_for_verifier,omitempty"`
@@ -97,6 +100,10 @@ func main() {
 		next, logit, h, preNormHidden, err = r.step(id)
 		check("prefill", err)
 	}
+	prefillVerifierNext := next
+	prefillHidden := append([]float32(nil), preNormHidden...)
+	prefillToken := inputIDs[len(inputIDs)-1]
+	prefillPos := r.state.Pos - 1
 	generated := make([]int, 0, *steps)
 	cur := next
 	for i := 0; i < *steps; i++ {
@@ -121,6 +128,17 @@ func main() {
 	if *mtp {
 		mtpHead, err := model.LoadQwenNativeMTPHeadFromSafetensorsDir(*dir, meta)
 		check("load MTP head", err)
+		if mtpHead.Norm == nil {
+			fmt.Fprintln(os.Stderr, "MTP logits: missing mtp.norm.weight")
+			os.Exit(2)
+		}
+		prefillMTPEmbedding := bf16Row(r.emb, prefillToken)
+		prefillMTPOut, err := mtpHead.ForwardOne(prefillMTPEmbedding, prefillHidden, prefillPos, nil, 1e-6, meta)
+		check("prefill MTP forward", err)
+		prefillMTPLogitHidden := append([]float32(nil), prefillMTPOut...)
+		rmsNorm(prefillMTPLogitHidden, mtpHead.Norm.Data(), 1e-6)
+		rep.PrefillMTPNextID, rep.PrefillMTPLogit = argmaxBF16MatVec(r.lm, prefillMTPLogitHidden)
+		rep.PrefillMTPAccepted = rep.PrefillMTPNextID == prefillVerifierNext
 		mtpEmbedding := bf16Row(r.emb, generated[len(generated)-1])
 		mtpOut, err := mtpHead.ForwardOne(mtpEmbedding, preNormHidden, r.state.Pos-1, nil, 1e-6, meta)
 		check("MTP forward", err)
@@ -131,10 +149,6 @@ func main() {
 			} else {
 				rep.MTPAbsSum += v
 			}
-		}
-		if mtpHead.Norm == nil {
-			fmt.Fprintln(os.Stderr, "MTP logits: missing mtp.norm.weight")
-			os.Exit(2)
 		}
 		mtpLogitHidden := append([]float32(nil), mtpOut...)
 		rmsNorm(mtpLogitHidden, mtpHead.Norm.Data(), 1e-6)
