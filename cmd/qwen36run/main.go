@@ -24,6 +24,8 @@ type Report struct {
 	NextID       int     `json:"next_id"`
 	Logit        float32 `json:"logit"`
 	HiddenAbsSum float32 `json:"hidden_abs_sum"`
+	MTPOutputLen int     `json:"mtp_output_len,omitempty"`
+	MTPAbsSum    float32 `json:"mtp_abs_sum,omitempty"`
 	Passed       bool    `json:"passed"`
 }
 
@@ -46,6 +48,7 @@ func main() {
 	token := flag.Int("token", 0, "single token id to run when -prompt is empty")
 	prompt := flag.String("prompt", "", "text prompt to encode and run")
 	steps := flag.Int("steps", 1, "greedy decode steps after prompt/token")
+	mtp := flag.Bool("mtp", false, "also run native MTP head from last base hidden state and generated token")
 	flag.Parse()
 	if *dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: qwen36run -model <dir> [-token id | -prompt text] [-steps n]")
@@ -81,15 +84,16 @@ func main() {
 	var next int
 	var logit float32
 	var h []float32
+	var preNormHidden []float32
 	for _, id := range inputIDs {
-		next, logit, h, err = r.step(id)
+		next, logit, h, preNormHidden, err = r.step(id)
 		check("prefill", err)
 	}
 	generated := make([]int, 0, *steps)
 	cur := next
 	for i := 0; i < *steps; i++ {
 		generated = append(generated, cur)
-		next, logit, h, err = r.step(cur)
+		next, logit, h, preNormHidden, err = r.step(cur)
 		check("decode", err)
 		cur = next
 	}
@@ -106,6 +110,22 @@ func main() {
 		decoded = tok.Decode(generated)
 	}
 	rep := Report{ModelDir: *dir, Prompt: *prompt, InputIDs: inputIDs, GeneratedIDs: generated, Decoded: decoded, TokenID: inputIDs[len(inputIDs)-1], NextID: next, Logit: logit, HiddenAbsSum: sum, Passed: next >= 0 && len(h) == meta.HiddenSize}
+	if *mtp {
+		mtpHead, err := model.LoadQwenNativeMTPHeadFromSafetensorsDir(*dir, meta)
+		check("load MTP head", err)
+		mtpEmbedding := bf16Row(r.emb, generated[len(generated)-1])
+		mtpOut, err := mtpHead.ForwardOne(mtpEmbedding, preNormHidden, r.state.Pos-1, nil, 1e-6, meta)
+		check("MTP forward", err)
+		rep.MTPOutputLen = len(mtpOut)
+		for _, v := range mtpOut {
+			if v < 0 {
+				rep.MTPAbsSum -= v
+			} else {
+				rep.MTPAbsSum += v
+			}
+		}
+		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(rep)
@@ -114,17 +134,18 @@ func main() {
 	}
 }
 
-func (r *runner) step(tokenID int) (int, float32, []float32, error) {
+func (r *runner) step(tokenID int) (int, float32, []float32, []float32, error) {
 	hidden := bf16Row(r.emb, tokenID)
 	outs, nextState, err := r.bundle.ForwardBaseSequence([][]float32{hidden}, r.state, nil, 1e-6)
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, nil, nil, err
 	}
 	r.state = nextState
-	h := outs[len(outs)-1]
+	preNorm := append([]float32(nil), outs[len(outs)-1]...)
+	h := append([]float32(nil), preNorm...)
 	rmsNorm(h, r.normW, 1e-6)
 	id, val := argmaxBF16MatVec(r.lm, h)
-	return id, val, h, nil
+	return id, val, h, preNorm, nil
 }
 
 func check(what string, err error) {
