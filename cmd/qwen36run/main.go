@@ -10,12 +10,17 @@ import (
 	"path/filepath"
 
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
+	"github.com/rcarmo/go-pherence/loader/tokenizer"
 	"github.com/rcarmo/go-pherence/model"
 )
 
 type Report struct {
 	ModelDir     string  `json:"model_dir"`
-	TokenID      int     `json:"token_id"`
+	Prompt       string  `json:"prompt,omitempty"`
+	InputIDs     []int   `json:"input_ids"`
+	GeneratedIDs []int   `json:"generated_ids,omitempty"`
+	Decoded      string  `json:"decoded,omitempty"`
+	TokenID      int     `json:"token_id,omitempty"`
 	NextID       int     `json:"next_id"`
 	Logit        float32 `json:"logit"`
 	HiddenAbsSum float32 `json:"hidden_abs_sum"`
@@ -28,12 +33,26 @@ type rawTensor struct {
 	shape []int
 }
 
+type runner struct {
+	bundle *model.Qwen35NativeMTPBundle
+	state  model.Qwen35BaseForwardState
+	emb    rawTensor
+	normW  []float32
+	lm     rawTensor
+}
+
 func main() {
 	dir := flag.String("model", "", "Qwen3.6 model directory")
-	token := flag.Int("token", 0, "single token id to run")
+	token := flag.Int("token", 0, "single token id to run when -prompt is empty")
+	prompt := flag.String("prompt", "", "text prompt to encode and run")
+	steps := flag.Int("steps", 1, "greedy decode steps after prompt/token")
 	flag.Parse()
 	if *dir == "" {
-		fmt.Fprintln(os.Stderr, "usage: qwen36run -model <dir> [-token id]")
+		fmt.Fprintln(os.Stderr, "usage: qwen36run -model <dir> [-token id | -prompt text] [-steps n]")
+		os.Exit(2)
+	}
+	if *steps < 1 {
+		fmt.Fprintln(os.Stderr, "steps must be >= 1")
 		os.Exit(2)
 	}
 	data, err := os.ReadFile(filepath.Join(*dir, "config.json"))
@@ -47,16 +66,33 @@ func main() {
 	src, err := model.OpenQwenNativeMTPSafetensorsSource(*dir)
 	check("open tensors", err)
 	defer src.Close()
-	emb := mustRaw(src, "model.language_model.embed_tokens.weight")
-	norm := mustRaw(src, "model.language_model.norm.weight")
-	lm := mustRaw(src, "lm_head.weight")
-	hidden := bf16Row(emb, *token)
-	outs, nextState, err := bundle.ForwardBaseSequence([][]float32{hidden}, state, nil, 1e-6)
-	check("base forward", err)
-	_ = nextState
-	h := outs[len(outs)-1]
-	rmsNorm(h, bf16All(norm), 1e-6)
-	id, val := argmaxBF16MatVec(lm, h)
+	r := runner{bundle: bundle, state: state, emb: mustRaw(src, "model.language_model.embed_tokens.weight"), normW: bf16All(mustRaw(src, "model.language_model.norm.weight")), lm: mustRaw(src, "lm_head.weight")}
+	inputIDs := []int{*token}
+	var tok *tokenizer.Tokenizer
+	if *prompt != "" {
+		tok, err = tokenizer.Load(filepath.Join(*dir, "tokenizer.json"))
+		check("tokenizer", err)
+		inputIDs = tok.Encode(*prompt)
+		if len(inputIDs) == 0 {
+			fmt.Fprintln(os.Stderr, "prompt encoded to zero tokens")
+			os.Exit(2)
+		}
+	}
+	var next int
+	var logit float32
+	var h []float32
+	for _, id := range inputIDs {
+		next, logit, h, err = r.step(id)
+		check("prefill", err)
+	}
+	generated := make([]int, 0, *steps)
+	cur := next
+	for i := 0; i < *steps; i++ {
+		generated = append(generated, cur)
+		next, logit, h, err = r.step(cur)
+		check("decode", err)
+		cur = next
+	}
 	var sum float32
 	for _, v := range h {
 		if v < 0 {
@@ -65,13 +101,30 @@ func main() {
 			sum += v
 		}
 	}
-	rep := Report{ModelDir: *dir, TokenID: *token, NextID: id, Logit: val, HiddenAbsSum: sum, Passed: id >= 0 && len(h) == meta.HiddenSize}
+	decoded := ""
+	if tok != nil {
+		decoded = tok.Decode(generated)
+	}
+	rep := Report{ModelDir: *dir, Prompt: *prompt, InputIDs: inputIDs, GeneratedIDs: generated, Decoded: decoded, TokenID: inputIDs[len(inputIDs)-1], NextID: next, Logit: logit, HiddenAbsSum: sum, Passed: next >= 0 && len(h) == meta.HiddenSize}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(rep)
 	if !rep.Passed {
 		os.Exit(1)
 	}
+}
+
+func (r *runner) step(tokenID int) (int, float32, []float32, error) {
+	hidden := bf16Row(r.emb, tokenID)
+	outs, nextState, err := r.bundle.ForwardBaseSequence([][]float32{hidden}, r.state, nil, 1e-6)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	r.state = nextState
+	h := outs[len(outs)-1]
+	rmsNorm(h, r.normW, 1e-6)
+	id, val := argmaxBF16MatVec(r.lm, h)
+	return id, val, h, nil
 }
 
 func check(what string, err error) {
@@ -82,7 +135,11 @@ func check(what string, err error) {
 }
 func mustRaw(src interface {
 	GetRaw(string) ([]byte, string, []int, error)
-}, name string) rawTensor { r, d, s, e := src.GetRaw(name); check(name, e); return rawTensor{r, d, s} }
+}, name string) rawTensor {
+	r, d, s, e := src.GetRaw(name)
+	check(name, e)
+	return rawTensor{r, d, s}
+}
 func bf16(bits []byte, i int) float32 {
 	return math.Float32frombits(uint32(binary.LittleEndian.Uint16(bits[i*2:])) << 16)
 }
