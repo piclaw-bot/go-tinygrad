@@ -37,6 +37,9 @@ type Report struct {
 	VerifierBestMinusMTP float32 `json:"verifier_best_minus_mtp,omitempty"`
 	MTPLogitForVerifier  float32 `json:"mtp_logit_for_verifier,omitempty"`
 	MTPBestMinusVerifier float32 `json:"mtp_best_minus_verifier,omitempty"`
+	MTPDraftIDs          []int   `json:"mtp_draft_ids,omitempty"`
+	MTPVerifierIDs       []int   `json:"mtp_verifier_ids,omitempty"`
+	MTPAcceptedPrefix    int     `json:"mtp_accepted_prefix,omitempty"`
 	Passed               bool    `json:"passed"`
 }
 
@@ -60,6 +63,7 @@ func main() {
 	prompt := flag.String("prompt", "", "text prompt to encode and run")
 	steps := flag.Int("steps", 1, "greedy decode steps after prompt/token")
 	mtp := flag.Bool("mtp", false, "also run native MTP head from last base hidden state and generated token")
+	mtpSteps := flag.Int("mtp-steps", 1, "native MTP draft steps for diagnostics")
 	flag.Parse()
 	if *dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: qwen36run -model <dir> [-token id | -prompt text] [-steps n]")
@@ -67,6 +71,10 @@ func main() {
 	}
 	if *steps < 1 {
 		fmt.Fprintln(os.Stderr, "steps must be >= 1")
+		os.Exit(2)
+	}
+	if *mtpSteps < 1 {
+		fmt.Fprintln(os.Stderr, "mtp-steps must be >= 1")
 		os.Exit(2)
 	}
 	data, err := os.ReadFile(filepath.Join(*dir, "config.json"))
@@ -167,6 +175,19 @@ func main() {
 		rep.VerifierBestMinusMTP = rep.Logit - rep.VerifierLogitForMTP
 		rep.MTPLogitForVerifier = bf16MatVecRow(r.lm, mtpLogitHidden, rep.MTPVerifierNextID)
 		rep.MTPBestMinusVerifier = rep.MTPLogit - rep.MTPLogitForVerifier
+		rep.MTPDraftIDs, err = draftMTPIDs(mtpHead, r.emb, r.lm, generated[len(generated)-1], preNormHidden, r.state.Pos-1, ropeFreqs, meta, *mtpSteps)
+		check("MTP draft steps", err)
+		verifier := runner{bundle: r.bundle, state: model.CloneQwen35BaseForwardState(r.state), emb: r.emb, normW: r.normW, lm: r.lm}
+		verifierNext := rep.NextID
+		for _, draftID := range rep.MTPDraftIDs {
+			rep.MTPVerifierIDs = append(rep.MTPVerifierIDs, verifierNext)
+			if draftID != verifierNext {
+				break
+			}
+			rep.MTPAcceptedPrefix++
+			verifierNext, _, _, _, err = verifier.step(draftID, ropeFreqs)
+			check("MTP verifier accepted step", err)
+		}
 		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
 	}
 	enc := json.NewEncoder(os.Stdout)
@@ -175,6 +196,36 @@ func main() {
 	if !rep.Passed {
 		os.Exit(1)
 	}
+}
+
+func draftMTPIDs(head *model.QwenNativeMTPHead, emb, lm rawTensor, tokenID int, hidden []float32, pos int, ropeFreqs []float32, meta loaderconfig.QwenNativeMTPMetadata, steps int) ([]int, error) {
+	if head == nil || len(head.Layers) == 0 || head.Norm == nil {
+		return nil, fmt.Errorf("incomplete Qwen MTP head")
+	}
+	ids := make([]int, 0, steps)
+	curToken := tokenID
+	curHidden := append([]float32(nil), hidden...)
+	var pastK, pastV []float32
+	for i := 0; i < steps; i++ {
+		e := bf16Row(emb, curToken)
+		pre, err := head.PreProject(e, curHidden, 1e-6)
+		if err != nil {
+			return nil, err
+		}
+		out, k, v, err := head.Layers[0].ForwardWithKV(pre, pos+i, ropeFreqs, pastK, pastV, 1e-6, meta)
+		if err != nil {
+			return nil, err
+		}
+		pastK = append(pastK, k...)
+		pastV = append(pastV, v...)
+		logitHidden := append([]float32(nil), out...)
+		rmsNorm(logitHidden, head.Norm.Data(), 1e-6)
+		next, _ := argmaxBF16MatVec(lm, logitHidden)
+		ids = append(ids, next)
+		curToken = next
+		curHidden = out
+	}
+	return ids, nil
 }
 
 func (r *runner) step(tokenID int, ropeFreqs []float32) (int, float32, []float32, []float32, error) {
