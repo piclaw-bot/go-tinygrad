@@ -15,22 +15,26 @@ import (
 )
 
 type Report struct {
-	ModelDir            string  `json:"model_dir"`
-	Prompt              string  `json:"prompt,omitempty"`
-	InputIDs            []int   `json:"input_ids"`
-	GeneratedIDs        []int   `json:"generated_ids,omitempty"`
-	Decoded             string  `json:"decoded,omitempty"`
-	TokenID             int     `json:"token_id,omitempty"`
-	NextID              int     `json:"next_id"`
-	Logit               float32 `json:"logit"`
-	HiddenAbsSum        float32 `json:"hidden_abs_sum"`
-	MTPOutputLen        int     `json:"mtp_output_len,omitempty"`
-	MTPAbsSum           float32 `json:"mtp_abs_sum,omitempty"`
-	MTPNextID           int     `json:"mtp_next_id,omitempty"`
-	MTPLogit            float32 `json:"mtp_logit,omitempty"`
-	MTPVerifierNextID   int     `json:"mtp_verifier_next_id,omitempty"`
-	MTPAcceptedByGreedy bool    `json:"mtp_accepted_by_greedy"`
-	Passed              bool    `json:"passed"`
+	ModelDir             string  `json:"model_dir"`
+	Prompt               string  `json:"prompt,omitempty"`
+	InputIDs             []int   `json:"input_ids"`
+	GeneratedIDs         []int   `json:"generated_ids,omitempty"`
+	Decoded              string  `json:"decoded,omitempty"`
+	TokenID              int     `json:"token_id,omitempty"`
+	NextID               int     `json:"next_id"`
+	Logit                float32 `json:"logit"`
+	HiddenAbsSum         float32 `json:"hidden_abs_sum"`
+	MTPOutputLen         int     `json:"mtp_output_len,omitempty"`
+	MTPAbsSum            float32 `json:"mtp_abs_sum,omitempty"`
+	MTPNextID            int     `json:"mtp_next_id,omitempty"`
+	MTPLogit             float32 `json:"mtp_logit,omitempty"`
+	MTPVerifierNextID    int     `json:"mtp_verifier_next_id,omitempty"`
+	MTPAcceptedByGreedy  bool    `json:"mtp_accepted_by_greedy"`
+	VerifierLogitForMTP  float32 `json:"verifier_logit_for_mtp,omitempty"`
+	VerifierBestMinusMTP float32 `json:"verifier_best_minus_mtp,omitempty"`
+	MTPLogitForVerifier  float32 `json:"mtp_logit_for_verifier,omitempty"`
+	MTPBestMinusVerifier float32 `json:"mtp_best_minus_verifier,omitempty"`
+	Passed               bool    `json:"passed"`
 }
 
 type rawTensor struct {
@@ -140,6 +144,10 @@ func main() {
 		// into the verifier here; that would compare against the following token.
 		rep.MTPVerifierNextID = rep.NextID
 		rep.MTPAcceptedByGreedy = rep.MTPVerifierNextID == rep.MTPNextID
+		rep.VerifierLogitForMTP = bf16MatVecRow(r.lm, h, rep.MTPNextID)
+		rep.VerifierBestMinusMTP = rep.Logit - rep.VerifierLogitForMTP
+		rep.MTPLogitForVerifier = bf16MatVecRow(r.lm, mtpLogitHidden, rep.MTPVerifierNextID)
+		rep.MTPBestMinusVerifier = rep.MTPLogit - rep.MTPLogitForVerifier
 		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
 	}
 	enc := json.NewEncoder(os.Stdout)
@@ -214,19 +222,28 @@ func rmsNorm(x, w []float32, eps float32) {
 	}
 }
 func argmaxBF16MatVec(t rawTensor, x []float32) (int, float32) {
-	rows, cols := t.shape[0], t.shape[1]
+	rows := t.shape[0]
 	best := -1
 	bestv := float32(math.Inf(-1))
 	for r := 0; r < rows; r++ {
-		off := r * cols * 2
-		var s float32
-		for c := 0; c < cols; c++ {
-			s += bf16(t.raw[off:], c) * x[c]
-		}
+		s := bf16MatVecRow(t, x, r)
 		if s > bestv {
 			bestv = s
 			best = r
 		}
 	}
 	return best, bestv
+}
+
+func bf16MatVecRow(t rawTensor, x []float32, row int) float32 {
+	if len(t.shape) != 2 || row < 0 || row >= t.shape[0] {
+		return float32(math.Inf(-1))
+	}
+	cols := t.shape[1]
+	off := row * cols * 2
+	var s float32
+	for c := 0; c < cols; c++ {
+		s += bf16(t.raw[off:], c) * x[c]
+	}
+	return s
 }
