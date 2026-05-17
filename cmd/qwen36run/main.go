@@ -15,20 +15,22 @@ import (
 )
 
 type Report struct {
-	ModelDir     string  `json:"model_dir"`
-	Prompt       string  `json:"prompt,omitempty"`
-	InputIDs     []int   `json:"input_ids"`
-	GeneratedIDs []int   `json:"generated_ids,omitempty"`
-	Decoded      string  `json:"decoded,omitempty"`
-	TokenID      int     `json:"token_id,omitempty"`
-	NextID       int     `json:"next_id"`
-	Logit        float32 `json:"logit"`
-	HiddenAbsSum float32 `json:"hidden_abs_sum"`
-	MTPOutputLen int     `json:"mtp_output_len,omitempty"`
-	MTPAbsSum    float32 `json:"mtp_abs_sum,omitempty"`
-	MTPNextID    int     `json:"mtp_next_id,omitempty"`
-	MTPLogit     float32 `json:"mtp_logit,omitempty"`
-	Passed       bool    `json:"passed"`
+	ModelDir            string  `json:"model_dir"`
+	Prompt              string  `json:"prompt,omitempty"`
+	InputIDs            []int   `json:"input_ids"`
+	GeneratedIDs        []int   `json:"generated_ids,omitempty"`
+	Decoded             string  `json:"decoded,omitempty"`
+	TokenID             int     `json:"token_id,omitempty"`
+	NextID              int     `json:"next_id"`
+	Logit               float32 `json:"logit"`
+	HiddenAbsSum        float32 `json:"hidden_abs_sum"`
+	MTPOutputLen        int     `json:"mtp_output_len,omitempty"`
+	MTPAbsSum           float32 `json:"mtp_abs_sum,omitempty"`
+	MTPNextID           int     `json:"mtp_next_id,omitempty"`
+	MTPLogit            float32 `json:"mtp_logit,omitempty"`
+	MTPVerifierNextID   int     `json:"mtp_verifier_next_id,omitempty"`
+	MTPAcceptedByGreedy bool    `json:"mtp_accepted_by_greedy"`
+	Passed              bool    `json:"passed"`
 }
 
 type rawTensor struct {
@@ -133,6 +135,12 @@ func main() {
 		mtpLogitHidden := append([]float32(nil), mtpOut...)
 		rmsNorm(mtpLogitHidden, mtpHead.Norm.Data(), 1e-6)
 		rep.MTPNextID, rep.MTPLogit = argmaxBF16MatVec(r.lm, mtpLogitHidden)
+		verifierState := cloneRunnerState(r.state)
+		verifier := runner{bundle: r.bundle, state: verifierState, emb: r.emb, normW: r.normW, lm: r.lm}
+		verifierNext, _, _, _, err := verifier.step(rep.MTPNextID)
+		check("MTP verifier step", err)
+		rep.MTPVerifierNextID = verifierNext
+		rep.MTPAcceptedByGreedy = verifierNext == rep.MTPNextID
 		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
 	}
 	enc := json.NewEncoder(os.Stdout)
@@ -141,6 +149,10 @@ func main() {
 	if !rep.Passed {
 		os.Exit(1)
 	}
+}
+
+func cloneRunnerState(state model.Qwen35BaseForwardState) model.Qwen35BaseForwardState {
+	return model.CloneQwen35BaseForwardState(state)
 }
 
 func (r *runner) step(tokenID int) (int, float32, []float32, []float32, error) {
