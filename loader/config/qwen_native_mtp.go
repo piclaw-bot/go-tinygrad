@@ -20,6 +20,9 @@ type QwenNativeMTPMetadata struct {
 	NumAttentionHeads         int      `json:"num_attention_heads,omitempty"`
 	NumKeyValueHeads          int      `json:"num_key_value_heads,omitempty"`
 	HeadDim                   int      `json:"head_dim,omitempty"`
+	MaxPositionEmbeddings     int      `json:"max_position_embeddings,omitempty"`
+	RopeTheta                 float64  `json:"rope_theta,omitempty"`
+	PartialRotaryFactor       float64  `json:"partial_rotary_factor,omitempty"`
 	LinearConvKernelDim       int      `json:"linear_conv_kernel_dim,omitempty"`
 	LinearKeyHeadDim          int      `json:"linear_key_head_dim,omitempty"`
 	LinearNumKeyHeads         int      `json:"linear_num_key_heads,omitempty"`
@@ -46,12 +49,19 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 			NumAttentionHeads         int      `json:"num_attention_heads"`
 			NumKeyValueHeads          int      `json:"num_key_value_heads"`
 			HeadDim                   int      `json:"head_dim"`
-			LinearConvKernelDim       int      `json:"linear_conv_kernel_dim"`
-			LinearKeyHeadDim          int      `json:"linear_key_head_dim"`
-			LinearNumKeyHeads         int      `json:"linear_num_key_heads"`
-			LinearNumValueHeads       int      `json:"linear_num_value_heads"`
-			LinearValueHeadDim        int      `json:"linear_value_head_dim"`
-			FullAttentionInterval     int      `json:"full_attention_interval"`
+			MaxPositionEmbeddings     int      `json:"max_position_embeddings"`
+			RopeTheta                 float64  `json:"rope_theta"`
+			PartialRotaryFactor       float64  `json:"partial_rotary_factor"`
+			RopeParameters            struct {
+				RopeTheta           float64 `json:"rope_theta"`
+				PartialRotaryFactor float64 `json:"partial_rotary_factor"`
+			} `json:"rope_parameters"`
+			LinearConvKernelDim   int `json:"linear_conv_kernel_dim"`
+			LinearKeyHeadDim      int `json:"linear_key_head_dim"`
+			LinearNumKeyHeads     int `json:"linear_num_key_heads"`
+			LinearNumValueHeads   int `json:"linear_num_value_heads"`
+			LinearValueHeadDim    int `json:"linear_value_head_dim"`
+			FullAttentionInterval int `json:"full_attention_interval"`
 		} `json:"text_config"`
 		HiddenSize                int      `json:"hidden_size"`
 		VocabSize                 int      `json:"vocab_size"`
@@ -63,12 +73,19 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		NumAttentionHeads         int      `json:"num_attention_heads"`
 		NumKeyValueHeads          int      `json:"num_key_value_heads"`
 		HeadDim                   int      `json:"head_dim"`
-		LinearConvKernelDim       int      `json:"linear_conv_kernel_dim"`
-		LinearKeyHeadDim          int      `json:"linear_key_head_dim"`
-		LinearNumKeyHeads         int      `json:"linear_num_key_heads"`
-		LinearNumValueHeads       int      `json:"linear_num_value_heads"`
-		LinearValueHeadDim        int      `json:"linear_value_head_dim"`
-		FullAttentionInterval     int      `json:"full_attention_interval"`
+		MaxPositionEmbeddings     int      `json:"max_position_embeddings"`
+		RopeTheta                 float64  `json:"rope_theta"`
+		PartialRotaryFactor       float64  `json:"partial_rotary_factor"`
+		RopeParameters            struct {
+			RopeTheta           float64 `json:"rope_theta"`
+			PartialRotaryFactor float64 `json:"partial_rotary_factor"`
+		} `json:"rope_parameters"`
+		LinearConvKernelDim   int `json:"linear_conv_kernel_dim"`
+		LinearKeyHeadDim      int `json:"linear_key_head_dim"`
+		LinearNumKeyHeads     int `json:"linear_num_key_heads"`
+		LinearNumValueHeads   int `json:"linear_num_value_heads"`
+		LinearValueHeadDim    int `json:"linear_value_head_dim"`
+		FullAttentionInterval int `json:"full_attention_interval"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return QwenNativeMTPMetadata{}, err
@@ -91,6 +108,15 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		meta.NumAttentionHeads = raw.TextConfig.NumAttentionHeads
 		meta.NumKeyValueHeads = raw.TextConfig.NumKeyValueHeads
 		meta.HeadDim = raw.TextConfig.HeadDim
+		meta.MaxPositionEmbeddings = raw.TextConfig.MaxPositionEmbeddings
+		meta.RopeTheta = raw.TextConfig.RopeTheta
+		if raw.TextConfig.RopeParameters.RopeTheta != 0 {
+			meta.RopeTheta = raw.TextConfig.RopeParameters.RopeTheta
+		}
+		meta.PartialRotaryFactor = raw.TextConfig.PartialRotaryFactor
+		if raw.TextConfig.RopeParameters.PartialRotaryFactor != 0 {
+			meta.PartialRotaryFactor = raw.TextConfig.RopeParameters.PartialRotaryFactor
+		}
 		meta.LinearConvKernelDim = raw.TextConfig.LinearConvKernelDim
 		meta.LinearKeyHeadDim = raw.TextConfig.LinearKeyHeadDim
 		meta.LinearNumKeyHeads = raw.TextConfig.LinearNumKeyHeads
@@ -108,6 +134,15 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		meta.NumAttentionHeads = raw.NumAttentionHeads
 		meta.NumKeyValueHeads = raw.NumKeyValueHeads
 		meta.HeadDim = raw.HeadDim
+		meta.MaxPositionEmbeddings = raw.MaxPositionEmbeddings
+		meta.RopeTheta = raw.RopeTheta
+		if raw.RopeParameters.RopeTheta != 0 {
+			meta.RopeTheta = raw.RopeParameters.RopeTheta
+		}
+		meta.PartialRotaryFactor = raw.PartialRotaryFactor
+		if raw.RopeParameters.PartialRotaryFactor != 0 {
+			meta.PartialRotaryFactor = raw.RopeParameters.PartialRotaryFactor
+		}
 		meta.LinearConvKernelDim = raw.LinearConvKernelDim
 		meta.LinearKeyHeadDim = raw.LinearKeyHeadDim
 		meta.LinearNumKeyHeads = raw.LinearNumKeyHeads

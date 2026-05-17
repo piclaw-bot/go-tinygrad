@@ -166,6 +166,8 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 			"num_attention_heads":24,
 			"num_key_value_heads":4,
 			"head_dim":256,
+			"max_position_embeddings":262144,
+			"rope_parameters":{"rope_theta":10000000,"partial_rotary_factor":0.25},
 			"linear_conv_kernel_dim":4,
 			"linear_key_head_dim":128,
 			"linear_num_key_heads":4,
@@ -181,7 +183,7 @@ func TestParseQwenNativeMTPMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseQwenNativeMTPMetadata: %v", err)
 	}
-	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.VocabSize != 151936 || got.IntermediateSize != 17408 || got.NumHiddenLayers != 64 || got.NumAttentionHeads != 24 || got.NumKeyValueHeads != 4 || got.HeadDim != 256 || got.LinearNumValueHeads != 16 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
+	if got.ModelType != "qwen3_5_text" || got.Architecture != "Qwen3_5ForConditionalGeneration" || got.HiddenSize != 5120 || got.VocabSize != 151936 || got.IntermediateSize != 17408 || got.NumHiddenLayers != 64 || got.NumAttentionHeads != 24 || got.NumKeyValueHeads != 4 || got.HeadDim != 256 || got.MaxPositionEmbeddings != 262144 || got.RopeTheta != 10000000 || got.PartialRotaryFactor != 0.25 || got.LinearNumValueHeads != 16 || got.MTPNumHiddenLayers != 1 || !got.HasNativeMTP || !got.HasLinearAttention {
 		t.Fatalf("metadata=%+v", got)
 	}
 }

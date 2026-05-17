@@ -81,6 +81,11 @@ func main() {
 	check("open tensors", err)
 	defer src.Close()
 	r := runner{bundle: bundle, state: state, emb: mustRaw(src, "model.language_model.embed_tokens.weight"), normW: bf16All(mustRaw(src, "model.language_model.norm.weight")), lm: mustRaw(src, "lm_head.weight")}
+	ropeMax := meta.MaxPositionEmbeddings
+	if ropeMax <= 0 || ropeMax > 4096 {
+		ropeMax = 4096
+	}
+	ropeFreqs := model.NewQwen35RoPEFreqs(meta, ropeMax)
 	inputIDs := []int{*token}
 	var tok *tokenizer.Tokenizer
 	if *prompt != "" {
@@ -97,7 +102,7 @@ func main() {
 	var h []float32
 	var preNormHidden []float32
 	for _, id := range inputIDs {
-		next, logit, h, preNormHidden, err = r.step(id)
+		next, logit, h, preNormHidden, err = r.step(id, ropeFreqs)
 		check("prefill", err)
 	}
 	prefillVerifierNext := next
@@ -108,7 +113,7 @@ func main() {
 	cur := next
 	for i := 0; i < *steps; i++ {
 		generated = append(generated, cur)
-		next, logit, h, preNormHidden, err = r.step(cur)
+		next, logit, h, preNormHidden, err = r.step(cur, ropeFreqs)
 		check("decode", err)
 		cur = next
 	}
@@ -133,14 +138,14 @@ func main() {
 			os.Exit(2)
 		}
 		prefillMTPEmbedding := bf16Row(r.emb, prefillToken)
-		prefillMTPOut, err := mtpHead.ForwardOne(prefillMTPEmbedding, prefillHidden, prefillPos, nil, 1e-6, meta)
+		prefillMTPOut, err := mtpHead.ForwardOne(prefillMTPEmbedding, prefillHidden, prefillPos, ropeFreqs, 1e-6, meta)
 		check("prefill MTP forward", err)
 		prefillMTPLogitHidden := append([]float32(nil), prefillMTPOut...)
 		rmsNorm(prefillMTPLogitHidden, mtpHead.Norm.Data(), 1e-6)
 		rep.PrefillMTPNextID, rep.PrefillMTPLogit = argmaxBF16MatVec(r.lm, prefillMTPLogitHidden)
 		rep.PrefillMTPAccepted = rep.PrefillMTPNextID == prefillVerifierNext
 		mtpEmbedding := bf16Row(r.emb, generated[len(generated)-1])
-		mtpOut, err := mtpHead.ForwardOne(mtpEmbedding, preNormHidden, r.state.Pos-1, nil, 1e-6, meta)
+		mtpOut, err := mtpHead.ForwardOne(mtpEmbedding, preNormHidden, r.state.Pos-1, ropeFreqs, 1e-6, meta)
 		check("MTP forward", err)
 		rep.MTPOutputLen = len(mtpOut)
 		for _, v := range mtpOut {
@@ -172,9 +177,9 @@ func main() {
 	}
 }
 
-func (r *runner) step(tokenID int) (int, float32, []float32, []float32, error) {
+func (r *runner) step(tokenID int, ropeFreqs []float32) (int, float32, []float32, []float32, error) {
 	hidden := bf16Row(r.emb, tokenID)
-	outs, nextState, err := r.bundle.ForwardBaseSequence([][]float32{hidden}, r.state, nil, 1e-6)
+	outs, nextState, err := r.bundle.ForwardBaseSequence([][]float32{hidden}, r.state, ropeFreqs, 1e-6)
 	if err != nil {
 		return 0, 0, nil, nil, err
 	}

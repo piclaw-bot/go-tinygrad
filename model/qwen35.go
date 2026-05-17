@@ -365,8 +365,9 @@ func (l *Qwen35FullAttentionLayer) ForwardWithKV(input []float32, pos int, ropeF
 	normHeads(q, l.QNorm.Data(), meta.NumAttentionHeads, meta.HeadDim, eps)
 	normHeads(k, l.KNorm.Data(), meta.NumKeyValueHeads, meta.HeadDim, eps)
 	if len(ropeFreqs) > 0 {
-		applyRoPE(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim)
-		applyRoPE(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim)
+		rotHalf := Qwen35RotaryHalf(meta)
+		applyRoPEPartial(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim, rotHalf)
+		applyRoPEPartial(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim, rotHalf)
 	}
 	curK = append([]float32(nil), k...)
 	curV = append([]float32(nil), v...)
