@@ -26,6 +26,8 @@ type Report struct {
 	HiddenAbsSum float32 `json:"hidden_abs_sum"`
 	MTPOutputLen int     `json:"mtp_output_len,omitempty"`
 	MTPAbsSum    float32 `json:"mtp_abs_sum,omitempty"`
+	MTPNextID    int     `json:"mtp_next_id,omitempty"`
+	MTPLogit     float32 `json:"mtp_logit,omitempty"`
 	Passed       bool    `json:"passed"`
 }
 
@@ -124,7 +126,14 @@ func main() {
 				rep.MTPAbsSum += v
 			}
 		}
-		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize
+		if mtpHead.Norm == nil {
+			fmt.Fprintln(os.Stderr, "MTP logits: missing mtp.norm.weight")
+			os.Exit(2)
+		}
+		mtpLogitHidden := append([]float32(nil), mtpOut...)
+		rmsNorm(mtpLogitHidden, mtpHead.Norm.Data(), 1e-6)
+		rep.MTPNextID, rep.MTPLogit = argmaxBF16MatVec(r.lm, mtpLogitHidden)
+		rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
