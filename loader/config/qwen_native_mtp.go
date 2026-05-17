@@ -23,6 +23,8 @@ type QwenNativeMTPMetadata struct {
 	MaxPositionEmbeddings     int      `json:"max_position_embeddings,omitempty"`
 	RopeTheta                 float64  `json:"rope_theta,omitempty"`
 	PartialRotaryFactor       float64  `json:"partial_rotary_factor,omitempty"`
+	MRoPEInterleaved          bool     `json:"mrope_interleaved,omitempty"`
+	MRoPESection              []int    `json:"mrope_section,omitempty"`
 	LinearConvKernelDim       int      `json:"linear_conv_kernel_dim,omitempty"`
 	LinearKeyHeadDim          int      `json:"linear_key_head_dim,omitempty"`
 	LinearNumKeyHeads         int      `json:"linear_num_key_heads,omitempty"`
@@ -55,6 +57,8 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 			RopeParameters            struct {
 				RopeTheta           float64 `json:"rope_theta"`
 				PartialRotaryFactor float64 `json:"partial_rotary_factor"`
+				MRoPEInterleaved    bool    `json:"mrope_interleaved"`
+				MRoPESection        []int   `json:"mrope_section"`
 			} `json:"rope_parameters"`
 			LinearConvKernelDim   int `json:"linear_conv_kernel_dim"`
 			LinearKeyHeadDim      int `json:"linear_key_head_dim"`
@@ -79,6 +83,8 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		RopeParameters            struct {
 			RopeTheta           float64 `json:"rope_theta"`
 			PartialRotaryFactor float64 `json:"partial_rotary_factor"`
+			MRoPEInterleaved    bool    `json:"mrope_interleaved"`
+			MRoPESection        []int   `json:"mrope_section"`
 		} `json:"rope_parameters"`
 		LinearConvKernelDim   int `json:"linear_conv_kernel_dim"`
 		LinearKeyHeadDim      int `json:"linear_key_head_dim"`
@@ -117,6 +123,8 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		if raw.TextConfig.RopeParameters.PartialRotaryFactor != 0 {
 			meta.PartialRotaryFactor = raw.TextConfig.RopeParameters.PartialRotaryFactor
 		}
+		meta.MRoPEInterleaved = raw.TextConfig.RopeParameters.MRoPEInterleaved
+		meta.MRoPESection = append([]int(nil), raw.TextConfig.RopeParameters.MRoPESection...)
 		meta.LinearConvKernelDim = raw.TextConfig.LinearConvKernelDim
 		meta.LinearKeyHeadDim = raw.TextConfig.LinearKeyHeadDim
 		meta.LinearNumKeyHeads = raw.TextConfig.LinearNumKeyHeads
@@ -143,6 +151,8 @@ func ParseQwenNativeMTPMetadata(data []byte) (QwenNativeMTPMetadata, error) {
 		if raw.RopeParameters.PartialRotaryFactor != 0 {
 			meta.PartialRotaryFactor = raw.RopeParameters.PartialRotaryFactor
 		}
+		meta.MRoPEInterleaved = raw.RopeParameters.MRoPEInterleaved
+		meta.MRoPESection = append([]int(nil), raw.RopeParameters.MRoPESection...)
 		meta.LinearConvKernelDim = raw.LinearConvKernelDim
 		meta.LinearKeyHeadDim = raw.LinearKeyHeadDim
 		meta.LinearNumKeyHeads = raw.LinearNumKeyHeads

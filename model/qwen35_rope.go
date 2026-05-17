@@ -25,6 +25,10 @@ func Qwen35RotaryHalf(meta loaderconfig.QwenNativeMTPMetadata) int {
 	return rotDims / 2
 }
 
+func Qwen35UseMRoPE(meta loaderconfig.QwenNativeMTPMetadata) bool {
+	return meta.MRoPEInterleaved && len(meta.MRoPESection) > 0
+}
+
 func NewQwen35RoPEFreqs(meta loaderconfig.QwenNativeMTPMetadata, maxSeq int) []float32 {
 	rotHalf := Qwen35RotaryHalf(meta)
 	if maxSeq <= 0 || rotHalf <= 0 {

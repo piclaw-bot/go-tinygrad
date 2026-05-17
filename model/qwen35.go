@@ -366,6 +366,10 @@ func (l *Qwen35FullAttentionLayer) ForwardWithKV(input []float32, pos int, ropeF
 	normHeads(k, l.KNorm.Data(), meta.NumKeyValueHeads, meta.HeadDim, eps)
 	if len(ropeFreqs) > 0 {
 		rotHalf := Qwen35RotaryHalf(meta)
+		// Qwen3.6 config marks MRoPE interleaving/sections; for text-only smoke,
+		// all sections share the same position, so partial RoPE is equivalent to
+		// applying those interleaved sections with identical position ids.
+		_ = Qwen35UseMRoPE(meta)
 		applyRoPEPartial(q, ropeFreqs, pos, meta.NumAttentionHeads, meta.HeadDim, rotHalf)
 		applyRoPEPartial(k, ropeFreqs, pos, meta.NumKeyValueHeads, meta.HeadDim, rotHalf)
 	}
