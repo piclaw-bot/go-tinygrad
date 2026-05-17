@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	loaderconfig "github.com/rcarmo/go-pherence/loader/config"
 	"github.com/rcarmo/go-pherence/loader/tokenizer"
@@ -43,6 +44,16 @@ type Report struct {
 	Passed               bool    `json:"passed"`
 }
 
+type SweepReport struct {
+	ModelDir         string   `json:"model_dir"`
+	Prompts          []string `json:"prompts"`
+	Runs             []Report `json:"runs"`
+	Accepted         int      `json:"accepted"`
+	Total            int      `json:"total"`
+	AcceptanceRate   float64  `json:"acceptance_rate"`
+	AcceptedPrefixes int      `json:"accepted_prefixes"`
+}
+
 type rawTensor struct {
 	raw   []byte
 	dtype string
@@ -64,6 +75,7 @@ func main() {
 	steps := flag.Int("steps", 1, "greedy decode steps after prompt/token")
 	mtp := flag.Bool("mtp", false, "also run native MTP head from last base hidden state and generated token")
 	mtpSteps := flag.Int("mtp-steps", 1, "native MTP draft steps for diagnostics")
+	sweep := flag.String("sweep", "", "newline-separated prompt file for MTP acceptance sweep")
 	flag.Parse()
 	if *dir == "" {
 		fmt.Fprintln(os.Stderr, "usage: qwen36run -model <dir> [-token id | -prompt text] [-steps n]")
@@ -94,6 +106,33 @@ func main() {
 		ropeMax = 4096
 	}
 	ropeFreqs := model.NewQwen35RoPEFreqs(meta, ropeMax)
+	if *sweep != "" {
+		tok, err := tokenizer.Load(filepath.Join(*dir, "tokenizer.json"))
+		check("tokenizer", err)
+		prompts := loadSweepPrompts(*sweep)
+		if len(prompts) == 0 {
+			fmt.Fprintln(os.Stderr, "sweep prompt file is empty")
+			os.Exit(2)
+		}
+		sweepReport := SweepReport{ModelDir: *dir, Prompts: prompts, Total: len(prompts)}
+		for _, p := range prompts {
+			run := newRunner(bundle, state, r.emb, r.normW, r.lm)
+			report, err := runPrompt(run, tok, p, *steps, *mtp, *mtpSteps, ropeFreqs, meta, *dir)
+			check("sweep prompt", err)
+			sweepReport.Runs = append(sweepReport.Runs, report)
+			if report.MTPAcceptedByGreedy || report.PrefillMTPAccepted {
+				sweepReport.Accepted++
+			}
+			sweepReport.AcceptedPrefixes += report.MTPAcceptedPrefix
+		}
+		if sweepReport.Total > 0 {
+			sweepReport.AcceptanceRate = float64(sweepReport.Accepted) / float64(sweepReport.Total)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(sweepReport)
+		return
+	}
 	inputIDs := []int{*token}
 	var tok *tokenizer.Tokenizer
 	if *prompt != "" {
@@ -198,6 +237,56 @@ func main() {
 	}
 }
 
+func applyMTPDiagnostics(rep *Report, r *runner, h []float32, prefillVerifierNext int, prefillHidden []float32, prefillToken, prefillPos int, generated []int, preNormHidden []float32, ropeFreqs []float32, meta loaderconfig.QwenNativeMTPMetadata, dir string, mtpSteps int) {
+	mtpHead, err := model.LoadQwenNativeMTPHeadFromSafetensorsDir(dir, meta)
+	check("load MTP head", err)
+	if mtpHead.Norm == nil {
+		fmt.Fprintln(os.Stderr, "MTP logits: missing mtp.norm.weight")
+		os.Exit(2)
+	}
+	prefillMTPEmbedding := bf16Row(r.emb, prefillToken)
+	prefillMTPOut, err := mtpHead.ForwardOne(prefillMTPEmbedding, prefillHidden, prefillPos, ropeFreqs, 1e-6, meta)
+	check("prefill MTP forward", err)
+	prefillMTPLogitHidden := append([]float32(nil), prefillMTPOut...)
+	rmsNorm(prefillMTPLogitHidden, mtpHead.Norm.Data(), 1e-6)
+	rep.PrefillMTPNextID, rep.PrefillMTPLogit = argmaxBF16MatVec(r.lm, prefillMTPLogitHidden)
+	rep.PrefillMTPAccepted = rep.PrefillMTPNextID == prefillVerifierNext
+	mtpEmbedding := bf16Row(r.emb, generated[len(generated)-1])
+	mtpOut, err := mtpHead.ForwardOne(mtpEmbedding, preNormHidden, r.state.Pos-1, ropeFreqs, 1e-6, meta)
+	check("MTP forward", err)
+	rep.MTPOutputLen = len(mtpOut)
+	for _, v := range mtpOut {
+		if v < 0 {
+			rep.MTPAbsSum -= v
+		} else {
+			rep.MTPAbsSum += v
+		}
+	}
+	mtpLogitHidden := append([]float32(nil), mtpOut...)
+	rmsNorm(mtpLogitHidden, mtpHead.Norm.Data(), 1e-6)
+	rep.MTPNextID, rep.MTPLogit = argmaxBF16MatVec(r.lm, mtpLogitHidden)
+	rep.MTPVerifierNextID = rep.NextID
+	rep.MTPAcceptedByGreedy = rep.MTPVerifierNextID == rep.MTPNextID
+	rep.VerifierLogitForMTP = bf16MatVecRow(r.lm, h, rep.MTPNextID)
+	rep.VerifierBestMinusMTP = rep.Logit - rep.VerifierLogitForMTP
+	rep.MTPLogitForVerifier = bf16MatVecRow(r.lm, mtpLogitHidden, rep.MTPVerifierNextID)
+	rep.MTPBestMinusVerifier = rep.MTPLogit - rep.MTPLogitForVerifier
+	rep.MTPDraftIDs, err = draftMTPIDs(mtpHead, r.emb, r.lm, generated[len(generated)-1], preNormHidden, r.state.Pos-1, ropeFreqs, meta, mtpSteps)
+	check("MTP draft steps", err)
+	verifier := runner{bundle: r.bundle, state: model.CloneQwen35BaseForwardState(r.state), emb: r.emb, normW: r.normW, lm: r.lm}
+	verifierNext := rep.NextID
+	for _, draftID := range rep.MTPDraftIDs {
+		rep.MTPVerifierIDs = append(rep.MTPVerifierIDs, verifierNext)
+		if draftID != verifierNext {
+			break
+		}
+		rep.MTPAcceptedPrefix++
+		verifierNext, _, _, _, err = verifier.step(draftID, ropeFreqs)
+		check("MTP verifier accepted step", err)
+	}
+	rep.Passed = rep.Passed && rep.MTPOutputLen == meta.HiddenSize && rep.MTPNextID >= 0
+}
+
 func draftMTPIDs(head *model.QwenNativeMTPHead, emb, lm rawTensor, tokenID int, hidden []float32, pos int, ropeFreqs []float32, meta loaderconfig.QwenNativeMTPMetadata, steps int) ([]int, error) {
 	if head == nil || len(head.Layers) == 0 || head.Norm == nil {
 		return nil, fmt.Errorf("incomplete Qwen MTP head")
@@ -226,6 +315,68 @@ func draftMTPIDs(head *model.QwenNativeMTPHead, emb, lm rawTensor, tokenID int, 
 		curHidden = out
 	}
 	return ids, nil
+}
+
+func newRunner(bundle *model.Qwen35NativeMTPBundle, state model.Qwen35BaseForwardState, emb rawTensor, normW []float32, lm rawTensor) runner {
+	return runner{bundle: bundle, state: model.CloneQwen35BaseForwardState(state), emb: emb, normW: normW, lm: lm}
+}
+
+func loadSweepPrompts(path string) []string {
+	data, err := os.ReadFile(path)
+	check("sweep", err)
+	lines := strings.Split(string(data), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func runPrompt(r runner, tok *tokenizer.Tokenizer, prompt string, steps int, mtp bool, mtpSteps int, ropeFreqs []float32, meta loaderconfig.QwenNativeMTPMetadata, dir string) (Report, error) {
+	ids := tok.Encode(prompt)
+	if len(ids) == 0 {
+		return Report{}, fmt.Errorf("prompt %q encoded to zero tokens", prompt)
+	}
+	var next int
+	var logit float32
+	var h, preNormHidden []float32
+	var err error
+	for _, id := range ids {
+		next, logit, h, preNormHidden, err = r.step(id, ropeFreqs)
+		if err != nil {
+			return Report{}, err
+		}
+	}
+	prefillVerifierNext := next
+	prefillHidden := append([]float32(nil), preNormHidden...)
+	prefillToken := ids[len(ids)-1]
+	prefillPos := r.state.Pos - 1
+	generated := make([]int, 0, steps)
+	cur := next
+	for i := 0; i < steps; i++ {
+		generated = append(generated, cur)
+		next, logit, h, preNormHidden, err = r.step(cur, ropeFreqs)
+		if err != nil {
+			return Report{}, err
+		}
+		cur = next
+	}
+	var sum float32
+	for _, v := range h {
+		if v < 0 {
+			sum -= v
+		} else {
+			sum += v
+		}
+	}
+	rep := Report{ModelDir: dir, Prompt: prompt, InputIDs: ids, GeneratedIDs: generated, Decoded: tok.Decode(generated), TokenID: ids[len(ids)-1], NextID: next, Logit: logit, HiddenAbsSum: sum, Passed: next >= 0 && len(h) == meta.HiddenSize}
+	if mtp {
+		applyMTPDiagnostics(&rep, &r, h, prefillVerifierNext, prefillHidden, prefillToken, prefillPos, generated, preNormHidden, ropeFreqs, meta, dir, mtpSteps)
+	}
+	return rep, nil
 }
 
 func (r *runner) step(tokenID int, ropeFreqs []float32) (int, float32, []float32, []float32, error) {
